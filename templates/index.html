@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EduAI — Консоль обучения</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --mac-bg: #f5f5f7;
+            --mac-card: rgba(255, 255, 255, 0.8);
+            --mac-text: #1d1d1f;
+            --mac-text-dim: #86868b;
+            --mac-accent: #0071e3;
+            --mac-border: rgba(0, 0, 0, 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background: linear-gradient(145deg, #f0f4f8 0%, #e2e8f0 100%);
+            color: var(--mac-text);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 16px;
+        }
+
+        /* Responsive Container */
+        .window {
+            background: var(--mac-card);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 680px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+        }
+
+        .toolbar {
+            background: rgba(245, 245, 247, 0.6);
+            padding: 16px;
+            border-bottom: 1px solid var(--mac-border);
+            text-align: center;
+        }
+
+        .title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--mac-text);
+            letter-spacing: -0.2px;
+        }
+
+        .content {
+            padding: 24px;
+        }
+
+        .header-title {
+            font-size: 21px;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+            margin-bottom: 4px;
+        }
+
+        .header-subtitle {
+            font-size: 13px;
+            color: var(--mac-text-dim);
+            margin-bottom: 24px;
+        }
+
+        /* Flexible Grid */
+        .grid-layout {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .form-element {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .full-width {
+            grid-column: span 2;
+        }
+
+        label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--mac-text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        select, input, textarea {
+            background: rgba(255, 255, 255, 0.8);
+            border: 1px solid var(--mac-border);
+            border-radius: 10px;
+            padding: 12px;
+            font-size: 14px;
+            color: var(--mac-text);
+            outline: none;
+            transition: all 0.15s ease-in-out;
+            width: 100%;
+        }
+
+        select:focus, input:focus, textarea:focus {
+            border-color: var(--mac-accent);
+            background: #ffffff;
+            box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.12);
+        }
+
+        textarea {
+            resize: none;
+            height: 100px;
+        }
+
+        .btn-primary {
+            background: var(--mac-accent);
+            color: white;
+            border-radius: 10px;
+            padding: 14px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            width: 100%;
+            transition: background 0.15s ease;
+            box-shadow: 0 4px 12px rgba(0, 113, 227, 0.15);
+        }
+
+        .btn-primary:hover { background: #0077ed; }
+
+        .notification-card {
+            margin-top: 20px;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid var(--mac-border);
+            border-radius: 12px;
+            display: none;
+        }
+
+        .notification-header {
+            font-size: 13px;
+            font-weight: 600;
+            color: #24b036;
+            margin-bottom: 6px;
+        }
+
+        .notification-body {
+            font-size: 14px;
+            line-height: 1.5;
+            white-space: pre-line;
+        }
+
+        /* Mobile Optimization (TG WebApp view) */
+        @media (max-width: 520px) {
+            body {
+                padding: 0;
+                background: #ffffff;
+                align-items: flex-start;
+            }
+
+            .window {
+                border-radius: 0;
+                border: none;
+                box-shadow: none;
+                background: transparent;
+            }
+
+            .toolbar {
+                background: #ffffff;
+                padding-top: 12px;
+            }
+
+            .content {
+                padding: 16px;
+            }
+
+            .grid-layout {
+                grid-template-columns: 1fr; /* Перестраиваем всё в одну колонку на телефонах */
+                gap: 14px;
+            }
+
+            .full-width {
+                grid-column: span 1;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="window">
+    <div class="toolbar">
+        <div class="title">EduAI Тьютор</div>
+    </div>
+    
+    <div class="content">
+        <div class="header-title">Настройка контекста</div>
+        <div class="header-subtitle">Заполните нужные фильтры или сразу задайте сквозной вопрос.</div>
+        
+        <div class="grid-layout">
+            <div class="form-element">
+                <label>Класс</label>
+                <select id="gradeSelect" onchange="updateBooksFilter()">
+                    <option value="">-- Любой класс --</option>
+                    <option value="5">5 класс</option>
+                    <option value="7">7 класс</option>
+                    <option value="8">8 класс</option>
+                    <option value="9">9 класс</option>
+                </select>
+            </div>
+
+            <div class="form-element">
+                <label>Предмет</label>
+                <select id="subjectSelect" onchange="updateBooksFilter()">
+                    <option value="">-- Любой предмет --</option>
+                    <option value="Алгебра">Алгебра</option>
+                    <option value="Геометрия">Геометрия</option>
+                    <option value="Математика">Математика</option>
+                </select>
+            </div>
+
+            <div class="form-element full-width">
+                <label>Учебник / Материал</label>
+                <select id="bookSelect">
+                    <option value="">-- Любой учебник --</option>
+                </select>
+            </div>
+
+            <div class="form-element full-width">
+                <label>Спецификация (Страница, тема или параграф)</label>
+                <input type="text" id="specInput" placeholder="Например: Паниграф 12, стр. 45">
+            </div>
+
+            <div class="form-element full-width">
+                <label>Вопрос к ИИ-тьютору</label>
+                <textarea id="questionText" placeholder="Введите текст вашего вопроса ученика..."></textarea>
+            </div>
+        </div>
+
+        <button class="btn-primary" onclick="submitToEduAI()">Отправить запрос в EduAI</button>
+
+        <div id="resultBox" class="notification-card">
+            <div class="notification-header">✨ Успешный разбор задачи</div>
+            <div id="resultText" class="notification-body"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Имитация базы данных доступных учебников (соответствует твоему ТГ боту)
+    const BOOKS_DATABASE = [
+        { id: 1, title: "Алгебра. 7 класс — Макарычев Ю.Н.", grade: "7", subject: "Алгебра" },
+        { id: 2, title: "Геометрия. 7-9 класс — Атанасян Л.С.", grade: "7", subject: "Геометрия" },
+        { id: 3, title: "Геометрия. 7-9 класс — Атанасян Л.С.", grade: "8", subject: "Геометрия" },
+        { id: 4, title: "Геометрия. 7-9 класс — Атанасян Л.С.", grade: "9", subject: "Геометрия" },
+        { id: 5, title: "Учебник: Мордкович А.Г.", grade: "5", subject: "Алгебра" },
+        { id: 6, title: "Математическая Олимпиада — EduAI Спецкурс", grade: "5", subject: "Математика" }
+    ];
+
+    // Функция обновления каскадного списка учебников
+    function updateBooksFilter() {
+        const selectedGrade = document.getElementById('gradeSelect').value;
+        const selectedSubject = document.getElementById('subjectSelect').value;
+        const bookSelect = document.getElementById('bookSelect');
+        
+        // Очищаем старые опции
+        bookSelect.innerHTML = '<option value="">-- Любой учебник --</option>';
+        
+        // Фильтруем массив учебников под выбранные критерии
+        const filtered = BOOKS_DATABASE.filter(book => {
+            const matchGrade = !selectedGrade || book.grade === selectedGrade;
+            const matchSubject = !selectedSubject || book.subject === selectedSubject;
+            return matchGrade && matchSubject;
+        });
+        
+        // Добавляем новые отфильтрованные опции
+        filtered.forEach(book => {
+            const option = document.createElement('option');
+            option.value = book.id;
+            option.textContent = book.title;
+            bookSelect.appendChild(option);
+        });
+    }
+
+    async function submitToEduAI() {
+        const grade = document.getElementById('gradeSelect').value;
+        const subject = document.getElementById('subjectSelect').value;
+        const bookId = document.getElementById('bookSelect').value;
+        const specification = document.getElementById('specInput').value.trim();
+        const student_answer = document.getElementById('questionText').value.trim();
+
+        if (!student_answer) {
+            alert("Пожалуйста, введите ваш вопрос!");
+            return;
+        }
+
+        // Собираем выбранный учебник для отображения
+        const bookObj = BOOKS_DATABASE.find(b => b.id == bookId);
+        const bookTitle = bookObj ? bookObj.title : 'Не выбран';
+
+        const payload = {
+            tg_id: 5573274669, 
+            task_id: 2,      
+            student_answer: student_answer
+        };
+
+        try {
+            const response = await fetch('http://127.0.0.1:8000/api/tasks/submit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) throw new Error("Ошибка сервера");
+            const result = await response.json();
+            
+            const box = document.getElementById('resultBox');
+            const text = document.getElementById('resultText');
+            
+            text.innerText = `Сообщение: ${result.message}\n\n` +
+                             `Собранный контекст для ИИ:\n` +
+                             `• Класс: ${grade || 'Автоопределение'}\n` +
+                             `• Предмет: ${subject || 'Автоопределение'}\n` +
+                             `• Материал: ${bookTitle}\n` +
+                             `• Локация: ${specification || 'Не указана'}`;
+            
+            box.style.display = 'block';
+        } catch (error) {
+            alert("Ошибка соединения с сервером!");
+            console.error(error);
+        }
+    }
+
+    // Первичная инициализация списка при загрузке страницы
+    updateBooksFilter();
+</script>
+
+</body>
+</html>
