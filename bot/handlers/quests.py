@@ -280,7 +280,6 @@ async def accept_final_ai_question(message: Message, state: FSMContext):
         if context_str:
             user_text += f"\n\nTextbook Knowledge Base Context:\n{context_str}"
 
-        # Конструируем мультимодальный контент для OpenAI
         user_contents = [{"type": "text", "text": user_text}]
 
         if message.photo:

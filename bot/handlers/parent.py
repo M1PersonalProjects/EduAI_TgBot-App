@@ -25,9 +25,7 @@ class ParentTestGeneration(BaseModel):
     correct_answer: str
 
 
-# ==========================================
 # 1. ИИ-АНАЛИТИКА УСПЕВАЕМОСТИ ДЛЯ РОДИТЕЛЯ
-# ==========================================
 
 @router.message(F.text == "📊 Аналитика ребенка (ИИ)")
 async def ask_ai_parent_start(message: Message, state: FSMContext):
@@ -129,9 +127,7 @@ async def process_parent_analytics_query(message: Message, state: FSMContext):
     await state.clear()
 
 
-# ==========================================
 # 2. ИИ-ГЕНЕРАЦИЯ ТЕСТОВ РОДИТЕЛЕМ ДЛЯ ДЕТЕЙ
-# ==========================================
 
 @router.message(F.text == "📝 Создать ИИ-тест для ребенка")
 async def parent_create_test_start(message: Message, state: FSMContext):

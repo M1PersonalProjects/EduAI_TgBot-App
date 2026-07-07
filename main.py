@@ -10,10 +10,8 @@ from aiogram import Bot, Dispatcher
 from config import settings
 from database import db
 
-# Импорты хендлеров бота
 from bot.handlers import start, webapp, tasks as bot_tasks
 
-# Импорты роутеров API бэкенда
 from api.routers.admin import router as admin_router
 from api.routers.accounts import router as accounts_router
 from api.routers.books import router as books_router

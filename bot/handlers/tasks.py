@@ -46,7 +46,6 @@ async def start_quest(message: Message, state: FSMContext):
     status_msg = await message.answer("🎲 *ИИ-Тьютор проверяет твои задания...* ⏳", parse_mode="Markdown")
 
     async with db.pool.acquire() as conn:
-        # ПРИОРИТЕТ 1: Вытаскиваем activeный родительский тест
         parent_task = await conn.fetchrow(
             """
             SELECT task_id, topic_context, questions_json, student_answers_json, parent_id
@@ -58,7 +57,6 @@ async def start_quest(message: Message, state: FSMContext):
             user_id
         )
 
-    # ЕСЛИ РОДИТЕЛЬ НАЗНАЧИЛ ТЕСТ: Выдаем его
     if parent_task:
         try:
             topic = json.loads(parent_task["topic_context"]) if isinstance(parent_task["topic_context"], str) else parent_task["topic_context"]
@@ -69,7 +67,6 @@ async def start_quest(message: Message, state: FSMContext):
                 old_ans = json.loads(parent_task["student_answers_json"]) if isinstance(parent_task["student_answers_json"], str) else parent_task["student_answers_json"]
                 history_feedback = f"\n\n⚠️ *Твой прошлый ответ:* `{old_ans.get('provided_answer')}`\n❌ *Подсказка учителя:* _{old_ans.get('verification_feedback')}_"
 
-            # Переводим статус в 'in_progress'
             async with db.pool.acquire() as conn:
                 await conn.execute("UPDATE tasks_history SET status = 'in_progress'::task_status WHERE task_id = $1", parent_task["task_id"])
 
@@ -95,7 +92,6 @@ async def start_quest(message: Message, state: FSMContext):
         except Exception as e:
             logger.error(f"Ошибка парсинга родительского теста: {e}")
 
-    # ПРИОРИТЕТ 2: Стандартный путь — генерация случайного квеста из учебника
     async with db.pool.acquire() as conn:
         page = await conn.fetchrow(
             """
@@ -233,7 +229,6 @@ async def check_quest_answer(message: Message, state: FSMContext):
             "is_correct": verification.is_correct
         }
 
-        # Определяем размер наград в зависимости от автора теста
         coins_reward = 15 if parent_id else 10
         xp_reward = 50 if parent_id else 30
 
@@ -276,7 +271,6 @@ async def check_quest_answer(message: Message, state: FSMContext):
                 parse_mode="Markdown"
             )
 
-            # Уведомляем родителя, если задание было от него
             if parent_id:
                 try:
                     await message.bot.send_message(

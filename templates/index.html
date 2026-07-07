@@ -517,7 +517,6 @@
             }
         }
 
-        // ИСПРАВЛЕНО: Вынесено в изолированную функцию обновления метрик аккаунта
         async function updateProfileStats() {
             const studentId = document.getElementById('student_tg_id').value.trim();
             if(!studentId) return;
@@ -545,7 +544,6 @@
             }
         }
 
-        // ИСПРАВЛЕНО: Полноценная отправка сообщения к ИИ-тьютору на бэкенд
         async function sendChatMessage() {
             const messageInput = document.getElementById('chat_message');
             const msgText = messageInput.value.trim();
