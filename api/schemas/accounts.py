@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 
 class LinkAccountsRequest(BaseModel):
@@ -8,9 +8,10 @@ class LinkAccountsRequest(BaseModel):
 class StudentProgressResponse(BaseModel):
     tg_id: int
     username: Optional[str] = None
-    balance_coins: int
-    xp_total: int
-    streak_days: int
+    role: str
+    balance_coins: Optional[int] = None
+    xp_total: Optional[int] = None
+    streak_days: Optional[int] = None
 
 class MonitoringResponse(BaseModel):
     parent_tg_id: int
@@ -22,3 +23,5 @@ class BookResponse(BaseModel):
     subject: str
     author: str
     chapter: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)

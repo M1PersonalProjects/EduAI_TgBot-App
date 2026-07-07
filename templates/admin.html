@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EduAI — Admin Space</title>
+    <style>
+        :root {
+            --mac-bg: #1e1e1e;
+            --window-bg: rgba(30, 30, 30, 0.75);
+            --sidebar-bg: rgba(45, 45, 45, 0.6);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --text-main: #f5f5f7;
+            --text-secondary: #86868b;
+            --accent-blue: #0071e3;
+            --accent-green: #34c759;
+            --accent-red: #ff3b30;
+            --accent-yellow: #ffcc00;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background: linear-gradient(135deg, #2e0854 0%, #180b30 50%, #0c061a 100%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        /* macOS Window Container */
+        .mac-container {
+            width: 100%;
+            max-width: 1200px;
+            height: 850px;
+            background: var(--window-bg);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5);
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Sidebar Navigation */
+        .sidebar {
+            width: 260px;
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 20px 0;
+        }
+
+        /* macOS Window Controls Block */
+        .window-controls {
+            display: flex;
+            gap: 8px;
+            padding: 0 24px 20px 24px;
+        }
+
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .dot-red { background-color: var(--accent-red); }
+        .dot-yellow { background-color: var(--accent-yellow); }
+        .dot-green { background-color: var(--accent-green); }
+
+        .sidebar-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 10px 24px;
+        }
+
+        .nav-menu {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            padding: 0 12px;
+        }
+
+        .nav-item {
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: background 0.2s;
+        }
+
+        .nav-item:hover, .nav-item.active {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .nav-item.active {
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+            font-weight: 500;
+        }
+
+        /* Main Workspace Content Area */
+        .main-content {
+            flex: 1;
+            padding: 30px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .view-section {
+            display: none;
+            flex-direction: column;
+            gap: 24px;
+            height: 100%;
+        }
+
+        .view-section.active {
+            display: flex;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+            margin-bottom: 4px;
+        }
+
+        .section-desc {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        /* macOS Form Fields & Inputs */
+        .mac-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 16px;
+        }
+
+        label {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-main);
+        }
+
+        input[type="text"], input[type="number"], select, textarea {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 10px 12px;
+            color: #fff;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+            width: 100%;
+        }
+
+        input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:focus {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.3);
+        }
+
+        /* macOS Glass Buttons */
+        .mac-btn {
+            background: var(--accent-blue);
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .mac-btn:hover {
+            opacity: 0.9;
+        }
+
+        .mac-btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border-color);
+        }
+
+        /* Split view layout for moderation workspace */
+        .split-view {
+            display: flex;
+            gap: 20px;
+            flex: 1;
+            min-height: 0; 
+        }
+
+        .split-left {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .split-right {
+            width: 450px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            background: rgba(0, 0, 0, 0.15);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            overflow-y: auto;
+        }
+
+        /* Image viewport Container */
+        .image-viewport {
+            width: 100%;
+            height: 240px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .image-viewport img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        /* Toast Notifications */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: rgba(30, 30, 30, 0.9);
+            border: 1px solid var(--accent-green);
+            padding: 12px 24px;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            display: none;
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="mac-container">
+        <aside class="sidebar">
+            <div class="window-controls">
+                <div class="dot dot-red"></div>
+                <div class="dot dot-yellow"></div>
+                <div class="dot dot-green"></div>
+            </div>
+            
+            <span class="sidebar-title">База знаний</span>
+            <ul class="nav-menu">
+                <li class="nav-item active" onclick="switchView('create-book-view', this)">📚 Создание книги</li>
+                <li class="nav-item" onclick="switchView('upload-pdf-view', this)">⚡️ Импорт и ИИ-Парсинг</li>
+                <li class="nav-item" onclick="switchView('moderation-view', this)">🖥 Модерация страниц</li>
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            
+            <section id="create-book-view" class="view-section active">
+                <div>
+                    <h1>Создать новый учебник</h1>
+                    <p class="section-desc">Шаг 1: Регистрация метаданных книги в базе данных `book` перед началом парсинга контента.</p>
+                </div>
+                <div class="mac-card">
+                    <form id="createBookForm" onsubmit="handleCreateBook(event)">
+                        <div class="form-group">
+                            <label>Полное название учебника</label>
+                            <input type="text" id="book_title" required placeholder="Например: Учебник по геометрии 7-9 класс">
+                        </div>
+                        <div class="form-group">
+                            <label>Предметная программа</label>
+                            <select id="book_program" required>
+                                <option value="" disabled selected>Загрузка программ из базы знаний...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Класс обучения</label>
+                            <input type="number" id="book_class" min="1" max="11" required placeholder="7">
+                        </div>
+                        <div class="form-group">
+                            <label>Автор / Авторский коллектив</label>
+                            <input type="text" id="book_author" required placeholder="Атанасян Л.С., Бутузов В.Ф.">
+                        </div>
+                        <button type="submit" class="mac-btn">Создать запись в БД</button>
+                    </form>
+                </div>
+            </section>
+
+            <section id="upload-pdf-view" class="view-section">
+                <div>
+                    <h1>Автоматический ИИ-Парсинг PDF</h1>
+                    <p class="section-desc">Шаг 2: Загрузка PDF файла. Модель GPT-4o разбивает файл постранично, очищает синтаксис от знаков $ и формирует Markdown.</p>
+                </div>
+                <div class="mac-card">
+                    <div class="form-group">
+                        <label>Целевой ID книги (из Шага 1)</label>
+                        <input type="number" id="upload_book_id" placeholder="Например: 1">
+                    </div>
+                    <div class="form-group">
+                        <label>Выбрать файл учебника в формате PDF</label>
+                        <input type="file" id="pdf_file" accept=".pdf" style="margin-top: 5px;">
+                    </div>
+                    <button class="mac-btn" onclick="handleUploadPDF()">Запустить ИИ-обработку страниц</button>
+                </div>
+            </section>
+
+            <section id="moderation-view" class="view-section">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <h1>Панель ручной модерации</h1>
+                        <p class="section-desc">Шаг 3: Контроль качества распознавания страниц. Проверка верстки таблиц и разметки контента.</p>
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: flex-end;">
+                        <input type="number" id="mod_book_id" placeholder="Book ID" style="width: 90px; height: 36px;">
+                        <input type="number" id="mod_page_num" placeholder="Стр №" style="width: 80px; height: 36px;">
+                        <button class="mac-btn mac-btn-secondary" onclick="loadPageForModeration()" style="height: 36px;">Загрузить</button>
+                    </div>
+                </div>
+
+                <div class="split-view">
+                    <div class="split-left">
+                        <label>Скан-оригинал страницы (page_image)</label>
+                        <div class="image-viewport">
+                            <img id="view_page_image" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><text y='50' fill='gray'>Нет скана</text></svg>" alt="Page image">
+                        </div>
+                        <div class="form-group" style="flex: 1; min-height: 0;">
+                            <label>Очищенный сырой текст (page_text)</label>
+                            <textarea id="edit_page_text" style="height: 100%; resize: none;"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="split-right">
+                        <input type="hidden" id="current_page_id">
+                        <div class="form-group">
+                            <label>Заголовок страницы (page_title)</label>
+                            <input type="text" id="edit_page_title">
+                        </div>
+                        <div class="form-group">
+                            <label>Параграф (page_paragraph)</label>
+                            <input type="text" id="edit_page_paragraph" maxlength="100" placeholder="например: § 3.2">
+                        </div>
+                        <div class="form-group">
+                            <label>Валидный HTML контент (таблицы/блоки)</label>
+                            <textarea id="edit_page_html" style="height: 110px; font-family: monospace;"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Telegram Markdown (СТРОГО без знаков $)</label>
+                            <textarea id="edit_page_markdown" style="height: 110px; font-family: monospace;"></textarea>
+                        </div>
+                        <button class="mac-btn" onclick="saveModeratedChanges()">Сохранить изменения страницы</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="toast" class="toast">Операция успешно выполнена!</div>
+
+    <script>
+        const DEFAULT_SVG_BLANK = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><text y='50' fill='gray'>Нет скана</text></svg>";
+
+        // Переключение вкладок в стиле macOS
+        function switchView(viewId, element) {
+            document.querySelectorAll('.view-section').forEach(view => view.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            
+            document.getElementById(viewId).classList.add('active');
+            element.classList.add('active');
+        }
+
+        // Показ уведомлений
+        function showNotification(message, isError = false) {
+            const toast = document.getElementById('toast');
+            toast.innerText = message;
+            toast.style.borderColor = isError ? '#ff3b30' : '#34c759';
+            toast.style.display = 'block';
+            setTimeout(() => { toast.style.display = 'none'; }, 4000);
+        }
+
+        // ИСПРАВЛЕНО: Динамическая подгрузка программ напрямую из базы данных
+        async function loadProgramsFromDB() {
+            const programSelect = document.getElementById('book_program');
+            try {
+                const response = await fetch('/api/admin/books/programs');
+                if (!response.ok) throw new Error('Не удалось получить список программ из БД');
+                
+                const programs = await response.json(); 
+                programSelect.innerHTML = '<option value="" disabled selected>Выберите программу из СУБД</option>';
+                
+                programs.forEach(program => {
+                    const option = document.createElement('option');
+                    option.value = program;
+                    option.textContent = program;
+                    programSelect.appendChild(option);
+                });
+            } catch (err) {
+                showNotification('Ошибка загрузки программ: ' + err.message, true);
+                programSelect.innerHTML = '<option value="" disabled>Ошибка подгрузки программ</option>';
+            }
+        }
+
+        // Инициализация при полной загрузке DOM-дерева
+        document.addEventListener('DOMContentLoaded', () => {
+            loadProgramsFromDB();
+        });
+
+        // Вкладка 1: Отправка метаданных книги
+        async function handleCreateBook(event) {
+            event.preventDefault();
+            const payload = {
+                book_title: document.getElementById('book_title').value,
+                book_program: document.getElementById('book_program').value, 
+                book_class: parseInt(document.getElementById('book_class').value),
+                book_author: document.getElementById('book_author').value
+            };
+
+            try {
+                const response = await fetch('/api/admin/books', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) throw new Error('Ошибка при сохранении книги бэкендом');
+                const data = await response.json();
+                showNotification(`Книга успешно зарегистрирована с ID: ${data.book_id}`);
+                document.getElementById('upload_book_id').value = data.book_id;
+                
+                // Перезагружаем список программ, если была внесена новая
+                await loadProgramsFromDB();
+            } catch (err) {
+                showNotification(err.message, true);
+            }
+        }
+
+        // Вкладка 2: Загрузка PDF файла в ИИ-парсер
+        async function handleUploadPDF() {
+            const bookId = document.getElementById('upload_book_id').value;
+            const fileInput = document.getElementById('pdf_file');
+            
+            if(!bookId || fileInput.files.length === 0) {
+                showNotification('Укажите ID целевой книги и выберите файл учебника', true);
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            showNotification('Нейросеть gpt-4o начала постраничный разбор книги. Это может занять некоторое время...');
+
+            try {
+                const response = await fetch(`/api/admin/books/${bookId}/upload-pdf`, {
+                    method: 'POST',
+                    body: formData
+                });
+                if (!response.ok) throw new Error('Ошибка при отправке или обработке PDF файла');
+                const data = await response.json();
+                showNotification(`Успешно обработано и импортировано страниц: ${data.processed_pages}`);
+            } catch (err) {
+                showNotification(err.message, true);
+            }
+        }
+
+        // Вкладка 3: Загрузка страницы для модератора
+        async function loadPageForModeration() {
+            const bookId = document.getElementById('mod_book_id').value;
+            const pageNum = document.getElementById('mod_page_num').value;
+
+            if(!bookId || !pageNum) {
+                showNotification('Заполните оба поля: ID книги и Номер страницы', true);
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/admin/books/${bookId}/pages/${pageNum}`);
+                if (!response.ok) throw new Error('Данная страница не найдена в базе данных');
+                const page = await response.json();
+
+                document.getElementById('current_page_id').value = page.page_id;
+                document.getElementById('edit_page_title').value = page.page_title || '';
+                document.getElementById('edit_page_paragraph').value = page.page_paragraph || '';
+                document.getElementById('edit_page_text').value = page.page_text || '';
+                document.getElementById('edit_page_html').value = page.page_html || '';
+                document.getElementById('edit_page_markdown').value = page.page_markdown || '';
+                
+                document.getElementById('view_page_image').src = page.page_image ? page.page_image : DEFAULT_SVG_BLANK;
+                
+                showNotification('Контент страницы успешно подгружен!');
+            } catch (err) {
+                showNotification(err.message, true);
+            }
+        }
+
+        // Вкладка 3: Сохранение правок модератора
+        async function saveModeratedChanges() {
+            const pageId = document.getElementById('current_page_id').value;
+            if(!pageId) {
+                showNotification('Сначала загрузите страницу для редактирования', true);
+                return;
+            }
+
+            const payload = {
+                page_title: document.getElementById('edit_page_title').value,
+                page_paragraph: document.getElementById('edit_page_paragraph').value,
+                page_text: document.getElementById('edit_page_text').value,
+                page_html: document.getElementById('edit_page_html').value,
+                page_markdown: document.getElementById('edit_page_markdown').value
+            };
+
+            try {
+                const response = await fetch(`/api/admin/books/pages/${pageId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) throw new Error('Не удалось сохранить изменения на стороне сервера');
+                showNotification('Правки модератора успешно сохранены в PostgreSQL!');
+            } catch (err) {
+                showNotification(err.message, true);
+            }
+        }
+    </script>
+</body>
+</html>

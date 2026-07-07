@@ -46,6 +46,16 @@ async def link_parent_and_student(payload: LinkAccountsRequest):
                 payload.parent_tg_id
             )
 
+            # Инициализируем запись в gamification для ученика, если её ещё нет
+            await conn.execute(
+                """
+                INSERT INTO gamification (user_id, balance_coins, xp_total, streak_days)
+                VALUES ($1, 0, 0, 0)
+                ON CONFLICT (user_id) DO NOTHING
+                """,
+                payload.student_tg_id
+            )
+
     return {
         "status": "success",
         "message": f"Аккаунт ученика {payload.student_tg_id} успешно привязан к родителю {payload.parent_tg_id}"
@@ -67,7 +77,10 @@ async def get_parent_monitoring(parent_tg_id: int):
 
         rows = await conn.fetch(
             """
-            SELECT u.tg_id, u.username, g.balance_coins, g.xp_total, g.streak_days
+            SELECT u.tg_id, u.username, 
+                   COALESCE(g.balance_coins, 0) as balance_coins, 
+                   COALESCE(g.xp_total, 0) as xp_total, 
+                   COALESCE(g.streak_days, 0) as streak_days
             FROM users u
             LEFT JOIN gamification g ON u.tg_id = g.user_id
             WHERE u.parent_id = $1 AND u.role = 'student'
@@ -80,7 +93,8 @@ async def get_parent_monitoring(parent_tg_id: int):
         students_list.append(
             StudentProgressResponse(
                 tg_id=row["tg_id"],
-                username=row["username"],
+                username=row["username"] or f"ID: {row['tg_id']}",
+                role="student",
                 balance_coins=row["balance_coins"] or 0,
                 xp_total=row["xp_total"] or 0,
                 streak_days=row["streak_days"] or 0
@@ -94,14 +108,20 @@ async def get_parent_monitoring(parent_tg_id: int):
 
 
 @router.get("/profile/{tg_id}", response_model=StudentProgressResponse)
-async def get_student_profile(tg_id: int):
+async def get_user_profile(tg_id: int):
     async with db.pool.acquire() as conn:
         profile = await conn.fetchrow(
             """
-            SELECT u.tg_id, u.username, g.balance_coins, g.xp_total, g.streak_days
+            SELECT 
+                u.tg_id, 
+                u.username, 
+                u.role,
+                COALESCE(g.balance_coins, 0) as balance_coins, 
+                COALESCE(g.xp_total, 0) as xp_total, 
+                COALESCE(g.streak_days, 0) as streak_days
             FROM users u
-            JOIN gamification g ON u.tg_id = g.user_id
-            WHERE u.tg_id = $1 AND u.role = 'student'
+            LEFT JOIN gamification g ON u.tg_id = g.user_id
+            WHERE u.tg_id = $1
             """,
             tg_id
         )
@@ -109,12 +129,13 @@ async def get_student_profile(tg_id: int):
     if not profile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
-            detail="Профиль ученика не найден"
+            detail="Профиль не найден"
         )
 
     return StudentProgressResponse(
         tg_id=profile["tg_id"],
-        username=profile["username"],
+        username=profile["username"] or f"ID: {profile['tg_id']}",
+        role=profile["role"] or "user",
         balance_coins=profile["balance_coins"],
         xp_total=profile["xp_total"],
         streak_days=profile["streak_days"]

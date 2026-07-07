@@ -2,351 +2,641 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EduAI — Консоль обучения</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EduAI — Space & AI Tutor</title>
     <style>
         :root {
-            --mac-bg: #f5f5f7;
-            --mac-card: rgba(255, 255, 255, 0.8);
-            --mac-text: #1d1d1f;
-            --mac-text-dim: #86868b;
-            --mac-accent: #0071e3;
-            --mac-border: rgba(0, 0, 0, 0.1);
+            --mac-bg: #1e1e1e;
+            --window-bg: rgba(25, 25, 25, 0.75);
+            --sidebar-bg: rgba(35, 35, 35, 0.6);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --text-main: #f5f5f7;
+            --text-secondary: #86868b;
+            --accent-blue: #0071e3;
+            --accent-green: #34c759;
+            --accent-red: #ff3b30;
+            --accent-yellow: #ffcc00;
+            --chat-bubble-ai: rgba(255, 255, 255, 0.06);
+            --chat-bubble-user: #0071e3;
         }
 
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             -webkit-font-smoothing: antialiased;
         }
 
         body {
-            background: linear-gradient(145deg, #f0f4f8 0%, #e2e8f0 100%);
-            color: var(--mac-text);
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #020617 100%);
+            color: var(--text-main);
             min-height: 100vh;
             display: flex;
-            justify-content: center;
             align-items: center;
-            padding: 16px;
+            justify-content: center;
+            padding: 20px;
         }
 
-        /* Responsive Container */
-        .window {
-            background: var(--mac-card);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.5);
-            border-radius: 16px;
+        /* macOS Контейнер Окна */
+        .mac-container {
             width: 100%;
-            max-width: 680px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.05);
+            max-width: 1240px;
+            height: 820px;
+            background: var(--window-bg);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+            display: flex;
             overflow: hidden;
         }
 
-        .toolbar {
-            background: rgba(245, 245, 247, 0.6);
-            padding: 16px;
-            border-bottom: 1px solid var(--mac-border);
-            text-align: center;
-        }
-
-        .title {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--mac-text);
-            letter-spacing: -0.2px;
-        }
-
-        .content {
-            padding: 24px;
-        }
-
-        .header-title {
-            font-size: 21px;
-            font-weight: 600;
-            letter-spacing: -0.5px;
-            margin-bottom: 4px;
-        }
-
-        .header-subtitle {
-            font-size: 13px;
-            color: var(--mac-text-dim);
-            margin-bottom: 24px;
-        }
-
-        /* Flexible Grid */
-        .grid-layout {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 16px;
-            margin-bottom: 20px;
-        }
-
-        .form-element {
+        /* Сайдбар навигации */
+        .sidebar {
+            width: 250px;
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            padding: 20px 0;
         }
 
-        .full-width {
-            grid-column: span 2;
+        /* macOS Кнопки Управления */
+        .window-controls {
+            display: flex;
+            gap: 8px;
+            padding: 0 24px 24px 24px;
         }
 
-        label {
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .dot-red { background-color: var(--accent-red); }
+        .dot-yellow { background-color: var(--accent-yellow); }
+        .dot-green { background-color: var(--accent-green); }
+
+        .sidebar-group-title {
             font-size: 11px;
-            font-weight: 600;
-            color: var(--mac-text-dim);
+            font-weight: 700;
+            color: var(--text-secondary);
             text-transform: uppercase;
-            letter-spacing: 0.3px;
+            letter-spacing: 0.5px;
+            padding: 10px 24px 6px 24px;
         }
 
-        select, input, textarea {
-            background: rgba(255, 255, 255, 0.8);
-            border: 1px solid var(--mac-border);
-            border-radius: 10px;
-            padding: 12px;
+        .nav-menu {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            padding: 0 12px 16px 12px;
+        }
+
+        .nav-item {
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
             font-size: 14px;
-            color: var(--mac-text);
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: background 0.15s;
+        }
+
+        .nav-item:hover, .nav-item.active {
+            background: rgba(255, 255, 255, 0.08);
+        }
+        .nav-item.active {
+            background: rgba(255, 255, 255, 0.12);
+            color: #fff;
+            font-weight: 500;
+        }
+
+        /* Основной контент */
+        .main-content {
+            flex: 1;
+            padding: 30px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            background: rgba(0,0,0,0.05);
+        }
+
+        .view-section {
+            display: none;
+            flex-direction: column;
+            gap: 20px;
+            height: 100%;
+        }
+
+        .view-section.active {
+            display: flex;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+        }
+
+        .section-desc {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-top: 2px;
+        }
+
+        /* Сетки геймификации и карточек */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+
+        .mac-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 16px;
+        }
+
+        .stat-card {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .stat-val {
+            font-size: 28px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        /* Разметка рабочего пространства ИИ-Тьютора */
+        .tutor-layout {
+            display: flex;
+            gap: 20px;
+            flex: 1;
+            height: calc(100% - 60px);
+        }
+
+        .config-panel {
+            width: 320px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        /* Чат-интерфейс в стиле macOS */
+        .chat-panel {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-history {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .chat-bubble {
+            max-width: 75%;
+            padding: 12px 16px;
+            border-radius: 14px;
+            font-size: 14px;
+            line-height: 1.45;
+        }
+
+        .bubble-ai {
+            background: var(--chat-bubble-ai);
+            color: var(--text-main);
+            align-self: flex-start;
+            border: 1px solid rgba(255,255,255,0.04);
+        }
+
+        .bubble-user {
+            background: var(--chat-bubble-user);
+            color: #fff;
+            align-self: flex-end;
+        }
+
+        .chat-input-area {
+            padding: 16px;
+            background: rgba(30, 30, 30, 0.5);
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 10px;
+        }
+
+        /* Элементы форм */
+        input[type="text"], input[type="number"], select, textarea {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 10px 12px;
+            color: #fff;
+            font-size: 14px;
             outline: none;
-            transition: all 0.15s ease-in-out;
             width: 100%;
         }
 
-        select:focus, input:focus, textarea:focus {
-            border-color: var(--mac-accent);
-            background: #ffffff;
-            box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.12);
+        input:focus, select:focus, textarea:focus {
+            border-color: var(--accent-blue);
         }
 
-        textarea {
-            resize: none;
-            height: 100px;
-        }
-
-        .btn-primary {
-            background: var(--mac-accent);
-            color: white;
-            border-radius: 10px;
-            padding: 14px;
-            font-size: 15px;
+        .mac-btn {
+            background: var(--accent-blue);
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 10px 16px;
+            font-size: 14px;
             font-weight: 500;
             cursor: pointer;
-            border: none;
+            transition: opacity 0.2s;
+        }
+
+        .mac-btn:hover { opacity: 0.9; }
+
+        /* Таблицы мониторинга для родителей */
+        .data-table {
             width: 100%;
-            transition: background 0.15s ease;
-            box-shadow: 0 4px 12px rgba(0, 113, 227, 0.15);
-        }
-
-        .btn-primary:hover { background: #0077ed; }
-
-        .notification-card {
-            margin-top: 20px;
-            padding: 16px;
-            background: rgba(255, 255, 255, 0.9);
-            border: 1px solid var(--mac-border);
-            border-radius: 12px;
-            display: none;
-        }
-
-        .notification-header {
-            font-size: 13px;
-            font-weight: 600;
-            color: #24b036;
-            margin-bottom: 6px;
-        }
-
-        .notification-body {
+            border-collapse: collapse;
             font-size: 14px;
-            line-height: 1.5;
-            white-space: pre-line;
+            text-align: left;
         }
 
-        /* Mobile Optimization (TG WebApp view) */
-        @media (max-width: 520px) {
-            body {
-                padding: 0;
-                background: #ffffff;
-                align-items: flex-start;
-            }
+        .data-table th {
+            padding: 10px 12px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            border-bottom: 1px solid var(--border-color);
+        }
 
-            .window {
-                border-radius: 0;
-                border: none;
-                box-shadow: none;
-                background: transparent;
-            }
+        .data-table td {
+            padding: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+        }
 
-            .toolbar {
-                background: #ffffff;
-                padding-top: 12px;
-            }
+        .status-badge {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .status-completed { background: rgba(52, 199, 89, 0.15); color: var(--accent-green); }
+        .status-pending { background: rgba(255, 204, 0, 0.15); color: var(--accent-yellow); }
 
-            .content {
-                padding: 16px;
-            }
-
-            .grid-layout {
-                grid-template-columns: 1fr; /* Перестраиваем всё в одну колонку на телефонах */
-                gap: 14px;
-            }
-
-            .full-width {
-                grid-column: span 1;
-            }
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: rgba(25, 25, 25, 0.9);
+            border: 1px solid var(--accent-blue);
+            padding: 12px 24px;
+            border-radius: 8px;
+            display: none;
+            z-index: 1000;
         }
     </style>
 </head>
 <body>
 
-<div class="window">
-    <div class="toolbar">
-        <div class="title">EduAI Тьютор</div>
+    <div class="mac-container">
+        <aside class="sidebar">
+            <div class="window-controls">
+                <div class="dot dot-red"></div>
+                <div class="dot dot-yellow"></div>
+                <div class="dot dot-green"></div>
+            </div>
+            
+            <span class="sidebar-group-title">Пространство ученика</span>
+            <ul class="nav-menu">
+                <li class="nav-item active" onclick="switchView('student-tutor-view', this)">🤖 ИИ-Тьютор</li>
+                <li class="nav-item" onclick="switchView('student-gamification-view', this)">🏆 Достижения и Серии</li>
+            </ul>
+
+            <span class="sidebar-group-title">Родительский контроль</span>
+            <ul class="nav-menu">
+                <li class="nav-item" onclick="switchView('parent-monitoring-view', this)">🖥 Мониторинг задач</li>
+                <li class="nav-item" onclick="switchView('parent-rewards-view', this)">🎁 Магазин наград</li>
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            
+            <section id="student-tutor-view" class="view-section active">
+                <div>
+                    <h1>Интерактивное обучение с ИИ</h1>
+                    <p class="section-desc">Выбирай учебник из базы знаний. ИИ-тьютор подгрузит нужный контекст страницы без лишних спецсимволов.</p>
+                </div>
+
+                <div class="tutor-layout">
+                    <div class="config-panel">
+                        <div class="mac-card">
+                            <h3 style="font-size: 14px; margin-bottom: 12px;">Выбор литературы</h3>
+                            <div style="display: flex; flex-direction: column; gap: 10px;">
+                                <select id="select_class" onchange="loadBooksList()">
+                                    <option value="">Выберите класс</option>
+                                    <option value="7">7 класс</option>
+                                    <option value="8">8 класс</option>
+                                    <option value="9">9 класс</option>
+                                </select>
+                                <select id="select_subject" onchange="loadBooksList()">
+                                    <option value="">Выберите предмет</option>
+                                    <option value="Математика">Математика</option>
+                                    <option value="Геометрия">Геометрия</option>
+                                </select>
+                                <select id="select_book">
+                                    <option value="">Учебники не найдены</option>
+                                </select>
+                                <input type="number" id="tutor_page" placeholder="Номер страницы учебника" min="1">
+                            </div>
+                        </div>
+                        <div class="mac-card">
+                            <h3 style="font-size: 14px; margin-bottom: 8px;">Текущий профиль</h3>
+                            <input type="text" id="student_tg_id" placeholder="Ваш Telegram ID (например: 5292803205)" onchange="updateProfileStats()">
+                        </div>
+                        
+                        <div class="mac-card" id="parent_assign_panel" style="display: none;">
+                            <h3 style="font-size: 14px; margin-bottom: 8px;">Выдать спец-задание</h3>
+                            <select id="parent_student_select">
+                                <option value="">Выберите подопечного</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="chat-panel">
+                        <div class="chat-history" id="chat_history">
+                            <div class="chat-bubble bubble-ai">Привет! Я твой ИИ-тьютор. Укажи свой класс, выбери тему из книги слева, и мы начнем решать задачи! Поддерживаю разбор таблиц и формул в чистом виде.</div>
+                        </div>
+                        <div class="chat-input-area">
+                            <input type="text" id="chat_message" placeholder="Введите ответ на задачу или вопрос тьютору...">
+                            <button class="mac-btn" onclick="sendChatMessage()">Отправить</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="student-gamification-view" class="view-section">
+                <div>
+                    <h1>Твои достижения</h1>
+                    <p class="section-desc">Выполняй задания ИИ, повышай показатели XP и зарабатывай монеты для обмена у родителей.</p>
+                </div>
+                <div class="stats-grid">
+                    <div class="mac-card stat-card">
+                        <span style="color: var(--text-secondary); font-size: 13px;">Баланс монет</span>
+                        <span class="stat-val" id="user_coins">0 🪙</span>
+                    </div>
+                    <div class="mac-card stat-card">
+                        <span style="color: var(--text-secondary); font-size: 13px;">Всего опыта (XP)</span>
+                        <span class="stat-val" id="user_xp">0 ⭐</span>
+                    </div>
+                    <div class="mac-card stat-card">
+                        <span style="color: var(--text-secondary); font-size: 13px;">Ударная серия</span>
+                        <span class="stat-val" id="user_streak">0 дней 🔥</span>
+                    </div>
+                </div>
+            </section>
+
+            <section id="parent-monitoring-view" class="view-section">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <h1>Кабинет родительского контроля</h1>
+                        <p class="section-desc">Синхронизация по API. Отслеживание истории решенных задач привязанного ученика в реальном времени.</p>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="monitor_student_id" placeholder="ID ученика" style="width: 150px;">
+                        <button class="mac-btn" onclick="loadStudentProgress()">Обновить данные</button>
+                    </div>
+                </div>
+
+                <div class="mac-card" style="flex: 1; overflow-y: auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID Задачи</th>
+                                <th>Контекст темы</th>
+                                <th>Баллы (XP)</th>
+                                <th>Статус</th>
+                            </tr>
+                        </thead>
+                        <tbody id="monitoring_table_body">
+                            <tr>
+                                <td colspan="4" style="text-align: center; color: var(--text-secondary);">Введите ID ученика и нажмите Обновить данные</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="parent-rewards-view" class="view-section">
+                <div>
+                    <h1>Управление семейными наградами</h1>
+                    <p class="section-desc">Родители могут утверждать запросы на поощрения, купленные учениками за заработанные монеты.</p>
+                </div>
+                <div class="mac-card">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Награда</th>
+                                <th>Стоимость</th>
+                                <th>Статус покупки</th>
+                                <th>Действие</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rewards_table_body">
+                            <tr>
+                                <td>Дополнительный час за ПК</td>
+                                <td>30 🪙</td>
+                                <td><span class="status-badge status-pending">Ожидает проверки</span></td>
+                                <td><button class="mac-btn" style="background: var(--accent-green); padding: 4px 10px; font-size: 12px;">Выдать</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
     </div>
-    
-    <div class="content">
-        <div class="header-title">Настройка контекста</div>
-        <div class="header-subtitle">Заполните нужные фильтры или сразу задайте сквозной вопрос.</div>
-        
-        <div class="grid-layout">
-            <div class="form-element">
-                <label>Класс</label>
-                <select id="gradeSelect" onchange="updateBooksFilter()">
-                    <option value="">-- Любой класс --</option>
-                    <option value="5">5 класс</option>
-                    <option value="7">7 класс</option>
-                    <option value="8">8 класс</option>
-                    <option value="9">9 класс</option>
-                </select>
-            </div>
 
-            <div class="form-element">
-                <label>Предмет</label>
-                <select id="subjectSelect" onchange="updateBooksFilter()">
-                    <option value="">-- Любой предмет --</option>
-                    <option value="Алгебра">Алгебра</option>
-                    <option value="Геометрия">Геометрия</option>
-                    <option value="Математика">Математика</option>
-                </select>
-            </div>
+    <div id="toast" class="toast">Успешно!</div>
 
-            <div class="form-element full-width">
-                <label>Учебник / Материал</label>
-                <select id="bookSelect">
-                    <option value="">-- Любой учебник --</option>
-                </select>
-            </div>
-
-            <div class="form-element full-width">
-                <label>Спецификация (Страница, тема или параграф)</label>
-                <input type="text" id="specInput" placeholder="Например: Паниграф 12, стр. 45">
-            </div>
-
-            <div class="form-element full-width">
-                <label>Вопрос к ИИ-тьютору</label>
-                <textarea id="questionText" placeholder="Введите текст вашего вопроса ученика..."></textarea>
-            </div>
-        </div>
-
-        <button class="btn-primary" onclick="submitToEduAI()">Отправить запрос в EduAI</button>
-
-        <div id="resultBox" class="notification-card">
-            <div class="notification-header">✨ Успешный разбор задачи</div>
-            <div id="resultText" class="notification-body"></div>
-        </div>
-    </div>
-</div>
-
-<script>
-    // Имитация базы данных доступных учебников (соответствует твоему ТГ боту)
-    const BOOKS_DATABASE = [
-        { id: 1, title: "Алгебра. 7 класс — Макарычев Ю.Н.", grade: "7", subject: "Алгебра" },
-        { id: 2, title: "Геометрия. 7-9 класс — Атанасян Л.С.", grade: "7", subject: "Геометрия" },
-        { id: 3, title: "Геометрия. 7-9 класс — Атанасян Л.С.", grade: "8", subject: "Геометрия" },
-        { id: 4, title: "Геометрия. 7-9 класс — Атанасян Л.С.", grade: "9", subject: "Геометрия" },
-        { id: 5, title: "Учебник: Мордкович А.Г.", grade: "5", subject: "Алгебра" },
-        { id: 6, title: "Математическая Олимпиада — EduAI Спецкурс", grade: "5", subject: "Математика" }
-    ];
-
-    // Функция обновления каскадного списка учебников
-    function updateBooksFilter() {
-        const selectedGrade = document.getElementById('gradeSelect').value;
-        const selectedSubject = document.getElementById('subjectSelect').value;
-        const bookSelect = document.getElementById('bookSelect');
-        
-        // Очищаем старые опции
-        bookSelect.innerHTML = '<option value="">-- Любой учебник --</option>';
-        
-        // Фильтруем массив учебников под выбранные критерии
-        const filtered = BOOKS_DATABASE.filter(book => {
-            const matchGrade = !selectedGrade || book.grade === selectedGrade;
-            const matchSubject = !selectedSubject || book.subject === selectedSubject;
-            return matchGrade && matchSubject;
-        });
-        
-        // Добавляем новые отфильтрованные опции
-        filtered.forEach(book => {
-            const option = document.createElement('option');
-            option.value = book.id;
-            option.textContent = book.title;
-            bookSelect.appendChild(option);
-        });
-    }
-
-    async function submitToEduAI() {
-        const grade = document.getElementById('gradeSelect').value;
-        const subject = document.getElementById('subjectSelect').value;
-        const bookId = document.getElementById('bookSelect').value;
-        const specification = document.getElementById('specInput').value.trim();
-        const student_answer = document.getElementById('questionText').value.trim();
-
-        if (!student_answer) {
-            alert("Пожалуйста, введите ваш вопрос!");
-            return;
+    <script>
+        function switchView(viewId, element) {
+            document.querySelectorAll('.view-section').forEach(view => view.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            document.getElementById(viewId).classList.add('active');
+            element.classList.add('active');
         }
 
-        // Собираем выбранный учебник для отображения
-        const bookObj = BOOKS_DATABASE.find(b => b.id == bookId);
-        const bookTitle = bookObj ? bookObj.title : 'Не выбран';
-
-        const payload = {
-            tg_id: 5573274669, 
-            task_id: 2,      
-            student_answer: student_answer
-        };
-
-        try {
-            const response = await fetch('http://127.0.0.1:8000/api/tasks/submit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) throw new Error("Ошибка сервера");
-            const result = await response.json();
-            
-            const box = document.getElementById('resultBox');
-            const text = document.getElementById('resultText');
-            
-            text.innerText = `Сообщение: ${result.message}\n\n` +
-                             `Собранный контекст для ИИ:\n` +
-                             `• Класс: ${grade || 'Автоопределение'}\n` +
-                             `• Предмет: ${subject || 'Автоопределение'}\n` +
-                             `• Материал: ${bookTitle}\n` +
-                             `• Локация: ${specification || 'Не указана'}`;
-            
-            box.style.display = 'block';
-        } catch (error) {
-            alert("Ошибка соединения с сервером!");
-            console.error(error);
+        function showNotification(msg) {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            toast.style.display = 'block';
+            setTimeout(() => { toast.style.display = 'none'; }, 3000);
         }
-    }
 
-    // Первичная инициализация списка при загрузке страницы
-    updateBooksFilter();
-</script>
+        async function loadBooksList() {
+            const classLevel = document.getElementById('select_class').value;
+            const subject = document.getElementById('select_subject').value;
+            if(!classLevel || !subject) return;
 
+            try {
+                const response = await fetch(`/api/books/list?class_level=${classLevel}&subject=${encodeURIComponent(subject)}`);
+                if(response.ok) {
+                    const books = await response.json();
+                    const selectBook = document.getElementById('select_book');
+                    selectBook.innerHTML = '';
+                    
+                    if(books.length === 0) {
+                        selectBook.innerHTML = '<option value="">Учебники не найдены</option>';
+                        return;
+                    }
+
+                    books.forEach(book => {
+                        const opt = document.createElement('option');
+                        opt.value = book.book_id;
+                        opt.innerText = `${book.book_author} — ${book.book_title}`;
+                        selectBook.appendChild(opt);
+                    });
+                }
+            } catch (e) {
+                console.error("Ошибка загрузки списка книг", e);
+            }
+        }
+
+        // ИСПРАВЛЕНО: Вынесено в изолированную функцию обновления метрик аккаунта
+        async function updateProfileStats() {
+            const studentId = document.getElementById('student_tg_id').value.trim();
+            if(!studentId) return;
+
+            try {
+                const profRes = await fetch(`/api/accounts/profile/${studentId}`);
+                if (profRes.ok) {
+                    const profile = await profRes.json();
+                    const assignPanel = document.getElementById('parent_assign_panel');
+                    
+                    if (profile.role === 'parent') {
+                        document.getElementById('user_coins').innerText = "—";
+                        document.getElementById('user_xp').innerText = "Кабинет контроля";
+                        document.getElementById('user_streak').innerText = "Активен";
+                        if(assignPanel) assignPanel.style.display = 'flex';
+                    } else {
+                        document.getElementById('user_coins').innerText = `${profile.balance_coins || 0} 🪙`;
+                        document.getElementById('user_xp').innerText = `${profile.xp_total || 0} ⭐`;
+                        document.getElementById('user_streak').innerText = `${profile.streak_days || 0} дней 🔥`;
+                        if(assignPanel) assignPanel.style.display = 'none';
+                    }
+                }
+            } catch(e) {
+                console.error("Ошибка обновления геймификации: ", e);
+            }
+        }
+
+        // ИСПРАВЛЕНО: Полноценная отправка сообщения к ИИ-тьютору на бэкенд
+        async function sendChatMessage() {
+            const messageInput = document.getElementById('chat_message');
+            const msgText = messageInput.value.trim();
+            const studentId = document.getElementById('student_tg_id').value.trim();
+            const bookId = document.getElementById('select_book').value;
+            const pageNum = document.getElementById('tutor_page').value;
+            
+            if(!msgText) return;
+            if(!studentId) {
+                showNotification("Пожалуйста, введите Telegram ID профиля!");
+                return;
+            }
+
+            const chatHistory = document.getElementById('chat_history');
+            const userBubble = document.createElement('div');
+            userBubble.className = 'chat-bubble bubble-user';
+            userBubble.innerText = msgText;
+            chatHistory.appendChild(userBubble);
+            messageInput.value = '';
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+
+            try {
+                showNotification("ИИ генерирует ответ...");
+                
+                // Шлём запрос к нашему ИИ-Тьютору
+                const response = await fetch('/api/tutor/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        student_id: parseInt(studentId),
+                        message: msgText,
+                        book_id: bookId ? parseInt(bookId) : null,
+                        page_num: pageNum ? parseInt(pageNum) : null
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Рендерим ответ от ИИ
+                    const aiBubble = document.createElement('div');
+                    aiBubble.className = 'chat-bubble bubble-ai';
+                    aiBubble.innerText = data.reply;
+                    chatHistory.appendChild(aiBubble);
+                    chatHistory.scrollTop = chatHistory.scrollHeight;
+                    
+                    // Синхронно обновляем циферки прогресса/серии после решения задачи
+                    await updateProfileStats();
+                } else {
+                    throw new Error("Ошибка обработки сообщения сервером");
+                }
+            } catch(e) {
+                showNotification("Не удалось получить ответ ИИ: " + e.message);
+            }
+        }
+
+        async function loadStudentProgress() {
+            const studentId = document.getElementById('monitor_student_id').value;
+            if(!studentId) {
+                showNotification("Введите ID ученика!");
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/accounts/monitoring/${studentId}`);
+                if(response.ok) {
+                    const data = await response.json();
+                    const tbody = document.getElementById('monitoring_table_body');
+                    tbody.innerHTML = '';
+
+                    if(data.tasks_history && data.tasks_history.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Ученик еще не выполнял задачи</td></tr>';
+                        return;
+                    }
+
+                    data.tasks_history.forEach(task => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td>#${task.task_id}</td>
+                            <td>${task.theme || 'Математика'}</td>
+                            <td>+${task.score} XP</td>
+                            <td><span class="status-badge status-completed">${task.status}</span></td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                    showNotification("Данные мониторинга обновлены!");
+                }
+            } catch (err) {
+                showNotification("Ошибка подключения к серверу API");
+            }
+        }
+    </script>
 </body>
 </html>
