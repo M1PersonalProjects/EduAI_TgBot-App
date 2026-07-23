@@ -20,11 +20,6 @@ class BookFilterStates(StatesGroup):
     waiting_for_ai_question = State()
 
 
-def get_quest_keyboard():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚀 Запустить квест", callback_data="start_random_quest")]
-    ])
-
 @router.message(F.text == "🏆 Мой профиль")
 async def show_real_student_profile(message: Message):
     user_id = message.from_user.id
@@ -239,8 +234,10 @@ async def accept_final_ai_question(message: Message, state: FSMContext):
             
         search_term = topic if topic else question_text
         if search_term and len(search_term) > 2:
-            params.append(f"%{search_term[:25]}%")
-            query += f" AND (p.page_markdown ILIKE ${len(params)} OR p.page_text ILIKE ${len(params)})"
+            search_pattern = f"%{search_term[:25]}%"
+            params.append(search_pattern)
+            params.append(search_pattern)
+            query += f" AND (p.page_markdown ILIKE ${len(params)-1} OR p.page_text ILIKE ${len(params)})"
         
         query += " LIMIT 3"
         records = await conn.fetch(query, *params)

@@ -21,6 +21,7 @@ class PageUpdateRequest(BaseModel):
 
 # Схема Structured Outputs под ТЗ для разбора ответа OpenAI
 class OpenAIPageResponse(BaseModel):
+    page_paragraph: str = Field(..., description="Extracted main section title or paragraph name, max 100 chars.")
     raw_text: str = Field(..., description="Coherent cleaned page text, fixing OCR typos.")
     html_content: str = Field(..., description="Valid HTML formatting for layout, lists, and tables.")
     markdown_content: str = Field(..., description="Telegram markdown. Strictly NO mathematical syntax like $, $$, \\(, \\]. Rewrite formulas cleanly as natural text expressions.")

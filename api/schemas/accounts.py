@@ -17,6 +17,20 @@ class MonitoringResponse(BaseModel):
     parent_tg_id: int
     students: List[StudentProgressResponse]
 
+class WebAppAuthRequest(BaseModel):
+    init_data_raw: str
+
+class RoleSwitchRequest(BaseModel):
+    tg_id: int
+    target_role: str
+    init_data_raw: str
+
+class AuthResponse(BaseModel):
+    status: str
+    tg_id: int
+    username: Optional[str]
+    role: str
+
 class BookResponse(BaseModel):
     book_id: int
     class_level: int
@@ -25,3 +39,6 @@ class BookResponse(BaseModel):
     chapter: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+class WebAuthRequest(BaseModel):
+    tg_id: int

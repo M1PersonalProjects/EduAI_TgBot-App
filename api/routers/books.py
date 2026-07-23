@@ -6,7 +6,7 @@ from api.schemas.accounts import BookResponse
 router = APIRouter(prefix="/api/books", tags=["Books"])
 
 @router.get("/list", response_model=List[BookResponse])
-async def get_books_list(class_level: Optional[int] = None, program_id: Optional[int] = None):
+async def get_books_list(class_level: Optional[int] = None, program: Optional[str] = None):
     async with db.pool.acquire() as conn:
         query = """
             SELECT book_id, book_class AS class_level, book_title AS title, book_author AS author, book_program
@@ -19,9 +19,9 @@ async def get_books_list(class_level: Optional[int] = None, program_id: Optional
             params.append(class_level)
             query += f" AND book_class = ${len(params)}"
 
-        if program_id:
-            params.append(program_id)
-            query += f" AND book_program = ${len(params)}"
+        if program:
+            params.append(program)
+            query += f" AND book_program ILIKE ${len(params)}"
 
         rows = await conn.fetch(query, *params)
         

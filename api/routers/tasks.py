@@ -1,5 +1,4 @@
 import json
-import asyncio
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from openai import AsyncOpenAI
@@ -126,7 +125,9 @@ async def submit_task_answer(payload: SubmitAnswerRequest):
         if not task:
             raise HTTPException(status_code=404, detail="Задание не найдено")
 
-        questions = json.loads(task["questions_json"])
+        questions = task["questions_json"]
+        if isinstance(questions, str):
+            questions = json.loads(questions)
         correct_answer = questions.get("reference_answer", "")
         question_text = questions.get("question_text", "")
 
@@ -192,15 +193,17 @@ async def submit_task_answer(payload: SubmitAnswerRequest):
                 new_xp = xp + 50
                 earned_score = 50
 
-                # При правильном ответе обновляем очки score и пишем лог, статус остается 'created'
-                await conn.execute(
+                updated_task = await conn.fetchval(
                     """
                     UPDATE tasks_history 
-                    SET student_answers_json = $1, score = $2
-                    WHERE task_id = $3
+                    SET student_answers_json = $1, score = $2, status = 'evaluated'::task_status
+                    WHERE task_id = $3 AND status IN ('created', 'in_progress')
+                    RETURNING task_id
                     """, 
                     json.dumps(student_answers_json), earned_score, payload.task_id
                 )
+                if not updated_task:
+                    raise HTTPException(status_code=409, detail="Задание уже было оценено")
                 await conn.execute("UPDATE gamification SET balance_coins = $1, xp_total = $2 WHERE user_id = $3", new_coins, new_xp, payload.tg_id)
 
                 return SubmitAnswerResponse(
@@ -212,7 +215,7 @@ async def submit_task_answer(payload: SubmitAnswerRequest):
             else:
                 # Если ответ неверный, сохраняем попытку, очки остаются 0
                 await conn.execute(
-                    "UPDATE tasks_history SET student_answers_json = $1, score = 0 WHERE task_id = $2",
+                    "UPDATE tasks_history SET student_answers_json = $1, score = 0, status = 'in_progress'::task_status WHERE task_id = $2 AND status IN ('created', 'in_progress')",
                     json.dumps(student_answers_json), payload.task_id
                 )
                 return SubmitAnswerResponse(

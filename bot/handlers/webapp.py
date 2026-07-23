@@ -1,33 +1,9 @@
 from aiogram import Router, F
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import Message
 from database import db
+from bot.keyboards import get_parent_menu, get_student_menu
 
 router = Router()
-
-def get_parent_menu() -> ReplyKeyboardMarkup:
-    buttons = [
-        [
-            KeyboardButton(text="➕ Привязать ребенка"),
-            KeyboardButton(text="📊 Мониторинг")
-        ],
-        [
-            KeyboardButton(text="📊 Аналитика ребенка (ИИ)"),
-            KeyboardButton(text="📝 Создать ИИ-тест для ребенка")
-        ]
-    ]
-    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
-
-def get_student_menu() -> ReplyKeyboardMarkup:
-    buttons = [
-        [
-            KeyboardButton(text="🚀 Запустить квест"),
-            KeyboardButton(text="📚 Каталог учебников")
-        ],
-        [
-            KeyboardButton(text="🏆 Мой профиль")
-        ]
-    ]
-    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
 
 
 @router.message(F.text == "➕ Привязать ребенка")
@@ -37,7 +13,7 @@ async def generate_child_link(message: Message):
     async with db.pool.acquire() as conn:
         user = await conn.fetchrow("SELECT role FROM users WHERE tg_id = $1", user_id)
         
-    if not user or user['role'] != 'parent':
+    if not user or user['role'] not in ['parent', 'admin']:
         await message.answer("Эта команда доступна только для пользователей с ролью Родитель.")
         return
         
@@ -51,14 +27,14 @@ async def generate_child_link(message: Message):
     )
 
 
-@router.message(F.text == "📊 Мониторинг")
+@router.message(F.text == "📊 Мониторинг в чате")
 async def show_parent_monitoring(message: Message):
     user_id = message.from_user.id
 
     async with db.pool.acquire() as conn:
         user = await conn.fetchrow("SELECT role FROM users WHERE tg_id = $1", user_id)
-        if not user or user['role'] != 'parent':
-            await message.answer("Эта статистика доступна только для Родителей.")
+        if not user or user['role'] not in ['parent', 'admin']:
+            await message.answer("Эта статистика доступна только для Родителей и Администраторов.")
             return
 
         children = await conn.fetch(

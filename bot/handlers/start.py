@@ -16,7 +16,7 @@ async def cmd_start(message: Message, command: CommandObject):
     user_id = message.from_user.id
     username = message.from_user.username
     args = command.args
-    
+
     # --- СЦЕНАРИЙ 1: Регистрация по реферальной ссылке от родителя ---
     if args and args.startswith("reg_"):
         try:
@@ -28,7 +28,7 @@ async def cmd_start(message: Message, command: CommandObject):
         if user_id == parent_id:
             await message.answer("Вы не можете привязать свой собственный аккаунт в качестве ребенка.")
             return
-            
+
         async with db.pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
@@ -109,7 +109,7 @@ async def cmd_start(message: Message, command: CommandObject):
         elif role == 'student':
             await message.answer("Привет! Рад снова видеть тебя в EduAI. Готов к новым знаниям?", reply_markup=get_student_menu())
         return
-        
+
     # --- СЦЕНАРИЙ 4: Новый пользователь (Выбор роли) ---
     await message.answer(
         f"Привет, {message.from_user.first_name}! 👋 \nЯ **EduAI** — твой интеллектуальный помощник по школьной программе.\n\nДля начала работы, пожалуйста, выбери свою роль:",
@@ -127,10 +127,10 @@ async def toggle_admin_role_logic(user_id: int, message_or_call) -> None:
         user = await conn.fetchrow("SELECT role FROM users WHERE tg_id = $1", user_id)
         if not user:
             return
-        
+
         current_role = user["role"]
         new_role = "parent" if current_role == "admin" else "admin"
-        
+
         await conn.execute("UPDATE users SET role = $1::user_role WHERE tg_id = $2", new_role, user_id)
 
     text_msg = ""
@@ -183,11 +183,11 @@ async def callbacks_num(callback: CallbackQuery):
     user_id = callback.from_user.id
     username = callback.from_user.username
     selected_role = callback.data.split("_")[2]
-    
+
     if user_id in settings.admin_ids:
         await callback.answer("У вас максимальный уровень прав. Используйте переключатель!", show_alert=True)
         return
-            
+
     async with db.pool.acquire() as conn:
         async with conn.transaction():
             await conn.execute(
@@ -199,25 +199,27 @@ async def callbacks_num(callback: CallbackQuery):
                 user_id, username, selected_role
             )
 
-        if selected_role == 'student':
-            await conn.execute(
-                """
-                INSERT INTO gamification (user_id, balance_coins, xp_total, streak_days)
-                VALUES ($1, 0, 0, 0)
-                ON CONFLICT (user_id) DO NOTHING
-                """,
-                user_id
-            )
-            await callback.message.edit_text("✅ Роль успешно сохранена!\n\nТы зарегистрирован как **Ученик**.", parse_mode="Markdown")
-            await callback.message.answer(
-                "Тебе доступен интерактивный ИИ-тьютор, квесты и магазин наград!",
-                reply_markup=get_student_menu()
-            )
-        elif selected_role == 'parent':
-            await callback.message.edit_text("✅ Роль успешно сохранена!\n\nВы зарегистрированы как **Родитель**.", parse_mode="Markdown")
-            await callback.message.answer(
-                "Используйте нижнее меню для взаимодействия с платформой:",
-                reply_markup=get_parent_menu()
-            )
-            
+            if selected_role == 'student':
+                await conn.execute(
+                    """
+                    INSERT INTO gamification (user_id, balance_coins, xp_total, streak_days)
+                    VALUES ($1, 0, 0, 0)
+                    ON CONFLICT (user_id) DO NOTHING
+                    """,
+                    user_id
+                )
+
+    if selected_role == 'student':
+        await callback.message.edit_text("✅ Роль успешно сохранена!\n\nТы зарегистрирован как **Ученик**.", parse_mode="Markdown")
+        await callback.message.answer(
+            "Тебе доступен интерактивный ИИ-тьютор, квесты и магазин наград!",
+            reply_markup=get_student_menu()
+        )
+    elif selected_role == 'parent':
+        await callback.message.edit_text("✅ Роль успешно сохранена!\n\nВы зарегистрированы как **Родитель**.", parse_mode="Markdown")
+        await callback.message.answer(
+            "Используйте нижнее меню для взаимодействия с платформой:",
+            reply_markup=get_parent_menu()
+        )
+
     await callback.answer()

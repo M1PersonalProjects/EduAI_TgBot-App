@@ -1,10 +1,11 @@
 import asyncpg
+from typing import Optional
 from config import settings
 from logger_config import logger
 
 class Database:
     def __init__(self):
-        self.pool: asyncpg.Pool = None
+        self.pool: Optional[asyncpg.Pool] = None
 
     async def connect(self):
         if self.pool is not None:
@@ -17,9 +18,9 @@ class Database:
                 max_size=20
             )
             logger.info("🚀 Пул соединений с PostgreSQL успешно запущен")
-        except Exception as e:
-            logger.critical(f"❌ Не удалось подключиться к базе данных: {e}")
-            raise e
+        except Exception as exc:
+            logger.critical(f"❌ Не удалось подключиться к базе данных: {exc}")
+            raise
 
     async def disconnect(self):
         if self.pool:
