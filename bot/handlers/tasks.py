@@ -9,6 +9,7 @@ from database import db
 from openai import AsyncOpenAI
 from config import settings
 from logger_config import logger
+from bot.messages import answer_plain
 
 router = Router()
 
@@ -65,7 +66,10 @@ async def start_quest(message: Message, state: FSMContext):
             history_feedback = ""
             if parent_task["student_answers_json"]:
                 old_ans = json.loads(parent_task["student_answers_json"]) if isinstance(parent_task["student_answers_json"], str) else parent_task["student_answers_json"]
-                history_feedback = f"\n\n⚠️ *Твой прошлый ответ:* `{old_ans.get('provided_answer')}`\n❌ *Подсказка учителя:* _{old_ans.get('verification_feedback')}_"
+                history_feedback = (
+                    f"\n\n⚠️ Твой прошлый ответ: {old_ans.get('provided_answer')}\n"
+                    f"❌ Подсказка учителя: {old_ans.get('verification_feedback')}"
+                )
 
             async with db.pool.acquire() as conn:
                 await conn.execute("UPDATE tasks_history SET status = 'in_progress'::task_status WHERE task_id = $1", parent_task["task_id"])
@@ -79,14 +83,14 @@ async def start_quest(message: Message, state: FSMContext):
             await state.set_state(QuestStates.waiting_for_answer)
             
             await status_msg.delete()
-            await message.answer(
-                f"👨‍👩‍👦 *Персональное задание от Родителя!*\n"
-                f"🏆 *Квест: {quest.get('title')}*\n\n"
+            await answer_plain(
+                message,
+                f"👨‍👩‍👦 Персональное задание от родителя!\n"
+                f"🏆 Квест: {quest.get('title')}\n\n"
                 f"{quest.get('question_text')}"
                 f"{history_feedback}\n\n"
-                f"💰 Награда: *15 монет* | ✨ *50 XP*\n\n"
-                f"Напиши ответ в чат (или введи /cancel для отмены).",
-                parse_mode="Markdown"
+                "💰 Награда: 15 монет | ✨ 50 XP\n\n"
+                "Напиши ответ в чат (или введи /cancel для отмены)."
             )
             return
         except Exception as e:
@@ -168,12 +172,12 @@ async def start_quest(message: Message, state: FSMContext):
         await state.set_state(QuestStates.waiting_for_answer)
         
         await status_msg.delete()
-        await message.answer(
-            f"🏆 *Квест: {ai_task.title}*\n\n"
+        await answer_plain(
+            message,
+            f"🏆 Квест: {ai_task.title}\n\n"
             f"{ai_task.description}\n\n"
-            f"💰 Награда: *10 монет* | ✨ *30 XP*\n\n"
-            f"Напиши ответ в чат (или введи /cancel для отмены).",
-            parse_mode="Markdown"
+            "💰 Награда: 10 монет | ✨ 30 XP\n\n"
+            "Напиши ответ в чат (или введи /cancel для отмены)."
         )
 
     except Exception as e:
@@ -264,11 +268,11 @@ async def check_quest_answer(message: Message, state: FSMContext):
                         user_id, new_coins, new_xp
                     )
 
-            await message.answer(
-                f"🎉 *Верно!* {verification.explanation}\n\n"
-                f"💰 Начислено: `+{coins_reward}` монет и `+{xp_reward}` XP.\n"
-                f"Проверить баланс можно в меню «🏆 Мой профиль».",
-                parse_mode="Markdown"
+            await answer_plain(
+                message,
+                f"🎉 Верно! {verification.explanation}\n\n"
+                f"💰 Начислено: +{coins_reward} монет и +{xp_reward} XP.\n"
+                "Проверить баланс можно в меню «🏆 Мой профиль»."
             )
 
             if parent_id:
@@ -288,10 +292,10 @@ async def check_quest_answer(message: Message, state: FSMContext):
                     json.dumps(student_answers_json), task_id
                 )
 
-            await message.answer(
-                f"❌ *Не совсем так...*\n{verification.explanation}\n\n"
-                f"Попробуй еще раз! Или введи /cancel, чтобы прервать квест.",
-                parse_mode="Markdown"
+            await answer_plain(
+                message,
+                f"❌ Не совсем так...\n{verification.explanation}\n\n"
+                "Попробуй ещё раз! Или введи /cancel, чтобы прервать квест."
             )
 
     except Exception as e:

@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;550;650;750;850&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="stylesheet" href="/static/css/app.css?v=20260728-1">
 </head>
 <body>
   <main class="min-h-screen grid lg:grid-cols-[1.1fr_.9fr]">
@@ -36,6 +36,11 @@
             <p class="text-sm font-bold text-emerald-200">Добро пожаловать</p>
             <h1 class="mt-2 text-3xl font-[850] tracking-tight">Войдите в пространство</h1>
             <p class="mt-2 muted">В Telegram вход произойдёт автоматически.</p>
+          </div>
+
+          <div id="telegram-entry" class="mb-5">
+            <button id="telegram-login" class="btn-primary w-full" type="button"><span aria-hidden="true">✈</span> Войти через Telegram WebApp</button>
+            <p id="telegram-hint" class="mt-2 text-center text-xs muted">Кнопка использует защищённые данные текущего Telegram WebApp.</p>
           </div>
 
           <div id="telegram-progress" hidden class="py-10 text-center" role="status">
@@ -70,7 +75,7 @@
     </section>
   </main>
   <div class="toast-stack" aria-live="polite"></div>
-  <script src="/static/js/app.js"></script>
-  <script src="/static/js/auth.js"></script>
+  <script src="/static/js/app.js?v=20260728-1"></script>
+  <script src="/static/js/auth.js?v=20260728-1"></script>
 </body>
 </html>

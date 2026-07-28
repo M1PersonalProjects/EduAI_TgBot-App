@@ -112,9 +112,10 @@ async def cmd_start(message: Message, command: CommandObject):
 
     # --- СЦЕНАРИЙ 4: Новый пользователь (Выбор роли) ---
     await message.answer(
-        f"Привет, {message.from_user.first_name}! 👋 \nЯ **EduAI** — твой интеллектуальный помощник по школьной программе.\n\nДля начала работы, пожалуйста, выбери свою роль:",
+        f"Привет, {message.from_user.first_name}! 👋 \n"
+        "Я EduAI — твой интеллектуальный помощник по школьной программе.\n\n"
+        "Для начала работы, пожалуйста, выбери свою роль:",
         reply_markup=get_role_keyboard(),
-        parse_mode="Markdown"
     )
 
 

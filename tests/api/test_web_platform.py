@@ -28,6 +28,7 @@ def test_frontend_pages_and_assets_are_served():
         "/admin.html",
         "/static/css/app.css",
         "/static/js/app.js",
+        "/static/js/chat.js",
     ):
         assert client.get(path).status_code == 200
 
@@ -49,3 +50,20 @@ async def test_v1_browser_login_returns_signed_session(api_client, mock_db):
 async def test_v1_dashboard_requires_authorization(api_client):
     response = await api_client.get("/api/v1/student/dashboard")
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_tutor_sessions_and_legacy_chat_require_authorization(api_client):
+    sessions = await api_client.get("/api/v1/tutor/sessions")
+    legacy = await api_client.get("/api/chats/history/777")
+
+    assert sessions.status_code == 401
+    assert legacy.status_code == 401
+
+
+def test_auth_page_contains_interactive_telegram_entry():
+    response = TestClient(app).get("/auth.html")
+
+    assert response.status_code == 200
+    assert 'id="telegram-login"' in response.text
+    assert "telegram-web-app.js" in response.text

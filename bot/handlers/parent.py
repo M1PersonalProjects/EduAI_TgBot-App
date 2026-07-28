@@ -8,6 +8,7 @@ from openai import AsyncOpenAI
 from config import settings
 from logger_config import logger
 from pydantic import BaseModel
+from bot.messages import answer_plain
 
 router = Router()
 openai_client = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
@@ -118,7 +119,7 @@ async def process_parent_analytics_query(message: Message, state: FSMContext):
         )
 
         await status_msg.delete()
-        await message.answer(response.choices[0].message.content)
+        await answer_plain(message, response.choices[0].message.content)
     
     except Exception as e:
         logger.error(f"Ошибка ИИ-аналитики для родителя: {e}")
@@ -245,14 +246,14 @@ async def process_custom_test_generation(message: Message, state: FSMContext):
             [InlineKeyboardButton(text="❌ Отклонить и сбросить", callback_data="parent_reject_test")]
         ])
 
-        await message.answer(
-            f"🔍 *Предпросмотр созданного ИИ-теста*:\n\n"
-            f"📋 *Название:* {ai_test.title}\n"
-            f"📝 *Задание:* {ai_test.description}\n"
-            f"🔑 *Правильный ответ (автопроверка):* `{ai_test.correct_answer}`\n\n"
-            f"Вы можете отредактировать текст задания или отправить его ребенку в чат кнопками ниже:",
+        await answer_plain(
+            message,
+            "🔍 Предпросмотр созданного ИИ-теста:\n\n"
+            f"📋 Название: {ai_test.title}\n"
+            f"📝 Задание: {ai_test.description}\n"
+            f"🔑 Правильный ответ: {ai_test.correct_answer}\n\n"
+            "Вы можете отредактировать текст задания или отправить его ребёнку:",
             reply_markup=kb,
-            parse_mode="Markdown"
         )
 
     except Exception as e:
@@ -284,14 +285,14 @@ async def process_parent_edited_text(message: Message, state: FSMContext):
         [InlineKeyboardButton(text="❌ Отклонить и сбросить", callback_data="parent_reject_test")]
     ])
 
-    await message.answer(
-        f"🔍 *Обновленный предпросмотр теста*:\n\n"
-        f"📋 *Название:* {data.get('generated_title')}\n"
-        f"📝 *Задание:* {new_desc}\n"
-        f"🔑 *Правильный ответ:* `{data.get('generated_answer')}`\n\n"
-        f"Всё верно? Отправляем?",
+    await answer_plain(
+        message,
+        "🔍 Обновлённый предпросмотр теста:\n\n"
+        f"📋 Название: {data.get('generated_title')}\n"
+        f"📝 Задание: {new_desc}\n"
+        f"🔑 Правильный ответ: {data.get('generated_answer')}\n\n"
+        "Всё верно? Отправляем?",
         reply_markup=kb,
-        parse_mode="Markdown"
     )
 
 
@@ -328,12 +329,12 @@ async def callback_approve_and_save(call: CallbackQuery, state: FSMContext):
 
         await call.bot.send_message(
             chat_id=student_id,
-            text=f"📬 *Родитель прислал тебе персональное проверочное задание!*\n\n"
-                 f"🏆 *Тест: {questions_json['title']}*\n"
+            text="📬 Родитель прислал тебе персональное проверочное задание!\n\n"
+                 f"🏆 Тест: {questions_json['title']}\n"
                  f"{questions_json['question_text']}\n\n"
-                 f"💰 Награда за выполнение: *15 монет* | ✨ *50 XP*\n"
-                 f"Просто начни выполнять квесты через меню, этот тест будет приоритетным!",
-            parse_mode="Markdown"
+                 "💰 Награда за выполнение: 15 монет | ✨ 50 XP\n"
+                 "Просто начни выполнять квесты через меню — этот тест будет приоритетным!",
+            parse_mode=None,
         )
         
         await call.message.edit_text("🚀 Тест успешно сохранен в базу и доставлен в Telegram-аккаунт вашего ребенка! Как только он даст ответ, система его проверит.", reply_markup=None)

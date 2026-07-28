@@ -27,6 +27,9 @@ def get_parent_menu() -> ReplyKeyboardMarkup:
                 web_app=WebAppInfo(url=f"{settings.webapp_base_url}/parent/create-test")
             ),
             KeyboardButton(text="📊 Мониторинг в чате")
+        ],
+        [
+            KeyboardButton(text="📚 Каталог учебников")
         ]
     ]
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)

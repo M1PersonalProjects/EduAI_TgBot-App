@@ -7,6 +7,7 @@ from config import settings
 from openai import AsyncOpenAI
 from logger_config import logger
 from api.schemas.admin import BookCreateRequest, BookAdminResponse, PageUpdateRequest, OpenAIPageResponse
+from services.tutor import clean_ai_text
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Space"])
 
@@ -34,8 +35,8 @@ async def upload_pdf_and_process(book_id: int, file: UploadFile = File(...)):
     doc = None
     try:
         pdf_bytes = await file.read()
-        if not pdf_bytes or len(pdf_bytes) > 20 * 1024 * 1024:
-            raise HTTPException(status_code=413, detail="PDF должен быть меньше 20 МБ")
+        if not pdf_bytes or len(pdf_bytes) > 100 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="PDF должен быть не больше 100 МБ")
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         pages_processed = 0
 
@@ -89,8 +90,8 @@ async def upload_pdf_and_process(book_id: int, file: UploadFile = File(...)):
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                         """,
                         book_id, f"Страница {page_num}", page_num, ai_data.page_paragraph,
-                        ai_data.html_content.replace("$", ""), f"data:image/png;base64,{base64_image}",
-                        ai_data.raw_text.replace("$", ""), ai_data.markdown_content.replace("$", "")
+                        clean_ai_text(ai_data.html_content), f"data:image/png;base64,{base64_image}",
+                        clean_ai_text(ai_data.raw_text), clean_ai_text(ai_data.markdown_content)
                     )
 
                     pages_processed += 1

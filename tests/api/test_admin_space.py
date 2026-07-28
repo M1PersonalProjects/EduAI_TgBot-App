@@ -91,4 +91,4 @@ async def test_update_page_content_validation_boundary(mock_db):
     }
 
     response = client.put("/api/admin/pages/15", json=payload)
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT

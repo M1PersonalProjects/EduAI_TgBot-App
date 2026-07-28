@@ -31,23 +31,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     try { renderDashboard(await EduAI.api('/api/v1/student/dashboard')); }
     catch (error) { EduAI.toast(error.message, 'error'); }
   }
-  function appendMessage(sender, text) {
-    const bubble = document.createElement('div'); bubble.className = `message ${sender === 'user' ? 'user' : ''}`; bubble.innerHTML = EduAI.markdown(text); byId('chat-log').append(bubble); byId('chat-log').scrollTop = byId('chat-log').scrollHeight; return bubble;
-  }
-  async function loadChat() {
-    try { const messages = await EduAI.api('/api/v1/chat/history'); if (messages.length) { byId('chat-log').innerHTML = ''; messages.forEach(m => appendMessage(m.sender, m.message_text)); } }
-    catch (error) { EduAI.toast(error.message, 'error'); }
-  }
-
-  byId('chat-form').addEventListener('submit', async event => {
-    event.preventDefault(); const input = byId('chat-input'); const text = input.value.trim().replaceAll('$', ''); if (!text) return;
-    appendMessage('user', text); input.value = ''; const button = event.currentTarget.querySelector('button'); EduAI.setBusy(button, true, 'Думаю…');
-    const pending = appendMessage('ai', 'Формулирую подсказку…'); pending.classList.add('muted');
-    try { const result = await EduAI.api('/api/v1/chat/messages', { method: 'POST', body: JSON.stringify({ message_text: text }) }); pending.remove(); appendMessage('ai', result.message_text); }
-    catch (error) { pending.remove(); EduAI.toast(error.message, 'error'); }
-    finally { EduAI.setBusy(button, false); input.focus(); }
-  });
-  byId('clear-chat').addEventListener('click', async () => { if (!confirm('Очистить всю историю диалога?')) return; try { await EduAI.api('/api/v1/chat/history', { method: 'DELETE' }); byId('chat-log').innerHTML = ''; appendMessage('ai', 'История очищена. С какой темы начнём?'); } catch (e) { EduAI.toast(e.message, 'error'); } });
   byId('tasks-list').addEventListener('submit', async event => {
     const form = event.target.closest('.task-form'); if (!form) return; event.preventDefault(); const button = form.querySelector('button'); const answer = form.querySelector('input').value.trim(); EduAI.setBusy(button, true, 'Проверяем…');
     try { const result = await EduAI.api(`/api/v1/student/tasks/${form.dataset.taskId}/submit`, { method: 'POST', body: JSON.stringify({ student_answer: answer }) }); EduAI.toast(result.success ? `Верно! +${result.earned_coins} монет и +${result.earned_xp} XP` : result.message, result.success ? 'success' : 'error'); await loadDashboard(); }
@@ -55,5 +38,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   byId('rewards-list').addEventListener('click', async event => { const button = event.target.closest('.reward-buy'); if (!button) return; if (!confirm('Обменять монеты на эту награду?')) return; EduAI.setBusy(button, true, 'Покупаем…'); try { const result = await EduAI.api(`/api/v1/student/rewards/${button.dataset.rewardId}/buy`, { method: 'POST' }); EduAI.toast(`Награда «${result.reward_name}» получена!`, 'success'); await loadDashboard(); } catch (e) { EduAI.toast(e.message, 'error'); } finally { EduAI.setBusy(button, false); } });
   byId('refresh-dashboard').addEventListener('click', loadDashboard); byId('refresh-tasks').addEventListener('click', loadDashboard);
-  await Promise.all([loadDashboard(), loadChat()]);
+  const chat = new EduAIChat({
+    newChatId: 'new-chat', threadsId: 'chat-threads', formId: 'chat-form', inputId: 'chat-input',
+    logId: 'chat-log', attachId: 'chat-attachment', removeAttachId: 'chat-remove-attachment',
+    attachmentPreviewId: 'chat-attachment-preview', attachmentNameId: 'chat-attachment-name',
+    classId: 'chat-class', subjectId: 'chat-subject', bookId: 'chat-book', pageId: 'chat-page',
+    lockId: 'chat-lock-context', exitId: 'chat-exit-context', contextStatusId: 'chat-context-status',
+    welcome: 'Привет! Я твой ИИ-тьютор. Можно сразу задать вопрос или выбрать учебник справа.'
+  });
+  await Promise.all([loadDashboard(), chat.init()]);
 });

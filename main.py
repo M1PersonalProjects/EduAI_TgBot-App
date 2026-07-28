@@ -22,6 +22,7 @@ from api.routers.chats import router as chats_router, tutor_router as tutor_chat
 from api.routers.rewards import router as rewards_router
 from api.routers.auth import router as auth_v1_router
 from api.routers.platform import router as platform_v1_router
+from api.routers.tutor import router as tutor_v1_router
 
 from logger_config import logger
 
@@ -65,6 +66,7 @@ app.include_router(tutor_chats_router)
 app.include_router(rewards_router)
 app.include_router(auth_v1_router)
 app.include_router(platform_v1_router)
+app.include_router(tutor_v1_router)
 
 bot = Bot(token=settings.bot_token.get_secret_value())
 dp = Dispatcher()
@@ -131,7 +133,7 @@ async def serve_admin_legacy(request: Request):
     return templates.TemplateResponse(request, "admin.html")
 
 
-async def run_api():
+def build_api_server() -> uvicorn.Server:
     # Публичный доступ обычно предоставляет reverse proxy; приложение слушает localhost.
     config = uvicorn.Config(
         app=app,
@@ -140,11 +142,15 @@ async def run_api():
         log_config=None,
         loop="asyncio"
     )
-    server = uvicorn.Server(config)
+    return uvicorn.Server(config)
+
+
+async def run_api(server: uvicorn.Server):
     await server.serve()
 
 async def main():
-    api_task = asyncio.create_task(run_api())
+    api_server = build_api_server()
+    api_task = asyncio.create_task(run_api(api_server))
     logger.info(" 🚀  Веб-сервер FastAPI успешно запущен на http://localhost:8000")
 
     try:
@@ -156,11 +162,16 @@ async def main():
     finally:
         logger.info(" 🛑  Остановка сервисов бота...")
         await bot.session.close()
-        api_task.cancel()
+        api_server.should_exit = True
         try:
-            await api_task
-        except asyncio.CancelledError:
-            pass
+            await asyncio.wait_for(api_task, timeout=15)
+        except asyncio.TimeoutError:
+            logger.warning("API не завершился за 15 секунд; отменяем оставшуюся задачу")
+            api_task.cancel()
+            try:
+                await api_task
+            except asyncio.CancelledError:
+                pass
         logger.info(" 👋  Все системы EduAI успешно остановлены.")
 
 if __name__ == "__main__":

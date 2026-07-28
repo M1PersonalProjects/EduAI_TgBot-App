@@ -69,7 +69,7 @@ async def test_check_quest_answer_correct(make_message, mock_db, mock_fsm_contex
     
     assert mock_db.mock_conn.execute.call_count == 2
     assert await state.get_state() is None
-    assert "Начислено: `+15` монет и `+50` XP." in message.answer.call_args[0][0]
+    assert "Начислено: +15 монет и +50 XP." in message.answer.call_args[0][0]
     message.bot.send_message.assert_called_once_with(chat_id=999, text=ANY)
 
 

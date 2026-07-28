@@ -21,8 +21,8 @@ async def test_show_student_profile(make_message, mock_db):
     ]
     await show_real_student_profile(message)
     response = message.answer.call_args[0][0]
-    assert "120` монет" in response
-    assert "450` XP" in response
+    assert "120 монет" in response
+    assert "450 XP" in response
 
 @pytest.mark.asyncio
 async def test_book_filter_flow(make_message, make_callback_query, mock_db, mock_fsm_context):
@@ -45,6 +45,32 @@ async def test_book_filter_flow(make_message, make_callback_query, mock_db, mock
     await handle_subject_choice(callback_sub, state)
     assert await state.get_state() == BookFilterStates.choosing_book.state
 
+
+@pytest.mark.asyncio
+async def test_book_choice_sends_exit_command_without_markdown_entities(
+    make_callback_query, mock_db, mock_fsm_context
+):
+    user_id = 778
+    state = mock_fsm_context(user_id, user_id)
+    await state.set_data({"chosen_grade": 6, "chosen_subject": "math_program"})
+    await state.set_state(BookFilterStates.choosing_book)
+    callback = make_callback_query(data="book_10", user_id=user_id)
+    mock_db.mock_conn.fetchrow.return_value = {
+        "book_title": "Book_with_underscores",
+        "book_author": "Author_name",
+    }
+    mock_db.mock_conn.fetch.return_value = [{
+        "page_id": 1,
+        "page_number": 5,
+        "page_paragraph": "Topic_with_underscores",
+    }]
+
+    await handle_book_choice(callback, state)
+
+    text = callback.message.edit_text.await_args.args[0]
+    assert "/exit_book" in text
+    assert callback.message.edit_text.await_args.kwargs.get("parse_mode") is None
+
 @pytest.mark.asyncio
 async def test_ai_tutor_multimodal_photo(make_message, mock_db, mock_fsm_context, monkeypatch):
     """Проверка отправки вопроса ИИ-тьютору вместе с фотографией."""
@@ -65,4 +91,8 @@ async def test_ai_tutor_multimodal_photo(make_message, mock_db, mock_fsm_context
     message.bot.get_file.assert_called_once()
     mock_create.assert_called_once()
     assert await state.get_state() is None
-    message.answer.assert_any_call("🎓 *Ответ ИИ-Тьютора*:\n\nОтвет: x = 5", parse_mode="Markdown")
+    message.answer.assert_any_call(
+        "🎓 Ответ ИИ-Тьютора:\n\nОтвет: x = 5",
+        reply_markup=None,
+        parse_mode=None,
+    )

@@ -62,7 +62,11 @@ async def test_process_parent_analytics_success(make_message, mock_db, mock_open
     mock_openai.chat.completions.create.assert_called_once()
     # Проверяем, что статусное сообщение удалилось, а родителю ушел ответ ИИ
     status_msg.delete.assert_called_once()
-    message.answer.assert_any_call("Аналитический отчет ИИ: Ребенок отлично справляется!")
+    message.answer.assert_any_call(
+        "Аналитический отчет ИИ: Ребенок отлично справляется!",
+        reply_markup=None,
+        parse_mode=None,
+    )
     assert await state.get_state() is None
 
 
@@ -145,7 +149,7 @@ async def test_callback_approve_and_save_test(make_callback_query, mock_db, mock
     callback.bot.send_message.assert_called_once_with(
         chat_id=222,
         text=ANY,
-        parse_mode="Markdown"
+            parse_mode=None
     )
     # 3. Проверяем очистку стейта
     assert await state.get_state() is None

@@ -1,5 +1,4 @@
 import json
-import re
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -12,6 +11,7 @@ from api.security import get_current_user, require_roles
 from config import settings
 from database import db
 from logger_config import logger
+from services.tutor import clean_ai_text, ensure_session, respond as tutor_respond
 
 
 router = APIRouter(prefix="/api/v1", tags=["Web platform v1"])
@@ -28,11 +28,7 @@ def parse_json(value: Any) -> Any:
 
 
 def without_latex(value: Optional[str]) -> str:
-    text = value or ""
-    text = text.replace("$", "").replace("\\(", "").replace("\\)", "")
-    text = text.replace("\\[", "").replace("\\]", "")
-    text = re.sub(r"\\(?:begin|end)\{[^}]+\}", "", text)
-    return text.strip()
+    return clean_ai_text(value)
 
 
 class ChatRequest(BaseModel):
@@ -275,72 +271,36 @@ async def buy_reward(reward_id: int, user=Depends(require_roles("student"))):
 @router.get("/chat/history")
 async def chat_history(user=Depends(get_current_user)):
     async with db.pool.acquire() as conn:
+        session = await ensure_session(conn, user["tg_id"])
         rows = await conn.fetch(
-            "SELECT message_id, sender, message_text, created_at FROM chat_messages WHERE user_id = $1 ORDER BY created_at ASC LIMIT 200",
+            "SELECT message_id, sender, message_text, created_at FROM chat_messages WHERE user_id = $1 AND session_id = $2 ORDER BY created_at ASC LIMIT 200",
             user["tg_id"],
+            session["session_id"],
         )
     return [dict(row) for row in rows]
 
 
 @router.post("/chat/messages")
 async def chat_message(payload: ChatRequest, user=Depends(get_current_user)):
-    user_text = without_latex(payload.message_text)
-    async with db.pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO chat_messages (user_id, sender, message_text) VALUES ($1, 'user', $2)",
-            user["tg_id"],
-            user_text,
-        )
-        history = await conn.fetch(
-            "SELECT sender, message_text FROM chat_messages WHERE user_id = $1 ORDER BY created_at DESC LIMIT 12",
-            user["tg_id"],
-        )
-        context_page = await conn.fetchrow(
-            "SELECT page_markdown, page_title FROM page ORDER BY page_id DESC LIMIT 1"
-        )
-
-    if user["role"] == "student":
-        system_prompt = (
-            "Ты терпеливый школьный ИИ-тьютор. Веди ученика по шагам и сначала задавай наводящие вопросы; "
-            "не выдавай готовый ответ сразу. Используй контекст учебника, если он уместен. "
-            "Отвечай по-русски, только обычным текстом или Markdown. LaTeX и символ $ запрещены."
-        )
-    else:
-        system_prompt = (
-            "Ты ИИ-ассистент родителя. Помогай анализировать прогресс и составлять понятные задания и тесты. "
-            "Отвечай по-русски, только обычным текстом или Markdown. LaTeX и символ $ запрещены."
-        )
-    if context_page:
-        system_prompt += f"\nКонтекст учебника ({context_page['page_title']}):\n{context_page['page_markdown'][:6000]}"
-
-    messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
-    for item in reversed(history):
-        messages.append({
-            "role": "user" if item["sender"] == "user" else "assistant",
-            "content": item["message_text"],
-        })
     try:
-        response = await openai_client.chat.completions.create(
-            model="gpt-4o", messages=messages, temperature=0.35
+        return await tutor_respond(
+            user_id=user["tg_id"],
+            role=user["role"],
+            message_text=payload.message_text,
         )
-        reply = without_latex(response.choices[0].message.content)
     except Exception as exc:
         logger.error("Web chat failed: %s", exc)
         raise HTTPException(status_code=502, detail="ИИ-ассистент временно недоступен")
-
-    async with db.pool.acquire() as conn:
-        message_id = await conn.fetchval(
-            "INSERT INTO chat_messages (user_id, sender, message_text) VALUES ($1, 'ai', $2) RETURNING message_id",
-            user["tg_id"],
-            reply,
-        )
-    return {"message_id": message_id, "sender": "ai", "message_text": reply}
 
 
 @router.delete("/chat/history", status_code=status.HTTP_204_NO_CONTENT)
 async def clear_chat(user=Depends(get_current_user)):
     async with db.pool.acquire() as conn:
-        await conn.execute("DELETE FROM chat_messages WHERE user_id = $1", user["tg_id"])
+        session = await ensure_session(conn, user["tg_id"])
+        await conn.execute(
+            "DELETE FROM chat_messages WHERE user_id = $1 AND session_id = $2",
+            user["tg_id"], session["session_id"],
+        )
 
 
 @router.get("/parent/dashboard")

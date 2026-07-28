@@ -80,6 +80,20 @@
   function closeModal(id) { document.getElementById(id)?.classList.remove('open'); }
   function logout() { clearSession(); location.replace('/auth.html'); }
 
+  function startThinking(label = 'ИИ обрабатывает запрос') {
+    const widget = document.createElement('div');
+    widget.className = 'thinking-widget glass-strong';
+    widget.setAttribute('role', 'status');
+    widget.innerHTML = `<span class="thinking-orb"></span><div><strong>${escapeHtml(label)}</strong><p class="muted text-xs">Пожалуйста, не закрывайте страницу · <span>00:00</span></p></div>`;
+    document.body.append(widget);
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - started) / 1000);
+      widget.querySelector('span:last-child').textContent = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
+    }, 1000);
+    return () => { clearInterval(timer); widget.remove(); };
+  }
+
   function initShell() {
     const sidebar = document.querySelector('.sidebar'); const backdrop = document.querySelector('.backdrop');
     const close = () => { sidebar?.classList.remove('open'); backdrop?.classList.remove('open'); };
@@ -96,5 +110,5 @@
     document.querySelectorAll('[data-logout]').forEach(button => button.addEventListener('click', logout));
   }
 
-  window.EduAI = { api, guard, readSession, saveSession, clearSession, escapeHtml, markdown, toast, formatDate, setBusy, openModal, closeModal, logout, initShell, ROLE_PATH };
+  window.EduAI = { api, guard, readSession, saveSession, clearSession, escapeHtml, markdown, toast, formatDate, setBusy, openModal, closeModal, logout, startThinking, initShell, ROLE_PATH };
 })();

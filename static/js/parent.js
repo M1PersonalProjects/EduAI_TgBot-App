@@ -26,9 +26,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('parent-rewards').addEventListener('click',async e=>{const edit=e.target.closest('.edit-reward');const del=e.target.closest('.delete-reward');if(edit)openReward(state.rewards.find(r=>r.reward_id===Number(edit.dataset.id)));if(del&&confirm('Удалить награду?')){try{await EduAI.api(`/api/v1/parent/rewards/${del.dataset.id}`,{method:'DELETE'});EduAI.toast('Награда удалена','success');await loadAll();}catch(err){EduAI.toast(err.message,'error');}}});
   $('reward-form').addEventListener('submit',async e=>{e.preventDefault();const id=$('reward-id').value;const b=e.submitter;const payload={name:$('reward-name').value.trim(),description:$('reward-description').value.trim(),cost_coins:Number($('reward-cost').value),category:$('reward-category').value};EduAI.setBusy(b,true,'Сохраняем…');try{await EduAI.api(id?`/api/v1/parent/rewards/${id}`:'/api/v1/parent/rewards',{method:id?'PUT':'POST',body:JSON.stringify(payload)});EduAI.closeModal('reward-modal');EduAI.toast('Награда сохранена','success');await loadAll();}catch(err){EduAI.toast(err.message,'error');}finally{EduAI.setBusy(b,false);}});
 
-  function append(sender,text){const el=document.createElement('div');el.className=`message ${sender==='user'?'user':''}`;el.innerHTML=EduAI.markdown(text);$('parent-chat-log').append(el);$('parent-chat-log').scrollTop=$('parent-chat-log').scrollHeight;return el;}
-  async function loadChat(){try{const items=await EduAI.api('/api/v1/chat/history');if(items.length){$('parent-chat-log').innerHTML='';items.forEach(x=>append(x.sender,x.message_text));}}catch(e){EduAI.toast(e.message,'error');}}
-  $('parent-chat-form').addEventListener('submit',async e=>{e.preventDefault();const input=$('parent-chat-input');const text=input.value.trim().replaceAll('$','');if(!text)return;append('user',text);input.value='';const b=e.submitter;EduAI.setBusy(b,true,'Думаю…');const wait=append('ai','Готовлю ответ…');try{const result=await EduAI.api('/api/v1/chat/messages',{method:'POST',body:JSON.stringify({message_text:text})});wait.remove();append('ai',result.message_text);}catch(err){wait.remove();EduAI.toast(err.message,'error');}finally{EduAI.setBusy(b,false);}});
   document.querySelectorAll('.prompt-chip').forEach(b=>b.addEventListener('click',()=>{$('parent-chat-input').value=b.textContent;$('parent-chat-input').focus();}));
-  $('refresh-parent').addEventListener('click',loadAll); await Promise.all([loadAll(),loadChat()]);
+  const chat = new EduAIChat({
+    newChatId: 'parent-new-chat', threadsId: 'parent-chat-threads', formId: 'parent-chat-form', inputId: 'parent-chat-input',
+    logId: 'parent-chat-log', attachId: 'parent-chat-attachment', removeAttachId: 'parent-chat-remove-attachment',
+    attachmentPreviewId: 'parent-chat-attachment-preview', attachmentNameId: 'parent-chat-attachment-name',
+    classId: 'parent-chat-class', subjectId: 'parent-chat-subject', bookId: 'parent-chat-book', pageId: 'parent-chat-page',
+    lockId: 'parent-chat-lock-context', exitId: 'parent-chat-exit-context', contextStatusId: 'parent-chat-context-status',
+    welcome: 'Здравствуйте! Я полноценный ИИ-тьютор: могу объяснить тему, разобрать вложение или помочь с заданием.'
+  });
+  $('refresh-parent').addEventListener('click',loadAll); await Promise.all([loadAll(),chat.init()]);
 });
