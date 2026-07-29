@@ -1,4 +1,5 @@
 import json
+import uuid
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -48,7 +49,7 @@ class TaskAnswerRequest(BaseModel):
 
 
 class ParentTaskRequest(BaseModel):
-    student_id: int
+    student_ids: List[int] = Field(..., min_length=1, max_length=50)
 
     title: str = Field(
         ...,
@@ -90,7 +91,7 @@ class ParentTaskRequest(BaseModel):
 
 
 class GenerateParentTaskRequest(BaseModel):
-    student_id: int
+    student_ids: List[int] = Field(..., min_length=1, max_length=50)
 
     topic: str = Field(
         ...,
@@ -161,7 +162,7 @@ async def cancel_parent_task(
                     detail="Задание не найдено",
                 )
 
-            if task["status"] == "evaluated":
+            if task["status"] in {"completed", "evaluated"}:
                 raise HTTPException(
                     status_code=409,
                     detail="Выполненное задание нельзя отменить",
@@ -247,14 +248,34 @@ async def delete_parent_task(
             )
 
 
-async def ensure_child(conn, parent_id: int, student_id: int) -> None:
-    exists = await conn.fetchval(
-        "SELECT EXISTS(SELECT 1 FROM users WHERE tg_id = $1 AND parent_id = $2 AND role = 'student')",
-        student_id,
+async def ensure_children(conn, parent_id: int, student_ids: List[int]) -> List[int]:
+    normalized = list(dict.fromkeys(int(student_id) for student_id in student_ids))
+    if not normalized:
+        raise HTTPException(status_code=422, detail="Выберите хотя бы одного ребёнка")
+
+    rows = await conn.fetch(
+        """
+        SELECT tg_id
+        FROM users
+        WHERE tg_id = ANY($1::bigint[])
+          AND parent_id = $2
+          AND role = 'student'
+        """,
+        normalized,
         parent_id,
     )
-    if not exists:
-        raise HTTPException(status_code=404, detail="Привязанный ученик не найден")
+    found = {int(row["tg_id"]) for row in rows}
+    missing = [student_id for student_id in normalized if student_id not in found]
+    if missing:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Не найдены привязанные ученики: {', '.join(map(str, missing))}",
+        )
+    return normalized
+
+
+async def ensure_child(conn, parent_id: int, student_id: int) -> None:
+    await ensure_children(conn, parent_id, [student_id])
 
 
 async def attach_files_to_task(
@@ -677,167 +698,87 @@ async def create_parent_task(
 ):
     async with db.pool.acquire() as conn:
         async with conn.transaction():
-            await ensure_child(
-                conn,
-                user["tg_id"],
-                payload.student_id,
-            )
-
+            student_ids = await ensure_children(conn, user["tg_id"], payload.student_ids)
             attachments = await validate_owned_attachments(
-                conn,
-                payload.attachment_ids,
-                user["tg_id"],
+                conn, payload.attachment_ids, user["tg_id"]
             )
 
             book_context = None
-
             if payload.book_id is not None:
                 book_context = await conn.fetchrow(
                     """
-                    SELECT
-                        b.book_id,
-                        b.book_title,
-                        b.book_program,
-                        b.book_class,
-                        b.book_author,
-                        p.page_id,
-                        p.page_number,
-                        p.page_title,
-                        p.page_paragraph
+                    SELECT b.book_id, b.book_title, b.book_program, b.book_class,
+                           b.book_author, p.page_id, p.page_number, p.page_title,
+                           p.page_paragraph
                     FROM book b
-                    LEFT JOIN page p
-                        ON p.book_id = b.book_id
-                       AND p.page_id = $2
+                    LEFT JOIN page p ON p.book_id = b.book_id AND p.page_id = $2
                     WHERE b.book_id = $1
                     """,
-                    payload.book_id,
-                    payload.page_id,
+                    payload.book_id, payload.page_id,
                 )
-
                 if not book_context:
-                    raise HTTPException(
-                        status_code=404,
-                        detail="Выбранный учебник не найден",
-                    )
-
-                if (
-                    payload.page_id is not None
-                    and book_context["page_id"] is None
-                ):
+                    raise HTTPException(status_code=404, detail="Выбранный учебник не найден")
+                if payload.page_id is not None and book_context["page_id"] is None:
                     raise HTTPException(
                         status_code=404,
                         detail="Страница не относится к выбранному учебнику",
                     )
 
             subject = without_latex(
-                payload.subject
-                or (
-                    book_context["book_program"]
-                    if book_context
-                    else "Практика"
-                )
+                payload.subject or (book_context["book_program"] if book_context else "Практика")
             )
-
             topic = without_latex(payload.topic)
-
             topic_context = {
                 "source": "parent_web",
                 "subject": subject,
                 "topic": topic,
-                "book_id": (
-                    book_context["book_id"]
-                    if book_context
-                    else None
-                ),
-                "book_title": (
-                    book_context["book_title"]
-                    if book_context
-                    else None
-                ),
-                "book_class": (
-                    book_context["book_class"]
-                    if book_context
-                    else None
-                ),
-                "page_id": (
-                    book_context["page_id"]
-                    if book_context
-                    else None
-                ),
-                "page_number": (
-                    book_context["page_number"]
-                    if book_context
-                    else None
-                ),
-                "page_title": (
-                    book_context["page_title"]
-                    if book_context
-                    else None
-                ),
+                "book_id": book_context["book_id"] if book_context else None,
+                "book_title": book_context["book_title"] if book_context else None,
+                "book_class": book_context["book_class"] if book_context else None,
+                "page_id": book_context["page_id"] if book_context else None,
+                "page_number": book_context["page_number"] if book_context else None,
+                "page_title": book_context["page_title"] if book_context else None,
             }
-
             questions_json = {
                 "title": without_latex(payload.title),
                 "question_text": without_latex(payload.description),
-                "reference_answer":
-                    without_latex(payload.reference_answer),
+                "reference_answer": without_latex(payload.reference_answer),
             }
 
-            task_id = await conn.fetchval(
-                """
-                INSERT INTO tasks_history (
-                    student_id,
-                    parent_id,
-                    title,
-                    parent_comment,
-                    subject,
-                    topic,
-                    topic_context,
-                    questions_json,
-                    score,
-                    status,
-                    sent_at
+            assignment_batch_id = uuid.uuid4()
+            created_tasks = []
+            for student_id in student_ids:
+                task_id = await conn.fetchval(
+                    """
+                    INSERT INTO tasks_history (
+                        student_id, parent_id, assignment_batch_id, title,
+                        parent_comment, subject, topic, topic_context, questions_json,
+                        score, status, sent_at, updated_at
+                    )
+                    VALUES (
+                        $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb,
+                        0, 'created'::task_status, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    )
+                    RETURNING task_id
+                    """,
+                    student_id, user["tg_id"], assignment_batch_id,
+                    without_latex(payload.title), without_latex(payload.parent_comment),
+                    subject, topic, json.dumps(topic_context, ensure_ascii=False),
+                    json.dumps(questions_json, ensure_ascii=False),
                 )
-                VALUES (
-                    $1,
-                    $2,
-                    $3,
-                    $4,
-                    $5,
-                    $6,
-                    $7::jsonb,
-                    $8::jsonb,
-                    0,
-                    'created'::task_status,
-                    CURRENT_TIMESTAMP
+                await attach_files_to_task(
+                    conn=conn, task_id=task_id, attachments=attachments,
+                    visible_to_student=payload.send_files_to_student,
                 )
-                RETURNING task_id
-                """,
-                payload.student_id,
-                user["tg_id"],
-                without_latex(payload.title),
-                without_latex(payload.parent_comment),
-                subject,
-                topic,
-                json.dumps(topic_context, ensure_ascii=False),
-                json.dumps(questions_json, ensure_ascii=False),
-            )
-
-            await attach_files_to_task(
-                conn=conn,
-                task_id=task_id,
-                attachments=attachments,
-                visible_to_student=payload.send_files_to_student,
-            )
+                created_tasks.append({"task_id": task_id, "student_id": student_id})
 
     return {
         "status": "created",
-        "task_id": task_id,
+        "assignment_batch_id": str(assignment_batch_id),
+        "tasks": created_tasks,
+        "task_ids": [item["task_id"] for item in created_tasks],
         "attachments_count": len(attachments),
-        "files_sent_to_student": (
-            payload.send_files_to_student
-            and bool(attachments)
-        ),
+        "files_sent_to_student": payload.send_files_to_student and bool(attachments),
     }
 
 
@@ -850,10 +791,10 @@ async def generate_parent_task(
     user=Depends(require_roles("parent", "admin")),
 ):
     async with db.pool.acquire() as conn:
-        await ensure_child(
+        await ensure_children(
             conn,
             user["tg_id"],
-            payload.student_id,
+            payload.student_ids,
         )
 
         attachments = await validate_owned_attachments(
@@ -1017,7 +958,7 @@ async def generate_parent_task(
         )
 
     manual = ParentTaskRequest(
-        student_id=payload.student_id,
+        student_ids=payload.student_ids,
         title=without_latex(generated.title),
         description=without_latex(generated.description),
         reference_answer=without_latex(generated.correct_answer),
@@ -1060,7 +1001,11 @@ async def list_parent_tasks(
             th.created_at,
             th.sent_at,
             th.completed_at,
-            th.updated_at
+            th.updated_at,
+            th.assignment_batch_id,
+            th.cancelled_at,
+            th.cancellation_reason,
+            (SELECT COUNT(*) FROM task_submissions ts WHERE ts.task_id = th.task_id) AS submission_count
         FROM tasks_history th
         JOIN users student
             ON student.tg_id = th.student_id
@@ -1126,6 +1071,59 @@ async def list_parent_tasks(
         result.append(item)
 
     return result
+
+
+@router.get("/parent/children/{student_id}/tasks")
+async def get_child_task_history(
+    student_id: int,
+    limit: int = 100,
+    offset: int = 0,
+    user=Depends(require_roles("parent", "admin")),
+):
+    limit = min(max(limit, 1), 200)
+    offset = max(offset, 0)
+    async with db.pool.acquire() as conn:
+        await ensure_child(conn, user["tg_id"], student_id)
+        summary = await conn.fetchrow(
+            """
+            SELECT COUNT(*) AS total,
+                   COUNT(*) FILTER (WHERE status = 'created') AS created,
+                   COUNT(*) FILTER (WHERE status = 'in_progress') AS in_progress,
+                   COUNT(*) FILTER (WHERE status IN ('completed', 'evaluated')) AS completed,
+                   COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelled
+            FROM tasks_history
+            WHERE parent_id = $1 AND student_id = $2
+            """,
+            user["tg_id"], student_id,
+        )
+        rows = await conn.fetch(
+            """
+            SELECT th.task_id, th.student_id, u.username AS student_username,
+                   th.title, th.subject, th.topic, th.parent_comment,
+                   th.topic_context, th.questions_json, th.student_answers_json,
+                   th.score, th.status, th.created_at, th.sent_at,
+                   th.completed_at, th.updated_at, th.assignment_batch_id,
+                   th.cancelled_at, th.cancellation_reason,
+                   COUNT(DISTINCT ts.submission_id) AS submission_count,
+                   MAX(ts.submitted_at) AS last_submission_at
+            FROM tasks_history th
+            JOIN users u ON u.tg_id = th.student_id
+            LEFT JOIN task_submissions ts ON ts.task_id = th.task_id
+            WHERE th.parent_id = $1 AND th.student_id = $2
+            GROUP BY th.task_id, u.username
+            ORDER BY th.created_at DESC
+            LIMIT $3 OFFSET $4
+            """,
+            user["tg_id"], student_id, limit, offset,
+        )
+    tasks = []
+    for row in rows:
+        item = dict(row)
+        item["topic_context"] = parse_json(item["topic_context"])
+        item["questions_json"] = parse_json(item["questions_json"])
+        item["student_answers_json"] = parse_json(item["student_answers_json"])
+        tasks.append(item)
+    return {"student_id": student_id, "summary": dict(summary), "tasks": tasks}
 
 
 @router.get("/parent/tasks/{task_id}")

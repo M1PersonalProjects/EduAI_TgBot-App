@@ -46,7 +46,7 @@
       this.$('threadsId').innerHTML = this.state.sessions.map(item => {
         const id = String(item.session_id); const active = id === this.state.activeId;
         const context = item.context_locked ? `${item.book_title || 'Book Mode'}${item.page_number ? ', стр. ' + item.page_number : ''}` : `${item.message_count} сообщ.`;
-        return `<div class="thread-item ${active ? 'active' : ''}" data-session="${id}"><button class="thread-open"><strong>${EduAI.escapeHtml(item.title)}</strong><small>${EduAI.escapeHtml(context)}</small></button><button class="thread-action" data-rename title="Переименовать">✎</button></div>`;
+        return `<div class="thread-item ${active ? 'active' : ''}" data-session="${id}"><button class="thread-open"><strong>${EduAI.escapeHtml(item.title)}</strong><small>${EduAI.escapeHtml(context)}</small></button><button class="thread-action" data-rename title="Переименовать">✎</button><button class="thread-action" data-delete title="Удалить чат" aria-label="Удалить чат">🗑</button></div>`;
       }).join('');
       const session = this.state.sessions.find(item => String(item.session_id) === this.state.activeId);
       this.renderContextState(session);
@@ -54,6 +54,17 @@
 
     async threadAction(event) {
       const item = event.target.closest('.thread-item'); if (!item) return;
+      if (event.target.closest('[data-delete]')) {
+        const current = this.state.sessions.find(x => String(x.session_id) === item.dataset.session);
+        if (!confirm(`Удалить чат «${current?.title || 'Новый чат'}» и всю его историю?`)) return;
+        try {
+          await EduAI.api(`/api/v1/tutor/sessions/${item.dataset.session}`, { method: 'DELETE' });
+          if (String(this.state.activeId) === String(item.dataset.session)) this.state.activeId = null;
+          await this.loadSessions();
+          EduAI.toast('Чат удалён', 'success');
+        } catch (error) { EduAI.toast(error.message, 'error'); }
+        return;
+      }
       if (event.target.closest('[data-rename]')) {
         const current = this.state.sessions.find(x => String(x.session_id) === item.dataset.session);
         const title = prompt('Название чата (до 35 символов):', current?.title || '');

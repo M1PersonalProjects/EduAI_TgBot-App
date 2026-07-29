@@ -4,7 +4,6 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 
-from uuid import UUID
 from api.security import get_current_user
 from database import db
 from logger_config import logger
@@ -55,42 +54,21 @@ def _not_found(error: Exception) -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error))
 
 
-@router.delete("/sessions/{session_id}", status_code=204)
-async def delete_session(
-    session_id: UUID,
-    user=Depends(get_current_user),
-):
-    async with db.pool.acquire() as conn:
-        deleted_id = await conn.fetchval(
-            """
-            DELETE FROM chat_sessions
-            WHERE session_id = $1
-              AND user_id = $2
-            RETURNING session_id
-            """,
-            session_id,
-            user["tg_id"],
-        )
-
-    if deleted_id is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Чат не найден",
-        )
-
-
 @router.get("/sessions")
 async def sessions(user=Depends(get_current_user)):
+    ensure_tutor_role(user)
     return await list_sessions(user["tg_id"])
 
 
 @router.post("/sessions", status_code=status.HTTP_201_CREATED)
 async def new_session(payload: SessionCreate, user=Depends(get_current_user)):
+    ensure_tutor_role(user)
     return await create_session(user["tg_id"], payload.title)
 
 
 @router.patch("/sessions/{session_id}")
 async def update_session(session_id: str, payload: SessionRename, user=Depends(get_current_user)):
+    ensure_tutor_role(user)
     try:
         return await rename_session(user["tg_id"], session_id, payload.title)
     except ValueError as exc:
@@ -101,6 +79,7 @@ async def update_session(session_id: str, payload: SessionRename, user=Depends(g
 
 @router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_session(session_id: str, user=Depends(get_current_user)):
+    ensure_tutor_role(user)
     try:
         await delete_session(user["tg_id"], session_id)
     except (LookupError, ValueError) as exc:
@@ -109,6 +88,7 @@ async def remove_session(session_id: str, user=Depends(get_current_user)):
 
 @router.get("/sessions/{session_id}/messages")
 async def session_messages(session_id: str, user=Depends(get_current_user)):
+    ensure_tutor_role(user)
     try:
         return await get_messages(user["tg_id"], session_id)
     except (LookupError, ValueError) as exc:

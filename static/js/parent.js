@@ -42,15 +42,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   function renderDashboard(data) {
     state.children = data.children || [];
 
-    $('task-student').innerHTML = state.children.length
+    $('task-students').innerHTML = state.children.length
       ? state.children
           .map(child => `
-            <option value="${child.tg_id}">
-              ${EduAI.escapeHtml(childName(child))}
-            </option>
+            <label class="flex items-center gap-3 rounded-xl bg-white/[.04] p-3">
+              <input class="task-student-checkbox h-4 w-4" type="checkbox" value="${child.tg_id}">
+              <span class="text-sm font-bold">${EduAI.escapeHtml(childName(child))}</span>
+            </label>
           `)
           .join('')
-      : '<option value="">Нет привязанных детей</option>';
+      : '<p class="text-sm muted">Нет привязанных детей</p>';
 
     $('children-grid').innerHTML = state.children.length
       ? state.children
@@ -88,13 +89,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 Серия: ${child.streak_days} дн. · Покупок: ${child.purchases_total}
               </p>
 
-              <button
-                class="btn-secondary mt-4 w-full child-task"
-                data-child="${child.tg_id}"
-                type="button"
-              >
-                Поставить задание
-              </button>
+              <div class="mt-4 grid gap-2">
+                <button class="btn-secondary w-full child-task" data-child="${child.tg_id}" type="button">
+                  Поставить задание
+                </button>
+                <button class="btn-secondary w-full child-history" data-child="${child.tg_id}" type="button">
+                  История заданий
+                </button>
+              </div>
             </article>
           `)
           .join('')
@@ -170,7 +172,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const labels = {
       created: 'Создано',
       in_progress: 'Выполняется',
-      evaluated: 'Выполнено'
+      completed: 'Выполнено',
+      evaluated: 'Проверено',
+      cancelled: 'Отменено'
     };
     return labels[status] || status || 'Неизвестно';
   }
@@ -216,17 +220,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ${attachments.length ? `
                   <div class="mt-4 grid gap-2">
                     ${attachments.map(file => `
-                      <a
-                        class="btn-secondary text-sm"
-                        href="${file.download_url}"
-                        data-auth-download
-                        data-name="${EduAI.escapeHtml(file.original_name)}"
-                      >
+                      <a class="btn-secondary text-sm" href="${file.download_url}" data-auth-download data-name="${EduAI.escapeHtml(file.original_name)}">
                         📎 ${EduAI.escapeHtml(file.original_name)}
                       </a>
                     `).join('')}
                   </div>
                 ` : ''}
+                <div class="mt-4 flex flex-wrap gap-2">
+                  ${!['cancelled', 'completed', 'evaluated'].includes(task.status) ? `<button type="button" class="btn-secondary cancel-task" data-id="${task.task_id}">Отменить</button>` : ''}
+                  ${Number(task.submission_count || 0) === 0 ? `<button type="button" class="btn-danger delete-task" data-id="${task.task_id}">Удалить</button>` : ''}
+                </div>
               </article>
             `;
           })
@@ -415,6 +418,50 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  function selectedStudentIds() {
+    return Array.from(document.querySelectorAll('.task-student-checkbox:checked'))
+      .map(input => Number(input.value))
+      .filter(Number.isFinite);
+  }
+
+  function setSelectedStudents(ids = []) {
+    const selected = new Set(ids.map(Number));
+    document.querySelectorAll('.task-student-checkbox').forEach(input => {
+      input.checked = selected.has(Number(input.value));
+    });
+  }
+
+  async function openChildHistory(childId) {
+    const child = state.children.find(item => Number(item.tg_id) === Number(childId));
+    $('task-history-title').textContent = child ? `Задания ${childName(child)}` : 'Задания ребёнка';
+    $('task-history-summary').innerHTML = '<p class="muted col-span-full">Загрузка…</p>';
+    $('task-history-list').innerHTML = '';
+    EduAI.openModal('task-history-modal');
+    try {
+      const data = await EduAI.api(`/api/v1/parent/children/${childId}/tasks`);
+      const summary = data.summary || {};
+      const cells = [
+        ['Всего', summary.total || 0], ['Создано', summary.created || 0],
+        ['В работе', summary.in_progress || 0], ['Выполнено', summary.completed || 0],
+        ['Отменено', summary.cancelled || 0]
+      ];
+      $('task-history-summary').innerHTML = cells.map(([label, value]) => `
+        <div class="rounded-xl bg-white/[.04] p-3 text-center"><strong class="block">${value}</strong><span class="text-xs muted">${label}</span></div>
+      `).join('');
+      $('task-history-list').innerHTML = (data.tasks || []).length ? data.tasks.map(task => {
+        const questions = task.questions_json || {};
+        return `<article class="rounded-2xl bg-white/[.04] p-4">
+          <div class="flex flex-wrap items-center justify-between gap-2"><span class="badge">${EduAI.escapeHtml(taskStatusLabel(task.status))}</span><span class="text-xs muted">${EduAI.formatDate(task.created_at)}</span></div>
+          <h3 class="mt-3 font-extrabold">${EduAI.escapeHtml(task.title || questions.title || `Задание №${task.task_id}`)}</h3>
+          <p class="mt-1 text-sm muted">${EduAI.escapeHtml(task.subject || 'Без предмета')}${task.score != null ? ` · Балл: ${task.score}` : ''}</p>
+          ${task.cancellation_reason ? `<p class="mt-2 text-sm text-rose-200">Причина отмены: ${EduAI.escapeHtml(task.cancellation_reason)}</p>` : ''}
+        </article>`;
+      }).join('') : empty('История заданий пуста.');
+    } catch (error) {
+      $('task-history-list').innerHTML = empty(error.message);
+    }
+  }
+
   function openTask(childId) {
     if (!state.children.length) {
       EduAI.toast('Сначала привяжите ребёнка', 'error');
@@ -429,9 +476,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     resetSelect('task-book', 'Сначала выберите предмет');
     resetSelect('task-page', 'Страница или параграф');
 
-    if (childId) {
-      $('task-student').value = String(childId);
-    }
+    setSelectedStudents(childId ? [childId] : []);
 
     EduAI.openModal('task-modal');
   }
@@ -490,8 +535,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   $('children-grid').addEventListener('click', event => {
-    const button = event.target.closest('.child-task');
-    if (button) openTask(button.dataset.child);
+    const taskButton = event.target.closest('.child-task');
+    const historyButton = event.target.closest('.child-history');
+    if (taskButton) openTask(taskButton.dataset.child);
+    if (historyButton) openChildHistory(historyButton.dataset.child);
+  });
+
+  $('task-select-all-students')?.addEventListener('click', () => {
+    const boxes = Array.from(document.querySelectorAll('.task-student-checkbox'));
+    const selectAll = boxes.some(box => !box.checked);
+    boxes.forEach(box => { box.checked = selectAll; });
   });
 
   $('task-class').addEventListener('change', loadTaskSubjects);
@@ -525,8 +578,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     EduAI.setBusy(button, true, 'Создаём…');
 
     try {
+      const studentIds = selectedStudentIds();
+      if (!studentIds.length) throw new Error('Выберите хотя бы одного ребёнка');
       const payload = {
-        student_id: Number($('task-student').value),
+        student_ids: studentIds,
         subject: $('task-subject').value || $('task-topic').value.trim(),
         topic: $('task-topic').value.trim(),
         title: $('task-title').value.trim().replaceAll('$', ''),
@@ -550,7 +605,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         body: JSON.stringify(payload)
       });
 
-      EduAI.toast('Задание отправлено ребёнку', 'success');
+      EduAI.toast('Задание отправлено выбранным ученикам', 'success');
       EduAI.closeModal('task-modal');
       await loadAll();
     } catch (error) {
@@ -574,6 +629,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
+    const studentIds = selectedStudentIds();
+    if (!studentIds.length) {
+      EduAI.toast('Выберите хотя бы одного ребёнка', 'error');
+      return;
+    }
+
     const button = event.currentTarget;
     EduAI.setBusy(button, true, 'ИИ создаёт…');
 
@@ -581,7 +642,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const result = await EduAI.api('/api/v1/parent/tasks/generate', {
         method: 'POST',
         body: JSON.stringify({
-          student_id: Number($('task-student').value),
+          student_ids: studentIds,
           topic,
           instructions: $('task-comment').value.trim().replaceAll('$', ''),
           book_id: bookId,
@@ -671,6 +732,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   $('sent-tasks-list')?.addEventListener('click', async event => {
+    const cancelButton = event.target.closest('.cancel-task');
+    const deleteButton = event.target.closest('.delete-task');
+    if (cancelButton) {
+      const reason = prompt('Причина отмены (необязательно):', '');
+      if (reason === null) return;
+      try {
+        await EduAI.api(`/api/v1/parent/tasks/${cancelButton.dataset.id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) });
+        EduAI.toast('Задание отменено', 'success');
+        await loadAll();
+      } catch (error) { EduAI.toast(error.message, 'error'); }
+      return;
+    }
+    if (deleteButton) {
+      if (!confirm('Удалить задание без возможности восстановления?')) return;
+      try {
+        await EduAI.api(`/api/v1/parent/tasks/${deleteButton.dataset.id}`, { method: 'DELETE' });
+        EduAI.toast('Задание удалено', 'success');
+        await loadAll();
+      } catch (error) { EduAI.toast(error.message, 'error'); }
+      return;
+    }
     const link = event.target.closest('[data-auth-download]');
     if (!link) return;
 

@@ -321,8 +321,14 @@
 
       <form id="task-form" class="grid gap-4 mt-5">
         <div class="field">
-          <label for="task-student">Ребёнок</label>
-          <select id="task-student" class="select" required></select>
+          <div class="flex items-center justify-between gap-3">
+            <label>Ученики</label>
+            <button id="task-select-all-students" type="button" class="text-xs font-bold text-violet-200">
+              Выбрать всех
+            </button>
+          </div>
+          <div id="task-students" class="grid sm:grid-cols-2 gap-2 rounded-2xl bg-white/[.035] p-3"></div>
+          <p class="mt-1 text-xs muted">Можно назначить одно задание нескольким детям одновременно.</p>
         </div>
 
         <div class="grid sm:grid-cols-2 gap-4">
@@ -461,6 +467,21 @@
     </div>
   </div>
 
+
+  <div id="task-history-modal" class="modal-backdrop">
+    <div class="modal-panel glass-strong max-h-[92vh] overflow-y-auto">
+      <div class="flex justify-between gap-3">
+        <div>
+          <p class="text-sm font-bold text-violet-200">История заданий</p>
+          <h2 id="task-history-title" class="text-xl font-extrabold">Задания ребёнка</h2>
+        </div>
+        <button class="icon-btn" data-close-modal="task-history-modal" aria-label="Закрыть" type="button">×</button>
+      </div>
+      <div id="task-history-summary" class="mt-4 grid grid-cols-2 sm:grid-cols-5 gap-2"></div>
+      <div id="task-history-list" class="mt-4 grid gap-3"></div>
+    </div>
+  </div>
+
   <div id="reward-modal" class="modal-backdrop">
     <div class="modal-panel glass-strong">
       <div class="flex justify-between">
@@ -524,7 +545,7 @@
   <div class="toast-stack" aria-live="polite"></div>
 
   <script src="/static/js/app.js?v=20260729-1"></script>
-  <script src="/static/js/chat.js?v=20260729-1"></script>
-  <script src="/static/js/parent.js?v=20260729-1"></script>
+  <script src="/static/js/chat.js?v=20260729-2"></script>
+  <script src="/static/js/parent.js?v=20260729-2"></script>
 </body>
 </html>
