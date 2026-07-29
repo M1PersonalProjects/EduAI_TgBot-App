@@ -14,6 +14,7 @@ from database import db
 
 from bot.handlers import start, webapp, tasks as bot_tasks, ai_chat, parent, quests
 
+from api.routers.attachments import router as attachments_v1_router
 from api.routers.admin import router as admin_router
 from api.routers.accounts import router as accounts_router
 from api.routers.books import router as books_router
@@ -67,6 +68,7 @@ app.include_router(rewards_router)
 app.include_router(auth_v1_router)
 app.include_router(platform_v1_router)
 app.include_router(tutor_v1_router)
+app.include_router(attachments_v1_router)
 
 bot = Bot(token=settings.bot_token.get_secret_value())
 dp = Dispatcher()

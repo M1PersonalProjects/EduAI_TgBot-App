@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     database_url: str
     admin_ids: set[int] = Field(default_factory=set)
     webapp_base_url: str = "https://localhost:8000"
+    attachments_dir: str = "storage/attachments"
 
     @field_validator("admin_ids", mode="before")
     @classmethod

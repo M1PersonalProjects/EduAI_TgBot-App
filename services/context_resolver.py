@@ -147,6 +147,7 @@ async def resolve_context(
     conn,
     prompt: str,
     manual: Optional[Dict[str, Any]] = None,
+    allow_global_search: bool = False,
 ) -> Optional[ResolvedContext]:
     """Resolve an optional textbook context from filters and natural language."""
     manual = {key: value for key, value in (manual or {}).items() if value not in (None, "")}
@@ -234,7 +235,8 @@ async def resolve_context(
             page = await _fetch_exact(conn, selected_book["book_id"], None, None)
         return _to_context(page, "manual" if manual else natural_source)
 
-    # No identifiable book: search page topics across the knowledge base.
+    if not allow_global_search:
+        return None
     terms = hints.get("tokens", [])[:4]
     if not terms:
         return None

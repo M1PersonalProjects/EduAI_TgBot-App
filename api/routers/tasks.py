@@ -1,4 +1,6 @@
 import json
+from typing import Optional
+from aiohttp import payload
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from openai import AsyncOpenAI
@@ -22,6 +24,12 @@ class OpenAITaskVerification(BaseModel):
     is_correct: bool = Field(..., description="True если ответ верен, иначе False")
     explanation: str = Field(..., description="Доброжелательное объяснение для ребенка на русском языке")
 
+class GenerateTaskRequest(BaseModel):
+    student_id: int
+    book_id: int
+    page_id: Optional[int] = None
+    topic: Optional[str] = Field(default=None, max_length=300)
+    instructions: Optional[str] = Field(default=None, max_length=4000)
 
 @router.get("/generate/{tg_id}", response_model=TaskGenerationResponse)
 async def generate_task(tg_id: int):
@@ -38,12 +46,27 @@ async def generate_task(tg_id: int):
         
         page = await conn.fetchrow(
             """
-            SELECT p.page_id, p.page_markdown, p.page_title, b.book_title, b.book_program
-            FROM page p
-            JOIN book b ON p.book_id = b.book_id
-            ORDER BY RANDOM() 
+            SELECT
+                p.page_id,
+                p.page_markdown,
+                p.page_text,
+                p.page_title,
+                p.page_number,
+                b.book_id,
+                b.book_title,
+                b.book_program,
+                b.book_class,
+                b.book_author
+            FROM book b
+            LEFT JOIN page p
+                ON p.book_id = b.book_id
+            AND ($2::INTEGER IS NULL OR p.page_id = $2)
+            WHERE b.book_id = $1
+            ORDER BY p.page_number NULLS LAST
             LIMIT 1
-            """
+            """,
+            payload.book_id,
+            payload.page_id,
         )
         if not page:
             raise HTTPException(status_code=404, detail="База знаний пуста.")
@@ -55,14 +78,13 @@ async def generate_task(tg_id: int):
                 {
                     "role": "system",
                     "content": (
-                        "You are an expert school mathematics tutor on the EduAI platform. "
-                        "Based on the provided textbook page context, generate exactly ONE engaging exercise or practical question to test the student's understanding.\n\n"
-                        "CRITICAL FORMATTING RULES:\n"
-                        "1. NEVER use LaTeX service symbols such as '$', '$$', '\\(', or '\\)'.\n"
-                        "2. Format all mathematical notations using beautiful, human-readable Unicode characters: "
-                        "use superscripts for powers (e.g., x², y³), '•' or 'x' for multiplication, '°' for degrees (e.g., 90°, 180°), and clear fractions (e.g., 1/2 or ½).\n"
-                        "3. Ensure the 'correct_answer' field contains a concise, unambiguous baseline answer (a single number or word) for automated verification.\n"
-                        "4. Write the final 'title' and 'description' in Russian, as they will be displayed directly to the child."
+                        "Ты создаёшь учебные задания для платформы EduAI. "
+                        "Работай исключительно по предоставленному материалу учебника. "
+                        "Не добавляй сведения из других предметов и не придумывай темы, "
+                        "которых нет в контексте. "
+                        "Учитывай класс ученика, инструкции родителя и прикреплённые материалы. "
+                        "Создай ровно одно задание на русском языке. "
+                        "Не используй LaTeX и символы $."
                     )
                 },
                 {

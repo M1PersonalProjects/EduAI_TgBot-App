@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 
+from uuid import UUID
 from api.security import get_current_user
 from database import db
 from logger_config import logger
@@ -23,6 +24,15 @@ from services.tutor import (
 
 router = APIRouter(prefix="/api/v1/tutor", tags=["AI Tutor v1"])
 
+ALLOWED_TUTOR_ROLES = {"student", "parent"}
+
+
+def ensure_tutor_role(user) -> None:
+    if user["role"] not in ALLOWED_TUTOR_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="ИИ-тьютор доступен только ученикам и родителям",
+        )
 
 class SessionCreate(BaseModel):
     title: str = Field(default="Новый чат", max_length=35)
@@ -43,6 +53,30 @@ class ContextSelection(BaseModel):
 
 def _not_found(error: Exception) -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error))
+
+
+@router.delete("/sessions/{session_id}", status_code=204)
+async def delete_session(
+    session_id: UUID,
+    user=Depends(get_current_user),
+):
+    async with db.pool.acquire() as conn:
+        deleted_id = await conn.fetchval(
+            """
+            DELETE FROM chat_sessions
+            WHERE session_id = $1
+              AND user_id = $2
+            RETURNING session_id
+            """,
+            session_id,
+            user["tg_id"],
+        )
+
+    if deleted_id is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Чат не найден",
+        )
 
 
 @router.get("/sessions")
@@ -118,6 +152,8 @@ async def send_message(
     lock_context: bool = Form(default=False),
     user=Depends(get_current_user),
 ):
+    ensure_tutor_role(user)
+
     if not message_text.strip() and attachment is None:
         raise HTTPException(status_code=422, detail="Введите сообщение или добавьте вложение")
     logger.info(

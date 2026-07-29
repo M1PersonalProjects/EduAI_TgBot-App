@@ -1,24 +1,530 @@
-<!doctype html><html lang="ru"><head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#07111f"><title>Кабинет родителя — EduAI</title>
-  <script src="https://cdn.tailwindcss.com"></script><script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;550;650;750;850&display=swap" rel="stylesheet"><link rel="stylesheet" href="/static/css/app.css?v=20260728-1">
-</head><body><div class="app-shell">
-<aside class="sidebar"><div class="sidebar-inner glass-strong"><div class="flex items-center gap-3 px-2 mb-7"><span class="brand-mark">E</span><div><p class="font-extrabold">EduAI</p><p class="text-xs muted">Родитель</p></div></div><nav class="grid gap-1"><button class="nav-link active" data-section="overview"><span>◎</span> Обзор детей</button><button class="nav-link" data-section="assistant"><span>✦</span> ИИ-помощник</button><button class="nav-link" data-section="task-builder"><span>✓</span> Задания</button><button class="nav-link" data-section="reward-manager"><span>◇</span> Награды</button></nav><div class="mt-auto"><a href="/admin.html" data-admin-only hidden class="btn-secondary w-full mb-3">Перейти в Admin Panel</a><div class="rounded-2xl bg-white/[.04] p-3"><p data-user-name class="truncate text-sm font-bold">Профиль</p><p class="mt-1 text-xs muted">Семейный кабинет</p><button data-logout class="btn-secondary mt-3 w-full text-sm">Выйти</button></div></div></div></aside><div class="backdrop"></div>
-<main class="main-area"><header class="topbar glass mb-5"><div class="flex items-center gap-3"><button class="icon-btn menu-toggle lg:hidden" aria-label="Открыть меню">☰</button><div><p class="text-xs font-bold uppercase tracking-[.16em] muted">Семейное пространство</p><h1 class="font-extrabold">Прогресс без давления</h1></div></div><div class="flex gap-2"><button id="new-task-top" class="btn-primary hide-mobile">+ Новое задание</button><button id="refresh-parent" class="icon-btn" aria-label="Обновить">↻</button></div></header>
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <title>Кабинет родителя — EduAI</title>
 
-<section id="overview" class="page-section active"><div class="flex flex-wrap items-end justify-between gap-3 mb-4"><div><p class="text-sm font-bold text-emerald-200">Сводка</p><h2 class="text-2xl font-extrabold">Дети и прогресс</h2><p class="mt-1 muted">Главные показатели без лишнего шума.</p></div><button id="new-task-overview" class="btn-primary">+ Поставить задачу</button></div><div id="children-grid" class="grid md:grid-cols-2 xl:grid-cols-3 gap-4"></div><div class="glass card mt-4"><h3 class="font-extrabold">Последние покупки наград</h3><div id="family-purchases" class="mt-3 grid gap-2"></div></div></section>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-<section id="assistant" class="page-section"><div class="grid xl:grid-cols-[17rem_minmax(0,1fr)_19rem] gap-4">
-  <aside class="glass card h-fit"><button id="parent-new-chat" class="btn-primary w-full">+ Новый чат</button><div id="parent-chat-threads" class="thread-list mt-3"></div><p class="mt-3 text-xs muted">История доступна на любом устройстве. Название — до 35 символов.</p></aside>
-  <article class="glass card min-w-0"><div class="border-b border-white/10 pb-4"><span class="badge">✦ Полноценный ИИ-тьютор</span><h2 class="mt-3 text-xl font-extrabold">Учитесь и создавайте задания</h2><p class="mt-1 text-sm muted">Задавайте любые учебные вопросы или просите подготовить практику детям.</p></div><div id="parent-chat-log" class="chat-log py-3"><div class="message">Здравствуйте! Я могу объяснить тему, разобрать файл или помочь составить задание.</div></div><div id="parent-chat-attachment-preview" class="attachment-preview" hidden><span id="parent-chat-attachment-name"></span><button id="parent-chat-remove-attachment" class="thread-action" type="button">×</button></div><form id="parent-chat-form" class="flex flex-col sm:flex-row gap-2 border-t border-white/10 pt-4"><label class="icon-btn shrink-0 cursor-pointer">📎<input id="parent-chat-attachment" class="sr-only" type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.docx,.xlsx,.pptx,.odt,.ods,.odp,.epub,.djvu,.txt,.md,.csv,.json,.rtf,.html,.xml,.yaml,.yml"></label><textarea id="parent-chat-input" class="input min-h-[3rem] max-h-32 resize-y flex-1" maxlength="4000" placeholder="Спросите тьютора или приложите файл…"></textarea><button class="btn-primary sm:self-end" type="submit">Отправить ↑</button></form></article>
-  <aside class="grid content-start gap-4"><div class="glass card"><div class="flex items-center justify-between gap-2"><h3 class="font-bold">Контекст</h3><span id="parent-chat-context-status" class="text-[.68rem] muted text-right">Автопоиск</span></div><div class="context-grid mt-3"><select id="parent-chat-class" class="select"><option>Загрузка…</option></select><select id="parent-chat-subject" class="select"><option value="">Предмет</option></select><select id="parent-chat-book" class="select"><option value="">Учебник</option></select><select id="parent-chat-page" class="select"><option value="">Страница / параграф</option></select><button id="parent-chat-lock-context" class="btn-secondary text-sm">🔒 Закрепить Book Mode</button><button id="parent-chat-exit-context" class="btn-danger text-sm" hidden>Выйти из Book Mode</button></div><p class="mt-3 text-xs muted">Фильтры необязательны: тьютор распознаёт книгу, автора и тему из запроса.</p></div><div class="glass card"><h3 class="font-bold">Быстрые запросы</h3><div class="mt-3 grid gap-2"><button class="btn-secondary prompt-chip text-left">Объясни тему простыми словами</button><button class="btn-secondary prompt-chip text-left">Предложи практику на 15 минут</button></div></div></aside>
-</div></section>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;550;650;750;850&display=swap"
+    rel="stylesheet"
+  >
+  <link rel="stylesheet" href="/static/css/app.css?v=20260729-1">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-inner glass-strong">
+        <div class="flex items-center gap-3 px-2 mb-7">
+          <span class="brand-mark">E</span>
+          <div>
+            <p class="font-extrabold">EduAI</p>
+            <p class="text-xs muted">Родитель</p>
+          </div>
+        </div>
 
-<section id="task-builder" class="page-section"><div class="flex flex-wrap items-end justify-between gap-3 mb-4"><div><p class="text-sm font-bold text-violet-200">Конструктор</p><h2 class="text-2xl font-extrabold">Задания детям</h2><p class="mt-1 muted">Создайте вручную или доверьте черновик ИИ.</p></div><button id="new-task" class="btn-primary">+ Создать</button></div><div class="glass card"><div class="grid md:grid-cols-3 gap-4"><div><p class="text-2xl">①</p><p class="mt-2 font-bold">Выберите ребёнка</p><p class="mt-1 text-sm muted">Задание попадёт только в его кабинет.</p></div><div><p class="text-2xl">②</p><p class="mt-2 font-bold">Задайте тему</p><p class="mt-1 text-sm muted">ИИ использует материалы учебников.</p></div><div><p class="text-2xl">③</p><p class="mt-2 font-bold">Отправьте</p><p class="mt-1 text-sm muted">Статус сразу станет «создано».</p></div></div></div></section>
+        <nav class="grid gap-1">
+          <button class="nav-link active" data-section="overview">
+            <span>◎</span> Обзор детей
+          </button>
+          <button class="nav-link" data-section="assistant">
+            <span>✦</span> ИИ-помощник
+          </button>
+          <button class="nav-link" data-section="task-builder">
+            <span>✓</span> Задания
+          </button>
+          <button class="nav-link" data-section="reward-manager">
+            <span>◇</span> Награды
+          </button>
+        </nav>
 
-<section id="reward-manager" class="page-section"><div class="flex flex-wrap items-end justify-between gap-3 mb-4"><div><p class="text-sm font-bold text-amber-200">Мотивация</p><h2 class="text-2xl font-extrabold">Семейные награды</h2><p class="mt-1 muted">Создавайте понятные и достижимые цели.</p></div><button id="new-reward" class="btn-primary">+ Добавить награду</button></div><div id="parent-rewards" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-4"></div></section>
-</main></div>
+        <div class="mt-auto">
+          <a
+            href="/admin.html"
+            data-admin-only
+            hidden
+            class="btn-secondary w-full mb-3"
+          >
+            Перейти в Admin Panel
+          </a>
 
-<div id="task-modal" class="modal-backdrop"><div class="modal-panel glass-strong"><div class="flex justify-between gap-3"><div><p class="text-sm font-bold text-violet-200">Новое задание</p><h2 class="text-xl font-extrabold">Конструктор практики</h2></div><button class="icon-btn" data-close-modal="task-modal" aria-label="Закрыть">×</button></div><form id="task-form" class="grid gap-4 mt-5"><div class="field"><label for="task-student">Ребёнок</label><select id="task-student" class="select" required></select></div><div class="field"><label for="task-topic">Тема / предмет</label><input id="task-topic" class="input" maxlength="100" required placeholder="Например, сложение дробей"></div><div class="field"><label for="task-title">Название</label><input id="task-title" class="input" maxlength="200" required placeholder="Короткое название"></div><div class="field"><label for="task-description">Условие</label><textarea id="task-description" class="textarea" maxlength="4000" required></textarea></div><div class="field"><label for="task-answer">Эталонный ответ</label><input id="task-answer" class="input" maxlength="1000" required></div><div class="flex flex-col-reverse sm:flex-row justify-end gap-2"><button type="button" id="generate-task" class="btn-secondary">✦ Сгенерировать и отправить</button><button type="submit" class="btn-primary">Создать вручную</button></div></form></div></div>
-<div id="reward-modal" class="modal-backdrop"><div class="modal-panel glass-strong"><div class="flex justify-between"><h2 id="reward-modal-title" class="text-xl font-extrabold">Новая награда</h2><button class="icon-btn" data-close-modal="reward-modal">×</button></div><form id="reward-form" class="grid sm:grid-cols-2 gap-4 mt-5"><input id="reward-id" type="hidden"><div class="field sm:col-span-2"><label for="reward-name">Название</label><input id="reward-name" class="input" maxlength="256" required></div><div class="field sm:col-span-2"><label for="reward-description">Описание</label><textarea id="reward-description" class="textarea" maxlength="500"></textarea></div><div class="field"><label for="reward-cost">Стоимость</label><input id="reward-cost" class="input" type="number" min="1" required></div><div class="field"><label for="reward-category">Категория</label><select id="reward-category" class="select"><option value="other">Другое</option><option value="activity">Активность</option><option value="screen">Экранное время</option><option value="treat">Угощение</option></select></div><button class="btn-primary sm:col-span-2" type="submit">Сохранить награду</button></form></div></div>
-<div class="toast-stack" aria-live="polite"></div><script src="/static/js/app.js?v=20260728-1"></script><script src="/static/js/chat.js?v=20260728-1"></script><script src="/static/js/parent.js?v=20260728-1"></script></body></html>
+          <div class="rounded-2xl bg-white/[.04] p-3">
+            <p data-user-name class="truncate text-sm font-bold">Профиль</p>
+            <p class="mt-1 text-xs muted">Семейный кабинет</p>
+            <button data-logout class="btn-secondary mt-3 w-full text-sm">
+              Выйти
+            </button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="backdrop"></div>
+
+    <main class="main-area">
+      <header class="topbar glass mb-5">
+        <div class="flex items-center gap-3">
+          <button class="icon-btn menu-toggle lg:hidden" aria-label="Открыть меню">
+            ☰
+          </button>
+          <div>
+            <p class="text-xs font-bold uppercase tracking-[.16em] muted">
+              Семейное пространство
+            </p>
+            <h1 class="font-extrabold">Прогресс без давления</h1>
+          </div>
+        </div>
+
+        <div class="flex gap-2">
+          <button id="new-task-top" class="btn-primary hide-mobile">
+            + Новое задание
+          </button>
+          <button id="refresh-parent" class="icon-btn" aria-label="Обновить">
+            ↻
+          </button>
+        </div>
+      </header>
+
+      <section id="overview" class="page-section active">
+        <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
+          <div>
+            <p class="text-sm font-bold text-emerald-200">Сводка</p>
+            <h2 class="text-2xl font-extrabold">Дети и прогресс</h2>
+            <p class="mt-1 muted">Главные показатели без лишнего шума.</p>
+          </div>
+          <button id="new-task-overview" class="btn-primary">
+            + Поставить задачу
+          </button>
+        </div>
+
+        <div id="children-grid" class="grid md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+
+        <div class="glass card mt-4">
+          <h3 class="font-extrabold">Последние покупки наград</h3>
+          <div id="family-purchases" class="mt-3 grid gap-2"></div>
+        </div>
+      </section>
+
+      <section id="assistant" class="page-section">
+        <div class="grid xl:grid-cols-[17rem_minmax(0,1fr)_19rem] gap-4">
+          <aside class="glass card h-fit">
+            <button id="parent-new-chat" class="btn-primary w-full">
+              + Новый чат
+            </button>
+            <div id="parent-chat-threads" class="thread-list mt-3"></div>
+            <p class="mt-3 text-xs muted">
+              История доступна на любом устройстве. Название — до 35 символов.
+            </p>
+          </aside>
+
+          <article class="glass card min-w-0">
+            <div class="border-b border-white/10 pb-4">
+              <span class="badge">✦ Учебный ИИ-тьютор</span>
+              <h2 class="mt-3 text-xl font-extrabold">
+                Объясняйте темы и создавайте задания
+              </h2>
+              <p class="mt-1 text-sm muted">
+                Тьютор отвечает только на учебные вопросы и работает по выбранному учебнику или учебному вложению.
+              </p>
+            </div>
+
+            <div id="parent-chat-log" class="chat-log py-3">
+              <div class="message">
+                Здравствуйте! Выберите учебник или прикрепите учебный материал, и я помогу объяснить тему либо подготовить задание.
+              </div>
+            </div>
+
+            <div id="parent-chat-attachment-preview" class="attachment-preview" hidden>
+              <span id="parent-chat-attachment-name"></span>
+              <button
+                id="parent-chat-remove-attachment"
+                class="thread-action"
+                type="button"
+              >
+                ×
+              </button>
+            </div>
+
+            <form
+              id="parent-chat-form"
+              class="flex flex-col sm:flex-row gap-2 border-t border-white/10 pt-4"
+            >
+              <label class="icon-btn shrink-0 cursor-pointer">
+                📎
+                <input
+                  id="parent-chat-attachment"
+                  class="sr-only"
+                  type="file"
+                  accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.docx,.xlsx,.pptx,.odt,.ods,.odp,.epub,.djvu,.txt,.md,.csv,.json,.rtf,.html,.xml,.yaml,.yml"
+                >
+              </label>
+
+              <textarea
+                id="parent-chat-input"
+                class="input min-h-[3rem] max-h-32 resize-y flex-1"
+                maxlength="4000"
+                placeholder="Задайте учебный вопрос или приложите материал…"
+              ></textarea>
+
+              <button class="btn-primary sm:self-end" type="submit">
+                Отправить ↑
+              </button>
+            </form>
+          </article>
+
+          <aside class="grid content-start gap-4">
+            <div class="glass card">
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-bold">Контекст</h3>
+                <span
+                  id="parent-chat-context-status"
+                  class="text-[.68rem] muted text-right"
+                >
+                  Автопоиск
+                </span>
+              </div>
+
+              <div class="context-grid mt-3">
+                <select id="parent-chat-class" class="select">
+                  <option>Загрузка…</option>
+                </select>
+                <select id="parent-chat-subject" class="select">
+                  <option value="">Предмет</option>
+                </select>
+                <select id="parent-chat-book" class="select">
+                  <option value="">Учебник</option>
+                </select>
+                <select id="parent-chat-page" class="select">
+                  <option value="">Страница / параграф</option>
+                </select>
+
+                <button id="parent-chat-lock-context" class="btn-secondary text-sm">
+                  🔒 Закрепить Book Mode
+                </button>
+                <button
+                  id="parent-chat-exit-context"
+                  class="btn-danger text-sm"
+                  hidden
+                >
+                  Выйти из Book Mode
+                </button>
+              </div>
+
+              <p class="mt-3 text-xs muted">
+                Для точного ответа выберите учебник. В Book Mode тьютор не выходит за его содержание.
+              </p>
+            </div>
+
+            <div class="glass card">
+              <h3 class="font-bold">Быстрые запросы</h3>
+              <div class="mt-3 grid gap-2">
+                <button class="btn-secondary prompt-chip text-left">
+                  Объясни выбранную тему простыми словами
+                </button>
+                <button class="btn-secondary prompt-chip text-left">
+                  Предложи учебную практику на 15 минут
+                </button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section id="task-builder" class="page-section">
+        <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
+          <div>
+            <p class="text-sm font-bold text-violet-200">Конструктор</p>
+            <h2 class="text-2xl font-extrabold">Задания детям</h2>
+            <p class="mt-1 muted">
+              Создайте задание вручную или попросите ИИ подготовить его по учебнику и вложениям.
+            </p>
+          </div>
+          <button id="new-task" class="btn-primary">+ Создать</button>
+        </div>
+
+        <div class="glass card">
+          <div class="grid md:grid-cols-3 gap-4">
+            <div>
+              <p class="text-2xl">①</p>
+              <p class="mt-2 font-bold">Выберите ребёнка</p>
+              <p class="mt-1 text-sm muted">
+                Задание попадёт только в его кабинет.
+              </p>
+            </div>
+            <div>
+              <p class="text-2xl">②</p>
+              <p class="mt-2 font-bold">Выберите учебник</p>
+              <p class="mt-1 text-sm muted">
+                ИИ будет работать только по выбранному материалу.
+              </p>
+            </div>
+            <div>
+              <p class="text-2xl">③</p>
+              <p class="mt-2 font-bold">Добавьте файлы</p>
+              <p class="mt-1 text-sm muted">
+                Отдельно решите, увидит ли их ученик.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-5">
+          <div class="mb-3">
+            <h3 class="text-xl font-extrabold">Отправленные задания</h3>
+            <p class="mt-1 text-sm muted">
+              История заданий и прикреплённых материалов.
+            </p>
+          </div>
+          <div id="sent-tasks-list" class="grid md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+        </div>
+      </section>
+
+      <section id="reward-manager" class="page-section">
+        <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
+          <div>
+            <p class="text-sm font-bold text-amber-200">Мотивация</p>
+            <h2 class="text-2xl font-extrabold">Семейные награды</h2>
+            <p class="mt-1 muted">Создавайте понятные и достижимые цели.</p>
+          </div>
+          <button id="new-reward" class="btn-primary">
+            + Добавить награду
+          </button>
+        </div>
+
+        <div id="parent-rewards" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="task-modal" class="modal-backdrop">
+    <div class="modal-panel glass-strong max-h-[92vh] overflow-y-auto">
+      <div class="flex justify-between gap-3">
+        <div>
+          <p class="text-sm font-bold text-violet-200">Новое задание</p>
+          <h2 class="text-xl font-extrabold">Конструктор практики</h2>
+        </div>
+        <button
+          class="icon-btn"
+          data-close-modal="task-modal"
+          aria-label="Закрыть"
+          type="button"
+        >
+          ×
+        </button>
+      </div>
+
+      <form id="task-form" class="grid gap-4 mt-5">
+        <div class="field">
+          <label for="task-student">Ребёнок</label>
+          <select id="task-student" class="select" required></select>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div class="field">
+            <label for="task-class">Класс</label>
+            <select id="task-class" class="select">
+              <option value="">Выберите класс</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="task-subject">Предмет</label>
+            <select id="task-subject" class="select">
+              <option value="">Сначала выберите класс</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="task-book">Учебник</label>
+          <select id="task-book" class="select">
+            <option value="">Сначала выберите предмет</option>
+          </select>
+          <p class="mt-1 text-xs muted">
+            Для генерации задания с помощью ИИ учебник обязателен.
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="task-page">Страница или параграф</label>
+          <select id="task-page" class="select">
+            <option value="">Страница или параграф</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="task-topic">Тема задания</label>
+          <input
+            id="task-topic"
+            class="input"
+            maxlength="255"
+            required
+            placeholder="Например, сложение дробей"
+          >
+        </div>
+
+        <div class="field">
+          <label for="task-comment">Комментарий и инструкции для ИИ</label>
+          <textarea
+            id="task-comment"
+            class="textarea"
+            maxlength="4000"
+            placeholder="Например: составь задание средней сложности и используй материал прикреплённого документа"
+          ></textarea>
+        </div>
+
+        <div class="field">
+          <label for="task-attachments">Учебные материалы</label>
+          <input
+            id="task-attachments"
+            class="input"
+            type="file"
+            multiple
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,.png,.jpg,.jpeg,.webp,.gif,.odt,.ods,.odp,.epub,.rtf,.html,.xml"
+          >
+          <p class="mt-1 text-xs muted">
+            Можно выбрать до 10 файлов. После выбора они сразу загружаются на сервер.
+          </p>
+        </div>
+
+        <div id="task-attachments-list" class="grid gap-2">
+          <p class="text-xs muted">Файлы не прикреплены.</p>
+        </div>
+
+        <label class="flex items-center gap-3 rounded-xl bg-white/[.04] p-3">
+          <input
+            id="task-send-files"
+            type="checkbox"
+            class="h-4 w-4"
+          >
+          <span class="text-sm">
+            Отправить прикреплённые файлы ученику
+          </span>
+        </label>
+
+        <div class="border-t border-white/10 pt-4">
+          <p class="mb-3 text-sm font-bold">
+            Поля для ручного задания
+          </p>
+
+          <div class="grid gap-4">
+            <div class="field">
+              <label for="task-title">Название</label>
+              <input
+                id="task-title"
+                class="input"
+                maxlength="255"
+                required
+                placeholder="Короткое название"
+              >
+            </div>
+
+            <div class="field">
+              <label for="task-description">Условие</label>
+              <textarea
+                id="task-description"
+                class="textarea"
+                maxlength="8000"
+                required
+                placeholder="Напишите условие задания"
+              ></textarea>
+            </div>
+
+            <div class="field">
+              <label for="task-answer">Эталонный ответ</label>
+              <textarea
+                id="task-answer"
+                class="textarea"
+                maxlength="4000"
+                required
+                placeholder="Ответ для автоматической проверки"
+              ></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex flex-col-reverse sm:flex-row justify-end gap-2">
+          <button type="button" id="generate-task" class="btn-secondary">
+            ✦ Сгенерировать и отправить
+          </button>
+          <button type="submit" class="btn-primary">
+            Создать вручную
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="reward-modal" class="modal-backdrop">
+    <div class="modal-panel glass-strong">
+      <div class="flex justify-between">
+        <h2 id="reward-modal-title" class="text-xl font-extrabold">
+          Новая награда
+        </h2>
+        <button
+          class="icon-btn"
+          data-close-modal="reward-modal"
+          type="button"
+        >
+          ×
+        </button>
+      </div>
+
+      <form id="reward-form" class="grid sm:grid-cols-2 gap-4 mt-5">
+        <input id="reward-id" type="hidden">
+
+        <div class="field sm:col-span-2">
+          <label for="reward-name">Название</label>
+          <input id="reward-name" class="input" maxlength="256" required>
+        </div>
+
+        <div class="field sm:col-span-2">
+          <label for="reward-description">Описание</label>
+          <textarea
+            id="reward-description"
+            class="textarea"
+            maxlength="500"
+          ></textarea>
+        </div>
+
+        <div class="field">
+          <label for="reward-cost">Стоимость</label>
+          <input
+            id="reward-cost"
+            class="input"
+            type="number"
+            min="1"
+            required
+          >
+        </div>
+
+        <div class="field">
+          <label for="reward-category">Категория</label>
+          <select id="reward-category" class="select">
+            <option value="other">Другое</option>
+            <option value="activity">Активность</option>
+            <option value="screen">Экранное время</option>
+            <option value="treat">Угощение</option>
+          </select>
+        </div>
+
+        <button class="btn-primary sm:col-span-2" type="submit">
+          Сохранить награду
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast-stack" aria-live="polite"></div>
+
+  <script src="/static/js/app.js?v=20260729-1"></script>
+  <script src="/static/js/chat.js?v=20260729-1"></script>
+  <script src="/static/js/parent.js?v=20260729-1"></script>
+</body>
+</html>
