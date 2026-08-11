@@ -217,6 +217,26 @@ document.addEventListener('DOMContentLoaded', async () => {
                   ${EduAI.markdown(questions.question_text || '')}
                 </div>
 
+                ${task.parent_comment ? `
+                  <div class="mt-4 rounded-2xl border border-emerald-300/15 bg-emerald-300/[.06] p-3">
+                    <div class="flex items-center justify-between gap-2">
+                      <p class="text-xs font-extrabold uppercase tracking-[.12em] text-emerald-200">💬 Комментарий к заданию</p>
+                      <span class="text-[.65rem] muted">Виден ребёнку</span>
+                    </div>
+                    <p class="mt-2 text-sm text-slate-200 whitespace-pre-wrap">${EduAI.escapeHtml(task.parent_comment)}</p>
+                  </div>
+                ` : ''}
+
+                ${task.ai_instructions ? `
+                  <div class="mt-3 rounded-2xl border border-violet-300/15 bg-violet-300/[.06] p-3">
+                    <div class="flex items-center justify-between gap-2">
+                      <p class="text-xs font-extrabold uppercase tracking-[.12em] text-violet-200">🤖 Инструкции для ИИ</p>
+                      <span class="text-[.65rem] muted">Только для Родителя</span>
+                    </div>
+                    <p class="mt-2 text-sm text-slate-200 whitespace-pre-wrap">${EduAI.escapeHtml(task.ai_instructions)}</p>
+                  </div>
+                ` : ''}
+
                 ${attachments.length ? `
                   <div class="mt-4 grid gap-2">
                     ${attachments.map(file => `
@@ -454,6 +474,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           <div class="flex flex-wrap items-center justify-between gap-2"><span class="badge">${EduAI.escapeHtml(taskStatusLabel(task.status))}</span><span class="text-xs muted">${EduAI.formatDate(task.created_at)}</span></div>
           <h3 class="mt-3 font-extrabold">${EduAI.escapeHtml(task.title || questions.title || `Задание №${task.task_id}`)}</h3>
           <p class="mt-1 text-sm muted">${EduAI.escapeHtml(task.subject || 'Без предмета')}${task.score != null ? ` · Балл: ${task.score}` : ''}</p>
+          ${task.parent_comment ? `<div class="mt-3 rounded-xl bg-emerald-300/[.06] p-3"><p class="text-xs font-bold text-emerald-200">💬 Комментарий к заданию · виден ребёнку</p><p class="mt-1 text-sm text-slate-200 whitespace-pre-wrap">${EduAI.escapeHtml(task.parent_comment)}</p></div>` : ''}
+          ${task.ai_instructions ? `<div class="mt-2 rounded-xl bg-violet-300/[.06] p-3"><p class="text-xs font-bold text-violet-200">🤖 Инструкции для ИИ · только для Родителя</p><p class="mt-1 text-sm text-slate-200 whitespace-pre-wrap">${EduAI.escapeHtml(task.ai_instructions)}</p></div>` : ''}
           ${task.cancellation_reason ? `<p class="mt-2 text-sm text-rose-200">Причина отмены: ${EduAI.escapeHtml(task.cancellation_reason)}</p>` : ''}
         </article>`;
       }).join('') : empty('История заданий пуста.');
@@ -587,7 +609,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         title: $('task-title').value.trim().replaceAll('$', ''),
         description: $('task-description').value.trim().replaceAll('$', ''),
         reference_answer: $('task-answer').value.trim().replaceAll('$', ''),
-        parent_comment: $('task-comment').value.trim().replaceAll('$', ''),
+        parent_comment: $('task-parent-comment').value.trim().replaceAll('$', ''),
         book_id: $('task-book').value
           ? Number($('task-book').value)
           : null,
@@ -644,7 +666,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         body: JSON.stringify({
           student_ids: studentIds,
           topic,
-          instructions: $('task-comment').value.trim().replaceAll('$', ''),
+          parent_comment: $('task-parent-comment').value.trim().replaceAll('$', ''),
+          ai_instructions: $('task-ai-instructions').value.trim().replaceAll('$', ''),
           book_id: bookId,
           page_id: $('task-page').value
             ? Number($('task-page').value)

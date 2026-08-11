@@ -375,14 +375,38 @@
           >
         </div>
 
-        <div class="field">
-          <label for="task-comment">Комментарий и инструкции для ИИ</label>
-          <textarea
-            id="task-comment"
-            class="textarea"
-            maxlength="4000"
-            placeholder="Например: составь задание средней сложности и используй материал прикреплённого документа"
-          ></textarea>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="field rounded-2xl border border-emerald-300/15 bg-emerald-300/[.04] p-4">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <label for="task-parent-comment" class="font-extrabold">💬 Комментарий к заданию</label>
+              <span class="badge">Виден ребёнку</span>
+            </div>
+            <textarea
+              id="task-parent-comment"
+              class="textarea mt-2"
+              maxlength="4000"
+              placeholder="Например: «Постарайся решить самостоятельно. Удачи!»"
+            ></textarea>
+            <p class="mt-2 text-xs muted">
+              Этот комментарий ребёнок увидит вместе с заданием.
+            </p>
+          </div>
+
+          <div class="field rounded-2xl border border-violet-300/15 bg-violet-300/[.04] p-4">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <label for="task-ai-instructions" class="font-extrabold">🤖 Инструкции для ИИ</label>
+              <span class="badge">Только для ИИ</span>
+            </div>
+            <textarea
+              id="task-ai-instructions"
+              class="textarea mt-2"
+              maxlength="4000"
+              placeholder="Например: «Составь 10 заданий средней сложности и добавь два более сложных вопроса в конце»"
+            ></textarea>
+            <p class="mt-2 text-xs muted">
+              Эти инструкции использует только ИИ-тьютор при генерации. Ребёнку они не отправляются.
+            </p>
+          </div>
         </div>
 
         <div class="field">
@@ -546,6 +570,6 @@
 
   <script src="/static/js/app.js?v=20260729-1"></script>
   <script src="/static/js/chat.js?v=20260729-2"></script>
-  <script src="/static/js/parent.js?v=20260729-2"></script>
+  <script src="/static/js/parent.js?v=20260811-3"></script>
 </body>
 </html>
