@@ -1,6 +1,5 @@
 import json
 from typing import Optional
-from aiohttp import payload
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from openai import AsyncOpenAI
@@ -9,6 +8,8 @@ from database import db
 from config import settings
 from api.schemas.tasks import TaskGenerationResponse, SubmitAnswerRequest, SubmitAnswerResponse
 from logger_config import logger
+from services.response_formatter import MATH_FORMATTING_RULES
+from services.context_resolver import resolve_book_context
 
 router = APIRouter(prefix="/api/tasks", tags=["Tasks"])
 
@@ -31,19 +32,26 @@ class GenerateTaskRequest(BaseModel):
     topic: Optional[str] = Field(default=None, max_length=300)
     instructions: Optional[str] = Field(default=None, max_length=4000)
 
+
 @router.get("/generate/{tg_id}", response_model=TaskGenerationResponse)
-async def generate_task(tg_id: int):
+async def generate_task_legacy(tg_id: int):
+    """Backward-compatible quest generation used by the Telegram client/tests.
+
+    This endpoint intentionally remains GET because existing clients use it. New
+    parent-directed generation with an explicit book/topic uses the POST endpoint
+    below and the whole-book context resolver.
+    """
     async with db.pool.acquire() as conn:
         student = await conn.fetchrow(
-            "SELECT parent_id FROM users WHERE tg_id = $1 AND role = 'student'", 
-            tg_id
+            "SELECT parent_id FROM users WHERE tg_id = $1 AND role = 'student'",
+            tg_id,
         )
         if not student:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Ученик с таким Telegram ID не найден"
+                detail="Ученик с таким Telegram ID не найден",
             )
-        
+
         page = await conn.fetchrow(
             """
             SELECT
@@ -57,19 +65,112 @@ async def generate_task(tg_id: int):
                 b.book_program,
                 b.book_class,
                 b.book_author
-            FROM book b
-            LEFT JOIN page p
-                ON p.book_id = b.book_id
-            AND ($2::INTEGER IS NULL OR p.page_id = $2)
-            WHERE b.book_id = $1
-            ORDER BY p.page_number NULLS LAST
+            FROM page p
+            JOIN book b ON b.book_id = p.book_id
+            WHERE COALESCE(NULLIF(BTRIM(p.page_markdown), ''), NULLIF(BTRIM(p.page_text), '')) IS NOT NULL
+            ORDER BY random()
             LIMIT 1
-            """,
-            payload.book_id,
-            payload.page_id,
+            """
         )
         if not page:
             raise HTTPException(status_code=404, detail="База знаний пуста.")
+
+    page_content = page.get("page_markdown") or page.get("page_text") or ""
+    try:
+        response = await openai_client.beta.chat.completions.parse(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You create exactly one school-level educational task for EduAI. "
+                        "Use only the supplied textbook material. Return the task in Russian. "
+                        "Use canonical Markdown + LaTeX for mathematical notation.\n\n"
+                        + MATH_FORMATTING_RULES
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Textbook: {page.get('book_title', '')} ({page.get('book_program', '')})\n"
+                        f"Page content:\n{page_content}"
+                    ),
+                },
+            ],
+            response_format=OpenAITaskGeneration,
+        )
+        ai_task = response.choices[0].message.parsed
+
+        topic_context = {
+            "source": "legacy_random_page_generation",
+            "book_id": page.get("book_id"),
+            "book_title": page.get("book_title"),
+            "book_class": page.get("book_class"),
+            "book_program": page.get("book_program"),
+            "context_mode": "single_page",
+            "page_id": page.get("page_id"),
+            "page_title": page.get("page_title"),
+            "subject": page.get("book_program"),
+        }
+        questions_json = {
+            "title": ai_task.title,
+            "question_text": ai_task.description,
+            "reference_answer": ai_task.correct_answer,
+        }
+
+        async with db.pool.acquire() as conn:
+            task_id = await conn.fetchval(
+                """
+                INSERT INTO tasks_history
+                    (student_id, parent_id, topic_context, questions_json, score, status)
+                VALUES ($1, $2, $3, $4, $5, 'created'::task_status)
+                RETURNING task_id
+                """,
+                tg_id,
+                student["parent_id"],
+                json.dumps(topic_context),
+                json.dumps(questions_json),
+                0,
+            )
+
+        return TaskGenerationResponse(
+            task_id=task_id,
+            title=ai_task.title,
+            description=ai_task.description,
+            reward_coins=15,
+            reward_xp=50,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Ошибка ИИ при legacy-генерации задачи: %s", exc)
+        raise HTTPException(status_code=500, detail="Ошибка при создании квеста")
+
+
+@router.post("/generate/{tg_id}", response_model=TaskGenerationResponse)
+async def generate_task(tg_id: int, payload: GenerateTaskRequest):
+    async with db.pool.acquire() as conn:
+        student = await conn.fetchrow(
+            "SELECT parent_id FROM users WHERE tg_id = $1 AND role = 'student'", 
+            tg_id
+        )
+        if not student:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Ученик с таким Telegram ID не найден"
+            )
+        
+        context = await resolve_book_context(
+            conn, book_id=payload.book_id, page_id=payload.page_id,
+            query=f"{payload.topic or ''}\n{payload.instructions or ''}",
+            source="legacy_task_generation",
+        )
+        if not context:
+            raise HTTPException(status_code=404, detail="База знаний пуста.")
+        if payload.page_id is not None and context.page_id is None:
+            raise HTTPException(status_code=404, detail="Страница не относится к выбранному учебнику")
+        if not context.content:
+            raise HTTPException(status_code=422, detail="Тема не найдена в выбранном учебнике. Измените тему, выберите другую страницу или учебник либо прикрепите дополнительные материалы.")
 
     try:
         response = await openai_client.beta.chat.completions.parse(
@@ -84,12 +185,13 @@ async def generate_task(tg_id: int):
                         "которых нет в контексте. "
                         "Учитывай класс ученика, инструкции родителя и прикреплённые материалы. "
                         "Создай ровно одно задание на русском языке. "
-                        "Не используй LaTeX и символы $."
+                        "Use canonical Markdown + LaTeX for mathematical notation.\n\n"
+                        + MATH_FORMATTING_RULES
                     )
                 },
                 {
                     "role": "user",
-                    "content": f"Textbook: {page['book_title']} ({page['book_program']})\nPage Content Context:\n{page['page_markdown']}"
+                    "content": (f"Textbook: {context.book_title} ({context.book_program})\n" f"Context mode: {context.context_mode}\n" f"Topic: {payload.topic or ''}\n" f"Parent instructions: {payload.instructions or ''}\n" f"Textbook context:\n{context.content}")
                 }
             ],
             response_format=OpenAITaskGeneration
@@ -98,10 +200,12 @@ async def generate_task(tg_id: int):
         ai_task = response.choices[0].message.parsed
         
         topic_context = {
-            "page_id": page["page_id"],
-            "book_title": page["book_title"],
-            "page_title": page["page_title"],
-            "subject": page["book_program"]
+            "source": "legacy_task_generation", "topic": payload.topic,
+            "book_id": context.book_id, "book_title": context.book_title,
+            "book_class": context.book_class, "book_program": context.book_program,
+            "context_mode": context.context_mode, "page_id": context.page_id,
+            "page_title": context.page_title, "used_pages": context.used_pages,
+            "subject": context.book_program,
         }
         
         questions_json = {
@@ -166,7 +270,8 @@ async def submit_task_answer(payload: SubmitAnswerRequest):
                         "1. If the student's answer matches the reference answer in meaning or is mathematically equivalent "
                         "(e.g., '0.5' and '1/2', '5' and '5 cm', 'x=3' and '3'), set 'is_correct' to True. Otherwise, set it to False.\n"
                         "2. Provide a friendly, polite, and constructive explanation ('explanation') in Russian tailored for a child.\n"
-                        "3. Do not use any LaTeX symbols ('$') in your explanation. Use clean text and Unicode characters if necessary."
+                        "3. Use canonical Markdown + LaTeX for mathematical notation.\n\n"
+                        + MATH_FORMATTING_RULES
                     )
                 },
                 {

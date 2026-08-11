@@ -10,6 +10,7 @@ from database import db
 from services.context_resolver import ResolvedContext, load_locked_context, resolve_context
 from services.file_parser import ParsedAttachment
 from services.scope_guard import validate_request_scope
+from services.response_formatter import MATH_FORMATTING_RULES, canonicalize_message
 
 
 openai_client = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
@@ -23,6 +24,13 @@ def _session_uuid(session_id: str) -> uuid.UUID:
 
 
 def clean_ai_text(value: Optional[str]) -> str:
+    """Return a plain-text fallback for prompts and legacy clients.
+
+    Canonical assistant messages are preserved separately with
+    ``canonicalize_message`` before they are stored in ``chat_messages``.
+    This helper intentionally keeps the historical plain-text contract used
+    by tests and non-LaTeX contexts.
+    """
     text = str(value or "").replace("$", "")
     text = text.replace("\\(", "").replace("\\)", "")
     text = text.replace("\\[", "").replace("\\]", "")
@@ -36,7 +44,7 @@ def book_mode_footer(context: ResolvedContext) -> str:
     return (
         f"\n\n---\n📘 Текущий учебный контекст: «{context.label}». "
         "ИИ-тьютор отвечает только по материалу выбранного учебника. "
-        "Чтобы изучать другой предмет, выберите соответствующий учебник."
+        "Чтобы выйти из режима учебника, используйте /exit_book."
     )
 
 
@@ -283,15 +291,17 @@ def _system_prompt(
     context_block = ""
 
     if context:
+        used_pages = ", ".join(str(item.get("page_number") or "—") for item in context.used_pages) or "не выбраны"
         context_block = (
             "\n\n=== ЕДИНСТВЕННЫЙ РАЗРЕШЁННЫЙ УЧЕБНЫЙ КОНТЕКСТ ===\n"
             f"Учебник: {context.book_title}\n"
             f"Автор: {context.book_author}\n"
             f"Предмет/программа: {context.book_program}\n"
             f"Класс: {context.book_class}\n"
+            f"Режим контекста: {context.context_mode}\n"
             f"Страница: {context.page_number or 'не выбрана'}\n"
-            f"Тема страницы: {context.page_title or 'не указана'}\n"
-            f"Параграф: {context.page_paragraph or 'не указан'}\n"
+            f"Использованные страницы: {used_pages}\n"
+
             f"Материал учебника:\n{clean_ai_text(context.content)}\n"
             "=== КОНЕЦ УЧЕБНОГО КОНТЕКСТА ==="
         )
@@ -338,9 +348,9 @@ def _system_prompt(
 Не давай частичный ответ на запрещённый вопрос.
 
 Отвечай по-русски.
-Используй обычный текст и Markdown.
-Не используй символы $, LaTeX и служебную математическую разметку.
-"""
+Use Markdown for structure and follow the mathematical formatting rules below.
+
+""" + MATH_FORMATTING_RULES
 
     if role == "student":
         role_rules = """
@@ -509,13 +519,19 @@ async def respond(
         if not database_context:
             web_context = await search_web_for_education(clean_text)
 
-    scope_result = await validate_request_scope(
-        message_text=clean_text,
-        context=context,
-        attachment_text=attachment_text,
-    )
+    # Scope classification is an auxiliary guard and must not make the tutor
+    # unavailable when its own model call fails (network/auth/provider outage).
+    # The primary tutor request still uses the educational system prompt.
+    try:
+        scope_result = await validate_request_scope(
+            message_text=clean_text,
+            context=context,
+            attachment_text=attachment_text,
+        )
+    except Exception:
+        scope_result = None
 
-    if not scope_result.allowed:
+    if scope_result is not None and not scope_result.allowed:
         refusal = scope_result.refusal_message or (
             "Этот вопрос не относится к образовательной области EduAI."
         )
@@ -579,7 +595,7 @@ async def respond(
         ),
         timeout=120,
     )
-    reply = clean_ai_text(response.choices[0].message.content)
+    reply = canonicalize_message(response.choices[0].message.content)
     if locked_context:
         reply += book_mode_footer(locked_context)
 
