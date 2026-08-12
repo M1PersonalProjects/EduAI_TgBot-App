@@ -1,6 +1,7 @@
 (function () {
   const SESSION_KEY = 'eduai.session.v1';
   const ROLE_PATH = { student: '/student.html', parent: '/parent.html', admin: '/admin.html' };
+  const MATH_RENDERER_VERSION = '20260812-5';
   let katexPromise = null;
 
   function readSession() { try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch (_) { localStorage.removeItem(SESSION_KEY); return null; } }
@@ -297,6 +298,7 @@
   window.EduAI = {
     api, guard, readSession, saveSession, clearSession, escapeHtml,
     markdown, renderMath, toast, formatDate, setBusy, openModal, closeModal,
-    logout, startThinking, initShell, ROLE_PATH
+    logout, startThinking, initShell, ROLE_PATH, MATH_RENDERER_VERSION,
+    mathDebug: { normalizeLatexTransport, latexFallback }
   };
 })();
