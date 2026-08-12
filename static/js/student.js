@@ -186,7 +186,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 ${task.student_answers_json?.verification_feedback ? `
                   <p class="mt-3 rounded-xl bg-white/[.04] p-3 text-sm muted">
-                    ${EduAI.escapeHtml(task.student_answers_json.verification_feedback)}
+                    ${EduAI.markdown(task.student_answers_json.verification_feedback)}
                   </p>
                 ` : ''}
 

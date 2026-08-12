@@ -12,7 +12,7 @@ from api.security import get_current_user, require_roles
 from config import settings
 from database import db
 from logger_config import logger
-from services.response_formatter import MATH_FORMATTING_RULES
+from services.response_formatter import MATH_FORMATTING_RULES, canonicalize_message
 from services.context_resolver import resolve_book_context
 from services.tutor import clean_ai_text, ensure_session, respond as tutor_respond
 from services.attachment_storage import (
@@ -509,7 +509,8 @@ async def submit_student_task(task_id: int, payload: TaskAnswerRequest, user=Dep
 
     answer_data = {
         "provided_answer": without_latex(payload.student_answer),
-        "verification_feedback": without_latex(result.explanation),
+        # Keep AI feedback canonical so WebApp can render its mathematics.
+        "verification_feedback": canonicalize_message(result.explanation),
         "is_correct": result.is_correct,
     }
     async with db.pool.acquire() as conn:
@@ -558,7 +559,7 @@ async def submit_student_task(task_id: int, payload: TaskAnswerRequest, user=Dep
                 user["tg_id"],
                 without_latex(payload.student_answer),
                 attempt_number,
-                without_latex(result.explanation),
+                canonicalize_message(result.explanation),
                 50 if result.is_correct else 0,
                 submission_status,
             )
@@ -777,8 +778,9 @@ async def create_parent_task(
             }
             questions_json = {
                 "title": without_latex(payload.title),
-                "question_text": without_latex(payload.description),
-                "reference_answer": without_latex(payload.reference_answer),
+                # Preserve canonical Markdown + LaTeX. Presentation belongs to clients.
+                "question_text": canonicalize_message(payload.description),
+                "reference_answer": canonicalize_message(payload.reference_answer),
             }
 
             assignment_batch_id = uuid.uuid4()
@@ -966,8 +968,8 @@ async def generate_parent_task(
     manual = ParentTaskRequest(
         student_ids=payload.student_ids,
         title=without_latex(generated.title),
-        description=without_latex(generated.description),
-        reference_answer=without_latex(generated.correct_answer),
+        description=canonicalize_message(generated.description),
+        reference_answer=canonicalize_message(generated.correct_answer),
         subject=context.book_program,
         topic=without_latex(payload.topic),
         parent_comment=without_latex(payload.parent_comment),
