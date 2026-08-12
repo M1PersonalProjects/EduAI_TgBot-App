@@ -1,4 +1,3 @@
-import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -7,7 +6,7 @@ from pydantic import BaseModel, Field
 from api.security import get_current_user
 from database import db
 from logger_config import logger
-from services.file_parser import AttachmentError, parse_attachment
+from services.attachment_storage import get_attachment, load_attachment_for_ai, save_upload
 from services.tutor import (
     create_session,
     delete_session,
@@ -20,9 +19,7 @@ from services.tutor import (
     respond,
 )
 
-
 router = APIRouter(prefix="/api/v1/tutor", tags=["AI Tutor v1"])
-
 ALLOWED_TUTOR_ROLES = {"student", "parent"}
 
 
@@ -32,6 +29,7 @@ def ensure_tutor_role(user) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="ИИ-тьютор доступен только ученикам и родителям",
         )
+
 
 class SessionCreate(BaseModel):
     title: str = Field(default="Новый чат", max_length=35)
@@ -101,6 +99,7 @@ async def set_session_context(
     payload: ContextSelection,
     user=Depends(get_current_user),
 ):
+    ensure_tutor_role(user)
     try:
         context = await lock_session_context(
             user["tg_id"], session_id, payload.model_dump(exclude_none=True)
@@ -112,6 +111,7 @@ async def set_session_context(
 
 @router.delete("/sessions/{session_id}/context")
 async def clear_session_context(session_id: str, user=Depends(get_current_user)):
+    ensure_tutor_role(user)
     try:
         return await exit_book_mode(user["tg_id"], session_id)
     except (LookupError, ValueError) as exc:
@@ -133,26 +133,38 @@ async def send_message(
     user=Depends(get_current_user),
 ):
     ensure_tutor_role(user)
-
     if not message_text.strip() and attachment is None:
         raise HTTPException(status_code=422, detail="Введите сообщение или добавьте вложение")
+
     logger.info(
         "Web tutor request: user=%s session=%s attachment=%s",
         user["tg_id"],
         session_id,
         attachment.filename if attachment else "none",
     )
+
+    # Validate ownership before persisting a potentially large file.
+    try:
+        async with db.pool.acquire() as conn:
+            await ensure_session(conn, user["tg_id"], session_id)
+    except (LookupError, ValueError) as exc:
+        raise _not_found(exc)
+
     parsed_attachment = None
+    stored_attachment_id = None
     if attachment is not None:
         try:
-            data = await attachment.read()
-            parsed_attachment = await asyncio.to_thread(
-                parse_attachment, data, attachment.filename or "attachment", attachment.content_type or ""
-            )
-        except AttachmentError as exc:
-            raise HTTPException(status_code=415, detail=str(exc))
+            # Store once in the existing attachment infrastructure. The stored
+            # original can later be reopened by the same chat session.
+            stored = await save_upload(upload=attachment, owner_id=user["tg_id"])
+            stored_attachment_id = stored.attachment_id
+            stored_row = await get_attachment(stored.attachment_id)
+            parsed_attachment = await load_attachment_for_ai(stored_row)
+            parsed_attachment.attachment_id = stored.attachment_id
+        except HTTPException:
+            raise
         except Exception as exc:
-            logger.exception("Attachment parsing failed: %s", exc)
+            logger.exception("Attachment persistence/parsing failed: %s", exc)
             raise HTTPException(status_code=422, detail="Не удалось обработать вложение")
 
     manual_context = {
@@ -170,6 +182,7 @@ async def send_message(
             session_id=session_id,
             message_text=message_text,
             attachment=parsed_attachment,
+            attachment_id=stored_attachment_id,
             manual_context=manual_context,
             lock_selected_context=lock_context,
         )

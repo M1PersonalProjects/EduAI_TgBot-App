@@ -11,6 +11,16 @@ from services.context_resolver import ResolvedContext, load_locked_context, reso
 from services.file_parser import ParsedAttachment
 from services.scope_guard import validate_request_scope
 from services.response_formatter import MATH_FORMATTING_RULES, canonicalize_message
+from services.chat_memory import (
+    build_attachment_context,
+    build_memory_summary,
+    load_context_messages,
+    load_session_state,
+    message_attachments_payload,
+    persist_session_state,
+    select_relevant_attachments,
+    update_state_dict,
+)
 
 
 openai_client = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
@@ -21,6 +31,19 @@ def _session_uuid(session_id: str) -> uuid.UUID:
         return uuid.UUID(str(session_id))
     except (TypeError, ValueError, AttributeError) as exc:
         raise LookupError("Некорректный идентификатор чата") from exc
+
+
+def _session_field(session: Any, key: str, default: Any = None) -> Any:
+    """Read a concrete value without calling AsyncMock.get() in tests."""
+    try:
+        value = session[key]
+    except (KeyError, TypeError, AttributeError):
+        return default
+    # Real asyncpg values are primitives/UUIDs. Mock placeholders are not
+    # meaningful application state and should behave like a missing field.
+    if isinstance(value, (str, int, float, bool, uuid.UUID)) or value is None:
+        return value
+    return default
 
 
 def clean_ai_text(value: Optional[str]) -> str:
@@ -167,13 +190,23 @@ async def get_messages(user_id: int, session_id: str) -> List[Dict[str, Any]]:
         rows = await conn.fetch(
             """
             SELECT message_id, sender, message_text, attachment_name, attachment_type, created_at
-            FROM chat_messages WHERE user_id = $1 AND session_id = $2
-            ORDER BY created_at ASC LIMIT 500
+            FROM chat_messages
+            WHERE user_id = $1 AND session_id = $2
+            ORDER BY created_at ASC, message_id ASC
+            LIMIT 500
             """,
             user_id,
             session["session_id"],
         )
-    return [dict(row) for row in rows]
+        attachments = await message_attachments_payload(
+            conn, user_id, [row["message_id"] for row in rows]
+        )
+    result = []
+    for row in rows:
+        item = dict(row)
+        item["attachments"] = attachments.get(row["message_id"], [])
+        result.append(item)
+    return result
 
 
 async def lock_context(
@@ -287,6 +320,7 @@ def _system_prompt(
     attachment_text: str = "",
     database_context: str = "",
     web_context: str = "",
+    session_memory: str = "",
 ) -> str:
     context_block = ""
 
@@ -313,12 +347,37 @@ def _system_prompt(
         )
 
     attachment_block = ""
-
     if attachment_text:
         attachment_block = (
-            "\n\n=== МАТЕРИАЛ ПРИКРЕПЛЁННОГО ФАЙЛА ===\n"
-            f"{clean_ai_text(attachment_text)[:12000]}\n"
-            "=== КОНЕЦ МАТЕРИАЛА ФАЙЛА ==="
+            "\n\n=== РЕЛЕВАНТНЫЕ МАТЕРИАЛЫ ФАЙЛОВ ТЕКУЩЕГО ЧАТА ===\n"
+            f"{clean_ai_text(attachment_text)[:18000]}\n"
+            "=== КОНЕЦ МАТЕРИАЛОВ ФАЙЛОВ ==="
+        )
+
+    memory_block = ""
+    if session_memory:
+        memory_block = (
+            "\n\n=== ВНУТРЕННЯЯ ПАМЯТЬ ТЕКУЩЕЙ СЕССИИ ===\n"
+            f"{session_memory[:6000]}\n"
+            "Use this memory only as factual conversation context. "
+            "Never invent events or messages that are not present in the session history, "
+            "memory, Book Mode, or attachments. If a reference is genuinely ambiguous, "
+            "ask one concise clarification question.\n"
+            "=== КОНЕЦ ПАМЯТИ СЕССИИ ==="
+        )
+
+    knowledge_block = ""
+    if database_context:
+        knowledge_block += (
+            "\n\n=== РЕЛЕВАНТНЫЕ МАТЕРИАЛЫ ИЗ БАЗЫ УЧЕБНИКОВ ===\n"
+            f"{database_context[:16000]}\n"
+            "=== КОНЕЦ МАТЕРИАЛОВ БД ==="
+        )
+    if web_context:
+        knowledge_block += (
+            "\n\n=== ДОПОЛНИТЕЛЬНАЯ УЧЕБНАЯ СПРАВКА ===\n"
+            f"{web_context[:12000]}\n"
+            "=== КОНЕЦ СПРАВКИ ==="
         )
 
     common_rules = """
@@ -409,7 +468,9 @@ Use Markdown for structure and follow the mathematical formatting rules below.
         common_rules
         + role_rules
         + context_block
+        + memory_block
         + attachment_block
+        + knowledge_block
     )
 
 
@@ -449,12 +510,18 @@ async def respond(
     message_text: str,
     session_id: Optional[str] = None,
     attachment: Optional[ParsedAttachment] = None,
+    attachment_id: Optional[int] = None,
     manual_context: Optional[Dict[str, Any]] = None,
     lock_selected_context: bool = False,
 ) -> Dict[str, Any]:
     clean_text = clean_ai_text(message_text) or "Проанализируй вложение и помоги разобраться."
+    if attachment_id is None and attachment is not None:
+        candidate_attachment_id = getattr(attachment, "attachment_id", None)
+        if isinstance(candidate_attachment_id, int):
+            attachment_id = candidate_attachment_id
     if role not in {"student", "parent"}:
         raise ValueError("ИИ-тьютор доступен только ученикам и родителям")
+
     async with db.pool.acquire() as conn:
         session = await ensure_session(conn, user_id, session_id)
         locked_context = await load_locked_context(conn, session)
@@ -470,16 +537,18 @@ async def respond(
             context = await resolve_context(conn, clean_text, manual_context)
         else:
             context = None
+
         should_lock_context = bool(lock_selected_context and context)
         if should_lock_context and context and not locked_context:
             await conn.execute(
                 """
                 UPDATE chat_sessions SET book_id=$1, page_id=$2, context_locked=TRUE,
-                       updated_at=CURRENT_TIMESTAMP WHERE session_id=$3
+                       updated_at=CURRENT_TIMESTAMP WHERE session_id=$3 AND user_id=$4
                 """,
                 context.book_id,
                 context.page_id,
                 session["session_id"],
+                user_id,
             )
             context.source = "locked"
             locked_context = context
@@ -496,21 +565,67 @@ async def respond(
             attachment.filename if attachment else None,
             attachment.mime_type if attachment else None,
         )
-        history = await conn.fetch(
-            """
-            SELECT message_id, sender, message_text FROM chat_messages
-            WHERE user_id=$1 AND session_id=$2 ORDER BY created_at DESC LIMIT 16
-            """,
+        if attachment_id is not None:
+            owned = await conn.fetchval(
+                "SELECT EXISTS(SELECT 1 FROM attachments WHERE attachment_id=$1 AND owner_id=$2)",
+                attachment_id,
+                user_id,
+            )
+            if not owned:
+                raise LookupError("Вложение не найдено или принадлежит другому пользователю")
+            await conn.execute(
+                """
+                INSERT INTO chat_message_attachments (message_id, attachment_id, session_id, sort_order)
+                VALUES ($1, $2, $3, 0)
+                ON CONFLICT (message_id, attachment_id) DO UPDATE
+                SET session_id=EXCLUDED.session_id
+                """,
+                message_id,
+                attachment_id,
+                session["session_id"],
+            )
+
+        selected_attachments = await select_relevant_attachments(
+            conn, user_id, session["session_id"], clean_text
+        )
+        selected_ids = [row["attachment_id"] for row in selected_attachments]
+        memory_state, existing_summary = await load_session_state(
+            conn, user_id, session["session_id"]
+        )
+        memory_state = update_state_dict(
+            memory_state,
+            message_text=clean_text,
+            message_id=message_id,
+            book_id=context.book_id if context else _session_field(session, "book_id"),
+            page_id=context.page_id if context else _session_field(session, "page_id"),
+            referenced_attachment_ids=selected_ids or ([attachment_id] if attachment_id else None),
+        )
+        history = await load_context_messages(
+            conn, user_id, session["session_id"], clean_text
+        )
+        message_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM chat_messages WHERE user_id=$1 AND session_id=$2",
             user_id,
             session["session_id"],
         )
+        pinned = [
+            item for item in history
+            if item["message_id"] == memory_state.get("active_task_set_message_id")
+        ]
+        summary = existing_summary
+        if (isinstance(message_count, int) and message_count >= 28) or pinned:
+            summary = build_memory_summary(memory_state, pinned)
+        await persist_session_state(
+            conn, user_id, session["session_id"], memory_state, summary
+        )
 
-    attachment_text = (
-        clean_ai_text(attachment.extracted_text)
-        if attachment and attachment.extracted_text
-        else ""
-    )
+    attachment_text, remembered_image_urls = await build_attachment_context(selected_attachments, clean_text)
+    if attachment and attachment.extracted_text and not attachment_text:
+        attachment_text = clean_ai_text(attachment.extracted_text)
+    current_image_urls = list(attachment.image_data_urls[:3]) if attachment else []
+    image_urls = list(dict.fromkeys(current_image_urls + remembered_image_urls))[:3]
 
+    session_memory = summary or build_memory_summary(memory_state, [])
     database_context = ""
     web_context = ""
     if context is None:
@@ -519,9 +634,6 @@ async def respond(
         if not database_context:
             web_context = await search_web_for_education(clean_text)
 
-    # Scope classification is an auxiliary guard and must not make the tutor
-    # unavailable when its own model call fails (network/auth/provider outage).
-    # The primary tutor request still uses the educational system prompt.
     try:
         scope_result = await validate_request_scope(
             message_text=clean_text,
@@ -535,16 +647,13 @@ async def respond(
         refusal = scope_result.refusal_message or (
             "Этот вопрос не относится к образовательной области EduAI."
         )
-
         if locked_context:
             refusal += book_mode_footer(locked_context)
-
         ai_message_id = await _save_guard_refusal(
             user_id=user_id,
             session_id=session["session_id"],
             refusal_message=refusal,
         )
-
         return {
             "message_id": ai_message_id,
             "session_id": str(session["session_id"]),
@@ -565,29 +674,28 @@ async def respond(
                 attachment_text=attachment_text,
                 database_context=database_context,
                 web_context=web_context,
+                session_memory=session_memory,
             ),
         }
     ]
-    for item in reversed(history):
+    for item in history:
         content: Any = item["message_text"]
-        if item["message_id"] == message_id and attachment:
-            content = [
-                {
-                    "type": "text",
-                    "text": item["message_text"],
-                }
-            ]
-            for image_url in attachment.image_data_urls[:3]:
-                content.append(
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": image_url},
-                    }
-                )
+        if item["message_id"] == message_id and image_urls:
+            content = [{"type": "text", "text": item["message_text"]}]
+            for image_url in image_urls:
+                content.append({"type": "image_url", "image_url": {"url": image_url}})
         messages.append({
             "role": "user" if item["sender"] == "user" else "assistant",
             "content": content,
         })
+
+    # If a previous image is relevant but the current message is text-only, attach it
+    # to the current user turn so the multimodal model can inspect the original again.
+    if image_urls and history and history[-1]["message_id"] == message_id and not isinstance(messages[-1]["content"], list):
+        messages[-1]["content"] = [
+            {"type": "text", "text": history[-1]["message_text"]},
+            *[{"type": "image_url", "image_url": {"url": url}} for url in image_urls],
+        ]
 
     response = await asyncio.wait_for(
         openai_client.chat.completions.create(
@@ -609,16 +717,18 @@ async def respond(
             session["session_id"],
             reply,
         )
-        await conn.execute(
-            "UPDATE chat_sessions SET updated_at=CURRENT_TIMESTAMP WHERE session_id=$1",
-            session["session_id"],
+        if isinstance(ai_message_id, int) and not isinstance(ai_message_id, bool):
+            memory_state["last_assistant_message_id"] = ai_message_id
+        await persist_session_state(
+            conn, user_id, session["session_id"], memory_state, summary
         )
         if session["title"] == "Новый чат":
             generated_title = clean_text.replace("\n", " ")[:35].strip() or "Вложение"
             await conn.execute(
-                "UPDATE chat_sessions SET title=$1 WHERE session_id=$2",
+                "UPDATE chat_sessions SET title=$1 WHERE session_id=$2 AND user_id=$3",
                 generated_title,
                 session["session_id"],
+                user_id,
             )
 
     return {
@@ -628,5 +738,6 @@ async def respond(
         "message_text": reply,
         "context": context.to_dict() if context else None,
         "book_mode": bool(locked_context),
+        "used_attachment_ids": selected_ids,
         "knowledge_source": "book_mode" if locked_context else ("database" if database_context else ("web" if web_context else "model")),
     }

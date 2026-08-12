@@ -15,6 +15,7 @@
       this.$('newChatId').addEventListener('click', () => this.newChat());
       this.$('threadsId').addEventListener('click', event => this.threadAction(event));
       this.$('formId').addEventListener('submit', event => this.send(event));
+      this.$('logId').addEventListener('click', event => this.attachmentAction(event));
       this.$('inputId').addEventListener('keydown', event => {
         if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
           event.preventDefault();
@@ -83,9 +84,31 @@
       catch (error) { EduAI.toast(error.message, 'error'); }
     }
 
-    append(sender, text, attachmentName = '') {
+    formatBytes(value) {
+      const bytes = Number(value || 0);
+      if (!bytes) return '';
+      if (bytes < 1024) return `${bytes} Б`;
+      if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} КБ`;
+      return `${(bytes / 1048576).toFixed(1)} МБ`;
+    }
+
+    attachmentHtml(attachment) {
+      const name = attachment.original_name || attachment.name || 'Вложение';
+      const meta = [attachment.mime_type || attachment.type, this.formatBytes(attachment.size_bytes || attachment.size)].filter(Boolean).join(' · ');
+      if (!attachment.download_url && !attachment.preview_url) {
+        return `<div class="mt-2 rounded-xl bg-white/[.05] px-3 py-2 text-xs"><strong>📎 ${EduAI.escapeHtml(name)}</strong>${meta ? `<span class="ml-2 muted">${EduAI.escapeHtml(meta)}</span>` : ''}</div>`;
+      }
+      return `<div class="mt-2 flex flex-wrap items-center gap-2 rounded-xl bg-white/[.05] px-3 py-2 text-xs">
+        <span class="min-w-0 flex-1"><strong class="break-all">📎 ${EduAI.escapeHtml(name)}</strong>${meta ? `<span class="ml-2 muted">${EduAI.escapeHtml(meta)}</span>` : ''}</span>
+        ${attachment.preview_url ? `<button type="button" class="thread-action" data-chat-attachment="preview" data-url="${EduAI.escapeHtml(attachment.preview_url)}" data-name="${EduAI.escapeHtml(name)}">Просмотр</button>` : ''}
+        ${attachment.download_url ? `<button type="button" class="thread-action" data-chat-attachment="download" data-url="${EduAI.escapeHtml(attachment.download_url)}" data-name="${EduAI.escapeHtml(name)}">Скачать</button>` : ''}
+      </div>`;
+    }
+
+    append(sender, text, attachments = []) {
+      if (typeof attachments === 'string') attachments = attachments ? [{ original_name: attachments }] : [];
       const bubble = document.createElement('div'); bubble.className = `message ${sender === 'user' ? 'user' : ''}`;
-      bubble.innerHTML = `${attachmentName ? `<small class="block mb-1">📎 ${EduAI.escapeHtml(attachmentName)}</small>` : ''}${EduAI.markdown(text)}`;
+      bubble.innerHTML = `${EduAI.markdown(text)}${(attachments || []).map(item => this.attachmentHtml(item)).join('')}`;
       this.$('logId').append(bubble); this.$('logId').scrollTop = this.$('logId').scrollHeight; return bubble;
     }
 
@@ -94,7 +117,38 @@
         const messages = await EduAI.api(`/api/v1/tutor/sessions/${this.state.activeId}/messages`);
         this.$('logId').innerHTML = '';
         if (!messages.length) this.append('ai', this.options.welcome);
-        else messages.forEach(item => this.append(item.sender, item.message_text, item.attachment_name));
+        else messages.forEach(item => this.append(item.sender, item.message_text, item.attachments?.length ? item.attachments : (item.attachment_name || '')));
+      } catch (error) { EduAI.toast(error.message, 'error'); }
+    }
+
+    async fetchProtected(url) {
+      const session = EduAI.readSession?.();
+      const headers = new Headers();
+      if (session?.token) headers.set('Authorization', `Bearer ${session.token}`);
+      const response = await fetch(url, { headers });
+      if (!response.ok) {
+        let message = `Ошибка ${response.status}`;
+        try { const body = await response.json(); message = body.detail || body.message || message; } catch (_) {}
+        throw new Error(message);
+      }
+      return response.blob();
+    }
+
+    async attachmentAction(event) {
+      const button = event.target.closest('[data-chat-attachment]');
+      if (!button) return;
+      try {
+        const blob = await this.fetchProtected(button.dataset.url);
+        const objectUrl = URL.createObjectURL(blob);
+        if (button.dataset.chatAttachment === 'preview') {
+          window.open(objectUrl, '_blank', 'noopener,noreferrer');
+          setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+        } else {
+          const link = document.createElement('a');
+          link.href = objectUrl; link.download = button.dataset.name || 'attachment';
+          document.body.appendChild(link); link.click(); link.remove();
+          setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        }
       } catch (error) { EduAI.toast(error.message, 'error'); }
     }
 
@@ -111,17 +165,13 @@
         const isPdf = file && (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'));
         const sizeLimit = isPdf ? 100 * 1024 * 1024 : 15 * 1024 * 1024;
         if (file && file.size > sizeLimit) throw new Error(`Максимальный размер ${isPdf ? 'PDF' : 'файла'} — ${isPdf ? 100 : 15} МБ`);
-
-        this.append('user', text || 'Проанализируй вложение', file ? file.name : '');
+        this.append('user', text || 'Проанализируй вложение', file ? [{ original_name: file.name, mime_type: file.type, size_bytes: file.size }] : []);
         const form = new FormData();
         form.append('session_id', this.state.activeId);
         form.append('message_text', text);
         if (file) form.append('attachment', file);
         const mapping = [['classId','book_class'],['subjectId','book_program'],['bookId','book_id'],['pageId','page_id']];
-        mapping.forEach(([id,key]) => {
-          const element = this.$(id);
-          if (element && element.value) form.append(key, element.value);
-        });
+        mapping.forEach(([id,key]) => { const element = this.$(id); if (element && element.value) form.append(key, element.value); });
         this.$('inputId').value = '';
         this.clearAttachment();
         EduAI.setBusy(button, true, 'Отправляем…');
@@ -131,8 +181,7 @@
       } catch (error) {
         console.error('EduAI tutor submit failed', error);
         EduAI.toast(error.message || 'Не удалось отправить сообщение', 'error');
-      }
-      finally { stopThinking(); EduAI.setBusy(button, false); this.$('inputId').focus(); }
+      } finally { stopThinking(); EduAI.setBusy(button, false); this.$('inputId').focus(); }
     }
 
     previewAttachment() {
@@ -165,7 +214,6 @@
       this.$('pageId').innerHTML += values.map(x => `<option value="${x.page_id}">стр. ${x.page_number}${x.page_paragraph ? ' · ' + EduAI.escapeHtml(x.page_paragraph) : ''}</option>`).join('');
     }
     resetSelect(id, label) { this.$(id).innerHTML = `<option value="">${label}</option>`; }
-
     async lockContext() {
       if (!this.$('bookId').value) { EduAI.toast('Выберите учебник', 'error'); return; }
       const payload = { book_id: Number(this.$('bookId').value) };
