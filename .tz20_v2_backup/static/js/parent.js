@@ -528,43 +528,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     container.innerHTML = state.taskAttachments.length
       ? state.taskAttachments
           .map(item => `
-            <div class="rounded-xl bg-white/[.04] p-3" data-attachment-row="${item.attachment_id}">
-              <div class="flex items-center justify-between gap-3">
-                <div class="min-w-0">
-                  <p class="truncate text-sm font-bold">
-                    📎 ${EduAI.escapeHtml(item.original_name)}
-                  </p>
-                  <p class="text-xs muted">${formatFileSize(item.size_bytes)}</p>
-                </div>
-                <button type="button"
-                        class="thread-action remove-task-attachment"
-                        data-id="${item.attachment_id}"
-                        aria-label="Убрать файл">×</button>
+            <div class="flex items-center justify-between gap-3 rounded-xl bg-white/[.04] p-3">
+              <div class="min-w-0">
+                <p class="truncate text-sm font-bold">
+                  📎 ${EduAI.escapeHtml(item.original_name)}
+                </p>
+                <p class="text-xs muted">
+                  ${formatFileSize(item.size_bytes)}
+                </p>
               </div>
-
-              <div class="mt-3 grid gap-2 sm:grid-cols-2">
-                <label class="flex items-center gap-2 text-xs">
-                  <input type="checkbox"
-                         class="task-attachment-ai h-4 w-4"
-                         data-id="${item.attachment_id}"
-                         ${item.use_as_ai_context !== false ? 'checked' : ''}>
-                  Использовать для анализа ИИ
-                </label>
-
-                <label class="flex items-center gap-2 text-xs">
-                  <input type="checkbox"
-                         class="task-attachment-visible h-4 w-4"
-                         data-id="${item.attachment_id}"
-                         ${item.visible_to_student ? 'checked' : ''}>
-                  Отправить ребёнку
-                </label>
-              </div>
+              <button
+                type="button"
+                class="thread-action remove-task-attachment"
+                data-id="${item.attachment_id}"
+                aria-label="Убрать файл"
+              >
+                ×
+              </button>
             </div>
           `)
           .join('')
       : '<p class="text-xs muted">Файлы не прикреплены.</p>';
   }
-
 
   async function uploadTaskFiles() {
     const input = $('task-attachments');
@@ -592,11 +577,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     for (const attachment of result.attachments || []) {
       if (!knownIds.has(Number(attachment.attachment_id))) {
-        state.taskAttachments.push({
-          ...attachment,
-          use_as_ai_context: true,
-          visible_to_student: Boolean($('task-send-files')?.checked)
-        });
+        state.taskAttachments.push(attachment);
       }
     }
 
@@ -876,41 +857,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderTaskAttachments();
   });
 
-  
-  $('task-attachments-list').addEventListener('change', event => {
-    const aiBox = event.target.closest('.task-attachment-ai');
-    const visibleBox = event.target.closest('.task-attachment-visible');
-    const box = aiBox || visibleBox;
-    if (!box) return;
-
-    const item = state.taskAttachments.find(
-      entry => Number(entry.attachment_id) === Number(box.dataset.id)
-    );
-    if (!item) return;
-
-    if (aiBox) item.use_as_ai_context = aiBox.checked;
-    if (visibleBox) item.visible_to_student = visibleBox.checked;
-
-    if (!item.use_as_ai_context && !item.visible_to_student) {
-      if (aiBox) item.visible_to_student = true;
-      else item.use_as_ai_context = true;
-
-      EduAI.toast(
-        'Файл должен использоваться ИИ или быть отправлен ребёнку',
-        'info'
-      );
-      renderTaskAttachments();
-    }
-  });
-
-  $('task-send-files')?.addEventListener('change', event => {
-    state.taskAttachments.forEach(item => {
-      item.visible_to_student = event.target.checked;
-    });
-    renderTaskAttachments();
-  });
-
-$('task-form').addEventListener('submit', async event => {
+  $('task-form').addEventListener('submit', async event => {
     event.preventDefault();
 
     const button = event.submitter;
@@ -919,33 +866,14 @@ $('task-form').addEventListener('submit', async event => {
     try {
       const studentIds = selectedStudentIds();
       if (!studentIds.length) throw new Error('Выберите хотя бы одного ребёнка');
-      const description = $('task-description')
-        .value
-        .trim()
-        .replaceAll('$', '');
-
-      if (!description && !state.taskAttachments.length) {
-        throw new Error(
-          'Добавьте текст задания или прикрепите файл с заданием'
-        );
-      }
-
       const payload = {
         student_ids: studentIds,
-        subject:
-          $('task-subject').value ||
-          $('task-topic').value.trim() ||
-          'Практика',
+        subject: $('task-subject').value || $('task-topic').value.trim(),
         topic: $('task-topic').value.trim(),
         title: $('task-title').value.trim().replaceAll('$', ''),
-        description,
-        reference_answer: $('task-answer').value
-          .trim()
-          .replaceAll('$', ''),
-        parent_comment: $('task-parent-comment').value
-          .trim()
-          .replaceAll('$', ''),
-        ai_instructions: '',
+        description: $('task-description').value.trim().replaceAll('$', ''),
+        reference_answer: $('task-answer').value.trim().replaceAll('$', ''),
+        parent_comment: $('task-parent-comment').value.trim().replaceAll('$', ''),
         book_id: $('task-book').value
           ? Number($('task-book').value)
           : null,
@@ -955,14 +883,7 @@ $('task-form').addEventListener('submit', async event => {
         attachment_ids: state.taskAttachments.map(
           item => Number(item.attachment_id)
         ),
-        attachment_options: state.taskAttachments.map(item => ({
-          attachment_id: Number(item.attachment_id),
-          use_as_ai_context: item.use_as_ai_context !== false,
-          visible_to_student: Boolean(item.visible_to_student)
-        })),
-        send_files_to_student: state.taskAttachments.some(
-          item => Boolean(item.visible_to_student)
-        )
+        send_files_to_student: $('task-send-files').checked
       };
 
       await EduAI.api('/api/v1/parent/tasks', {

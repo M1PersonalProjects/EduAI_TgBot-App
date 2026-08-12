@@ -50,12 +50,6 @@ class TaskAnswerRequest(BaseModel):
     student_answer: str = Field(..., min_length=1, max_length=4000)
 
 
-class TaskAttachmentOption(BaseModel):
-    attachment_id: int
-    use_as_ai_context: bool = True
-    visible_to_student: bool = False
-
-
 class ParentTaskRequest(BaseModel):
     student_ids: List[int] = Field(..., min_length=1, max_length=50)
     title: str = Field(default="", max_length=255)
@@ -69,7 +63,7 @@ class ParentTaskRequest(BaseModel):
     page_id: Optional[int] = None
     attachment_ids: List[int] = Field(default_factory=list, max_length=10)
     send_files_to_student: bool = False
-    attachment_options: List[TaskAttachmentOption] = Field(default_factory=list, max_length=10)
+    attachment_options: List[Dict[str, Any]] = Field(default_factory=list, max_length=10)
     context_mode: Optional[str] = None
     used_pages: List[Dict[str, Any]] = Field(default_factory=list)
 
@@ -288,9 +282,8 @@ async def attach_files_to_task(
 ) -> None:
     option_map: Dict[int, Dict[str, Any]] = {}
     for item in attachment_options or []:
-        data = item.model_dump() if hasattr(item, "model_dump") else dict(item)
         try:
-            option_map[int(data.get("attachment_id"))] = data
+            option_map[int(item.get("attachment_id"))] = item
         except (TypeError, ValueError):
             continue
 
@@ -728,9 +721,8 @@ def _manual_attachment_option_map(
 ) -> Dict[int, Dict[str, Any]]:
     result: Dict[int, Dict[str, Any]] = {}
     for item in payload.attachment_options or []:
-        data = item.model_dump() if hasattr(item, "model_dump") else dict(item)
         try:
-            result[int(data.get("attachment_id"))] = data
+            result[int(item.get("attachment_id"))] = item
         except (TypeError, ValueError):
             continue
     return result

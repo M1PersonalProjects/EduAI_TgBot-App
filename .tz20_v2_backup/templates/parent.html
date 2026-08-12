@@ -445,32 +445,35 @@
 
           <div class="grid gap-4">
             <div class="field">
-              <label for="task-title">Название <span class="muted font-normal">(необязательно)</span></label>
+              <label for="task-title">Название</label>
               <input
                 id="task-title"
                 class="input"
                 maxlength="255"
-                placeholder="Можно оставить пустым — будет использована тема задания"
+                required
+                placeholder="Короткое название"
               >
             </div>
 
             <div class="field">
-              <label for="task-description">Текст задания <span class="muted font-normal">(необязательно при наличии файла)</span></label>
+              <label for="task-description">Условие</label>
               <textarea
                 id="task-description"
                 class="textarea"
                 maxlength="8000"
-                placeholder="Можно оставить пустым, если задание находится в прикреплённом файле"
+                required
+                placeholder="Напишите условие задания"
               ></textarea>
             </div>
 
             <div class="field">
-              <label for="task-answer">Эталонный ответ <span class="muted font-normal">(необязательно)</span></label>
+              <label for="task-answer">Эталонный ответ</label>
               <textarea
                 id="task-answer"
                 class="textarea"
                 maxlength="4000"
-                placeholder="Можно оставить пустым — ИИ сформирует эталон автоматически"
+                required
+                placeholder="Ответ для автоматической проверки"
               ></textarea>
             </div>
           </div>
@@ -567,6 +570,6 @@
 
   <script src="/static/js/app.js?v=20260812-5"></script>
   <script src="/static/js/chat.js?v=20260812-5"></script>
-  <script src="/static/js/parent.js?v=20260812-20-2"></script>
+  <script src="/static/js/parent.js?v=20260812-5"></script>
 </body>
 </html>

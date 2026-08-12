@@ -50,35 +50,52 @@ class TaskAnswerRequest(BaseModel):
     student_answer: str = Field(..., min_length=1, max_length=4000)
 
 
-class TaskAttachmentOption(BaseModel):
-    attachment_id: int
-    use_as_ai_context: bool = True
-    visible_to_student: bool = False
-
-
 class ParentTaskRequest(BaseModel):
     student_ids: List[int] = Field(..., min_length=1, max_length=50)
-    title: str = Field(default="", max_length=255)
-    description: str = Field(default="", max_length=8000)
-    reference_answer: str = Field(default="", max_length=12000)
-    subject: str = Field(default="Практика", max_length=150)
-    topic: str = Field(default="", max_length=255)
-    parent_comment: str = Field(default="", max_length=4000)
-    ai_instructions: str = Field(default="", max_length=4000)
+
+    title: str = Field(
+        ...,
+        min_length=2,
+        max_length=255,
+    )
+    description: str = Field(
+        ...,
+        min_length=2,
+        max_length=8000,
+    )
+    reference_answer: str = Field(
+        ...,
+        min_length=1,
+        max_length=4000,
+    )
+
+    subject: str = Field(
+        default="Практика",
+        max_length=150,
+    )
+    topic: str = Field(
+        default="",
+        max_length=255,
+    )
+    parent_comment: str = Field(
+        default="",
+        max_length=4000,
+    )
+    ai_instructions: str = Field(
+        default="",
+        max_length=4000,
+    )
+
     book_id: Optional[int] = None
     page_id: Optional[int] = None
-    attachment_ids: List[int] = Field(default_factory=list, max_length=10)
+
+    attachment_ids: List[int] = Field(
+        default_factory=list,
+        max_length=10,
+    )
     send_files_to_student: bool = False
-    attachment_options: List[TaskAttachmentOption] = Field(default_factory=list, max_length=10)
     context_mode: Optional[str] = None
     used_pages: List[Dict[str, Any]] = Field(default_factory=list)
-
-
-class ManualAnswerKeyGeneration(BaseModel):
-    answer_text: str = Field(..., min_length=1, max_length=12000)
-    answer_type: str = Field(default="exact", max_length=50)
-    confidence: str = Field(default="high", max_length=20)
-    ambiguity_note: str = Field(default="", max_length=2000)
 
 
 class GenerateParentTaskRequest(BaseModel):
@@ -284,25 +301,8 @@ async def attach_files_to_task(
     task_id: int,
     attachments: List[dict[str, Any]],
     visible_to_student: bool,
-    attachment_options: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
-    option_map: Dict[int, Dict[str, Any]] = {}
-    for item in attachment_options or []:
-        data = item.model_dump() if hasattr(item, "model_dump") else dict(item)
-        try:
-            option_map[int(data.get("attachment_id"))] = data
-        except (TypeError, ValueError):
-            continue
-
     for sort_order, attachment in enumerate(attachments):
-        attachment_id = int(attachment["attachment_id"])
-        option = option_map.get(attachment_id, {})
-        visible = bool(option.get("visible_to_student", visible_to_student))
-        use_as_ai_context = bool(option.get("use_as_ai_context", True))
-
-        if not visible and not use_as_ai_context:
-            continue
-
         await conn.execute(
             """
             INSERT INTO task_attachments (
@@ -312,17 +312,16 @@ async def attach_files_to_task(
                 use_as_ai_context,
                 sort_order
             )
-            VALUES ($1, $2, $3, $4, $5)
+            VALUES ($1, $2, $3, true, $4)
             ON CONFLICT (task_id, attachment_id)
             DO UPDATE SET
                 visible_to_student = EXCLUDED.visible_to_student,
-                use_as_ai_context = EXCLUDED.use_as_ai_context,
+                use_as_ai_context = true,
                 sort_order = EXCLUDED.sort_order
             """,
             task_id,
-            attachment_id,
-            visible,
-            use_as_ai_context,
+            attachment["attachment_id"],
+            visible_to_student,
             sort_order,
         )
 
@@ -723,163 +722,6 @@ async def parent_dashboard(user=Depends(require_roles("parent", "admin"))):
     return {"children": [dict(row) for row in children], "purchases": [dict(row) for row in purchases]}
 
 
-def _manual_attachment_option_map(
-    payload: ParentTaskRequest,
-) -> Dict[int, Dict[str, Any]]:
-    result: Dict[int, Dict[str, Any]] = {}
-    for item in payload.attachment_options or []:
-        data = item.model_dump() if hasattr(item, "model_dump") else dict(item)
-        try:
-            result[int(data.get("attachment_id"))] = data
-        except (TypeError, ValueError):
-            continue
-    return result
-
-
-def _manual_attachment_used_for_ai(
-    attachment_id: int,
-    payload: ParentTaskRequest,
-) -> bool:
-    option = _manual_attachment_option_map(payload).get(int(attachment_id))
-    if option is None:
-        return True
-    return bool(option.get("use_as_ai_context", True))
-
-
-async def _generate_manual_answer_key(
-    payload: ParentTaskRequest,
-    attachments: List[dict[str, Any]],
-    book_context: Optional[Any],
-) -> ManualAnswerKeyGeneration:
-    user_content: List[dict[str, Any]] = []
-    task_text = canonicalize_message(payload.description).strip()
-
-    context_lines = [
-        f"Topic: {without_latex(payload.topic) or 'not specified'}",
-        f"Subject: {without_latex(payload.subject) or 'not specified'}",
-    ]
-    if book_context:
-        context_lines.extend(
-            [
-                f"Textbook: {book_context['book_title']}",
-                f"Grade: {book_context['book_class']}",
-                f"Program: {book_context['book_program']}",
-                f"Page: {book_context['page_number'] or 'whole book / not specified'}",
-            ]
-        )
-    if task_text:
-        context_lines.append(f"Assignment text:\n{task_text}")
-
-    user_content.append({"type": "text", "text": "\n".join(context_lines)})
-    usable_material = bool(task_text)
-
-    for attachment in attachments:
-        attachment_id = int(attachment["attachment_id"])
-        if not _manual_attachment_used_for_ai(attachment_id, payload):
-            continue
-
-        parsed = await load_attachment_for_ai(attachment)
-        if parsed.extracted_text and parsed.extracted_text.strip():
-            usable_material = True
-            user_content.append(
-                {
-                    "type": "text",
-                    "text": (
-                        f"Attached assignment material "
-                        f"«{attachment['original_name']}»:\n"
-                        f"{parsed.extracted_text[:16000]}"
-                    ),
-                }
-            )
-
-        for image_data_url in parsed.image_data_urls[:4]:
-            usable_material = True
-            user_content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": image_data_url},
-                }
-            )
-
-    if not usable_material:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "Добавьте, пожалуйста, текст задания или прикрепите "
-                "читаемый файл с заданием, чтобы система могла "
-                "сформировать эталонный ответ."
-            ),
-        )
-
-    try:
-        response = await openai_client.beta.chat.completions.parse(
-            model="gpt-4o",
-            temperature=0.1,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are generating a private answer key for a "
-                        "parent-created educational assignment.\n\n"
-                        "Analyze the assignment text and all relevant attached "
-                        "materials. Your output will NOT be shown to the student.\n"
-                        "For each task:\n"
-                        "- preserve the original numbering;\n"
-                        "- determine the expected answer;\n"
-                        "- provide acceptable alternatives when appropriate;\n"
-                        "- for open-ended tasks, provide evaluation criteria "
-                        "instead of inventing one exact answer;\n"
-                        "- if any task is incomplete, unreadable, cropped, "
-                        "ambiguous, or depends on missing material, do not guess;\n"
-                        "- set confidence to 'low' and explain the ambiguity in "
-                        "ambiguity_note whenever a reliable answer key cannot be "
-                        "created;\n"
-                        "- answer in the language of the assignment.\n"
-                        "answer_type should be one of: exact, multiple, open_ended, mixed.\n"
-                        "Return mathematical content as canonical Markdown + LaTeX.\n"
-                        + MATH_FORMATTING_RULES
-                    ),
-                },
-                {"role": "user", "content": user_content},
-            ],
-            response_format=ManualAnswerKeyGeneration,
-        )
-        generated = response.choices[0].message.parsed
-    except Exception as exc:
-        logger.exception("Manual answer-key generation failed: %s", exc)
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                "Не удалось автоматически сформировать эталонный ответ. "
-                "Попробуйте ещё раз или заполните его вручную."
-            ),
-        ) from exc
-
-    if not generated or not generated.answer_text.strip():
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                "ИИ не смог сформировать эталонный ответ. "
-                "Заполните его вручную или попробуйте ещё раз."
-            ),
-        )
-
-    if generated.confidence.strip().lower() == "low" or generated.ambiguity_note.strip():
-        detail = (
-            generated.ambiguity_note.strip()
-            or "Не удалось однозначно определить часть задания или правильный ответ."
-        )
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"{detail} Пожалуйста, проверьте прикреплённый материал "
-                "или добавьте эталонный ответ вручную."
-            ),
-        )
-
-    return generated
-
-
 @router.post(
     "/parent/tasks",
     status_code=status.HTTP_201_CREATED,
@@ -888,106 +730,68 @@ async def create_parent_task(
     payload: ParentTaskRequest,
     user=Depends(require_roles("parent", "admin")),
 ):
-    parent_id = user["tg_id"]
-
-    async with db.pool.acquire() as conn:
-        student_ids = await ensure_children(conn, parent_id, payload.student_ids)
-        attachments = await validate_owned_attachments(
-            conn, payload.attachment_ids, parent_id
-        )
-
-        description = canonicalize_message(payload.description).strip()
-        if not description and not attachments:
-            raise HTTPException(
-                status_code=422,
-                detail="Добавьте, пожалуйста, текст задания или прикрепите файл с заданием.",
-            )
-
-        book_context = None
-        if payload.book_id is not None:
-            book_context = await conn.fetchrow(
-                """
-                SELECT b.book_id, b.book_title, b.book_program, b.book_class,
-                       b.book_author, p.page_id, p.page_number, p.page_title,
-                       p.page_paragraph
-                FROM book b
-                LEFT JOIN page p ON p.book_id = b.book_id AND p.page_id = $2
-                WHERE b.book_id = $1
-                """,
-                payload.book_id,
-                payload.page_id,
-            )
-            if not book_context:
-                raise HTTPException(status_code=404, detail="Выбранный учебник не найден")
-            if payload.page_id is not None and book_context["page_id"] is None:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Страница не относится к выбранному учебнику",
-                )
-
-    subject = without_latex(
-        payload.subject
-        or (book_context["book_program"] if book_context else "Практика")
-    )
-    topic = without_latex(payload.topic).strip()
-    title = without_latex(payload.title).strip() or topic or "Задание"
-
-    parent_answer = canonicalize_message(payload.reference_answer).strip()
-    answer_source = "parent"
-    answer_type = "exact"
-
-    if parent_answer:
-        reference_answer = parent_answer
-    else:
-        generated_key = await _generate_manual_answer_key(
-            payload=payload,
-            attachments=attachments,
-            book_context=book_context,
-        )
-        reference_answer = canonicalize_message(generated_key.answer_text).strip()
-        answer_source = "ai"
-        answer_type = generated_key.answer_type.strip() or "exact"
-
-    topic_context = {
-        "source": "parent_web_manual",
-        "subject": subject,
-        "topic": topic,
-        "book_id": book_context["book_id"] if book_context else None,
-        "book_title": book_context["book_title"] if book_context else None,
-        "book_class": book_context["book_class"] if book_context else None,
-        "book_program": book_context["book_program"] if book_context else None,
-        "context_mode": payload.context_mode
-        or ("single_page" if payload.page_id is not None else "whole_book"),
-        "page_id": book_context["page_id"] if book_context else None,
-        "page_number": book_context["page_number"] if book_context else None,
-        "page_title": book_context["page_title"] if book_context else None,
-        "used_pages": payload.used_pages,
-        "answer_source": answer_source,
-        "answer_type": answer_type,
-    }
-
-    question_text = description or (
-        "Задание находится в прикреплённых материалах. "
-        "Откройте доступный файл и выполните указанные в нём задания."
-    )
-    questions_json = {
-        "title": title,
-        "question_text": question_text,
-        "reference_answer": reference_answer,
-    }
-
-    assignment_batch_id = uuid.uuid4()
-    created_tasks = []
-
     async with db.pool.acquire() as conn:
         async with conn.transaction():
+            student_ids = await ensure_children(conn, user["tg_id"], payload.student_ids)
+            attachments = await validate_owned_attachments(
+                conn, payload.attachment_ids, user["tg_id"]
+            )
+
+            book_context = None
+            if payload.book_id is not None:
+                book_context = await conn.fetchrow(
+                    """
+                    SELECT b.book_id, b.book_title, b.book_program, b.book_class,
+                           b.book_author, p.page_id, p.page_number, p.page_title,
+                           p.page_paragraph
+                    FROM book b
+                    LEFT JOIN page p ON p.book_id = b.book_id AND p.page_id = $2
+                    WHERE b.book_id = $1
+                    """,
+                    payload.book_id, payload.page_id,
+                )
+                if not book_context:
+                    raise HTTPException(status_code=404, detail="Выбранный учебник не найден")
+                if payload.page_id is not None and book_context["page_id"] is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Страница не относится к выбранному учебнику",
+                    )
+
+            subject = without_latex(
+                payload.subject or (book_context["book_program"] if book_context else "Практика")
+            )
+            topic = without_latex(payload.topic)
+            topic_context = {
+                "source": "parent_web",
+                "subject": subject,
+                "topic": topic,
+                "book_id": book_context["book_id"] if book_context else None,
+                "book_title": book_context["book_title"] if book_context else None,
+                "book_class": book_context["book_class"] if book_context else None,
+                "book_program": book_context["book_program"] if book_context else None,
+                "context_mode": payload.context_mode or ("single_page" if payload.page_id is not None else "whole_book"),
+                "page_id": book_context["page_id"] if book_context else None,
+                "page_number": book_context["page_number"] if book_context else None,
+                "page_title": book_context["page_title"] if book_context else None,
+                "used_pages": payload.used_pages,
+            }
+            questions_json = {
+                "title": without_latex(payload.title),
+                # Preserve canonical Markdown + LaTeX. Presentation belongs to clients.
+                "question_text": canonicalize_message(payload.description),
+                "reference_answer": canonicalize_message(payload.reference_answer),
+            }
+
+            assignment_batch_id = uuid.uuid4()
+            created_tasks = []
             for student_id in student_ids:
                 task_id = await conn.fetchval(
                     """
                     INSERT INTO tasks_history (
                         student_id, parent_id, assignment_batch_id, title,
-                        parent_comment, ai_instructions, subject, topic,
-                        topic_context, questions_json, score, status, sent_at, updated_at
+                        parent_comment, ai_instructions, subject, topic, topic_context, questions_json,
+                        score, status, sent_at, updated_at
                     )
                     VALUES (
                         $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb,
@@ -995,42 +799,25 @@ async def create_parent_task(
                     )
                     RETURNING task_id
                     """,
-                    student_id,
-                    parent_id,
-                    assignment_batch_id,
-                    title,
-                    without_latex(payload.parent_comment),
+                    student_id, user["tg_id"], assignment_batch_id,
+                    without_latex(payload.title), without_latex(payload.parent_comment),
                     payload.ai_instructions.strip() or None,
-                    subject,
-                    topic,
-                    json.dumps(topic_context, ensure_ascii=False),
+                    subject, topic, json.dumps(topic_context, ensure_ascii=False),
                     json.dumps(questions_json, ensure_ascii=False),
                 )
                 await attach_files_to_task(
-                    conn=conn,
-                    task_id=task_id,
-                    attachments=attachments,
+                    conn=conn, task_id=task_id, attachments=attachments,
                     visible_to_student=payload.send_files_to_student,
-                    attachment_options=payload.attachment_options,
                 )
                 created_tasks.append({"task_id": task_id, "student_id": student_id})
 
-    option_map = _manual_attachment_option_map(payload)
     return {
         "status": "created",
         "assignment_batch_id": str(assignment_batch_id),
         "tasks": created_tasks,
         "task_ids": [item["task_id"] for item in created_tasks],
         "attachments_count": len(attachments),
-        "files_sent_to_student": any(
-            bool(
-                option_map.get(int(item["attachment_id"]), {})
-                .get("visible_to_student", payload.send_files_to_student)
-            )
-            for item in attachments
-        ),
-        "answer_source": answer_source,
-        "answer_type": answer_type,
+        "files_sent_to_student": payload.send_files_to_student and bool(attachments),
     }
 
 
