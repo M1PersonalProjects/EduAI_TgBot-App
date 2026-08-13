@@ -213,371 +213,258 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('books-grid').addEventListener('click',async e=>{const edit=e.target.closest('.edit-book');const del=e.target.closest('.delete-book');const upload=e.target.closest('.upload-book-action');if(edit)openBook(state.books.find(b=>b.book_id===Number(edit.dataset.id)));if(upload){$('upload-book').value=upload.dataset.id;document.querySelector('[data-section="digitization"]').click();}if(del&&confirm('Удалить учебник и все его страницы? Это действие нельзя отменить.')){try{await EduAI.api(`/api/v1/admin/books/${del.dataset.id}`,{method:'DELETE'});EduAI.toast('Учебник удалён','success');await Promise.all([loadBooks(),loadOverview()]);}catch(err){EduAI.toast(err.message,'error');}}});
 
   const file=$('pdf-file'),zone=$('drop-zone');
-  const digitizationSection=$('digitization');
-  const queuePanel=document.createElement('div');
-  queuePanel.className='glass card mt-4';
-  queuePanel.innerHTML=`
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h3 class="font-extrabold">Сопоставление и очередь оцифровки</h3>
-        <p class="mt-1 text-sm muted">
-          Сначала сопоставьте каждый PDF с заранее созданным пустым учебником.
-          OCR начнётся только после подтверждения всего пакета.
-        </p>
-      </div>
-      <div class="flex flex-wrap gap-2">
-        <button id="refresh-digitization-books" class="btn-secondary" type="button">
-          Обновить учебники
-        </button>
-        <button id="refresh-digitization-queue" class="btn-secondary" type="button">
-          Обновить очередь
-        </button>
-      </div>
+
+const digitizationSection=$('digitization');
+const queuePanel=document.createElement('div');
+queuePanel.className='glass card mt-4';
+queuePanel.innerHTML=`
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h3 class="font-extrabold">Очередь оцифровки</h3>
+      <p class="mt-1 text-sm muted">
+        Очередь работает на сервере. После загрузки страницу можно закрыть.
+      </p>
     </div>
+    <button id="refresh-digitization-queue" class="btn-secondary" type="button">
+      Обновить
+    </button>
+  </div>
+  <div id="digitization-upload-map" class="mt-4 grid gap-2"></div>
+  <div id="digitization-queue" class="mt-4 grid gap-3">
+    <p class="muted">Загрузка…</p>
+  </div>`;
+digitizationSection.append(queuePanel);
 
-    <div id="digitization-match-summary" class="mt-4"></div>
-    <div id="digitization-queue" class="mt-4 grid gap-4">
-      <p class="muted">Загрузка…</p>
-    </div>`;
-  digitizationSection.append(queuePanel);
+function selectedDigitizationFiles(){
+  return Array.from(file.files||[]);
+}
 
-  let emptyDigitizationBooks=[];
+function renderDigitizationUploadMap(){
+  const files=selectedDigitizationFiles();
+  $('file-label').textContent=files.length
+    ? files.map(item=>item.name).join(', ')
+    : 'или выберите несколько PDF или один ZIP';
 
-  function selectedDigitizationFiles(){
-    return Array.from(file.files||[]);
-  }
+  $('upload-pdf').disabled=!files.length;
 
-  function bookOptionLabel(book){
-    return `${book.book_title} — ${book.book_program} — ${book.book_class} класс — ${book.book_author} — ID ${book.book_id}`;
-  }
-
-  async function loadEmptyDigitizationBooks(){
-    emptyDigitizationBooks=await EduAI.api(
-      '/api/v1/admin/digitization/empty-books'
-    );
-  }
-
-  function renderSelectedUploadFiles(){
-    const files=selectedDigitizationFiles();
-    $('file-label').textContent=files.length
-      ? files.map(item=>item.name).join(', ')
-      : 'или выберите несколько PDF или один ZIP';
-    $('upload-pdf').disabled=!files.length;
-  }
-
-  file.addEventListener('change',renderSelectedUploadFiles);
-
-  ['dragenter','dragover'].forEach(type=>zone.addEventListener(type,event=>{
-    event.preventDefault();
-    zone.classList.add('dragging');
-  }));
-
-  ['dragleave','drop'].forEach(type=>zone.addEventListener(type,event=>{
-    event.preventDefault();
-    zone.classList.remove('dragging');
-  }));
-
-  zone.addEventListener('drop',event=>{
-    const transfer=new DataTransfer();
-    Array.from(event.dataTransfer.files||[]).forEach(item=>{
-      transfer.items.add(item);
-    });
-    file.files=transfer.files;
-    file.dispatchEvent(new Event('change'));
-  });
-
-  function statusText(value){
-    return {
-      matching:'Сопоставление',
-      pending:'Ожидает',
-      processing:'Обрабатывается',
-      completed:'Завершено',
-      failed:'Ошибка'
-    }[value]||value;
-  }
-
-  function statusIcon(value){
-    return {
-      matching:'🔗',
-      pending:'🕓',
-      processing:'⚙️',
-      completed:'✅',
-      failed:'❌'
-    }[value]||'•';
-  }
-
-  function matchText(job){
-    if(job.match_type==='automatic')return 'Автоматически';
-    if(job.match_type==='manual')return 'Вручную';
-    if(job.stage==='ambiguous_match')return 'Несколько точных совпадений';
-    return 'Учебник не найден';
-  }
-
-  function matchingBookIds(batchJobs){
-    return new Set(
-      batchJobs
-        .filter(job=>job.book_id)
-        .map(job=>Number(job.book_id))
-    );
-  }
-
-  function renderBookSelect(job,batchJobs){
-    const used=matchingBookIds(
-      batchJobs.filter(item=>item.job_id!==job.job_id)
-    );
-
-    return `
-      <select
-        class="select assign-digitization-book w-full"
-        data-id="${job.job_id}"
-      >
-        <option value="">Выберите пустой учебник…</option>
-        ${emptyDigitizationBooks.map(book=>`
-          <option
-            value="${book.book_id}"
-            ${Number(job.book_id)===Number(book.book_id)?'selected':''}
-            ${used.has(Number(book.book_id))?'disabled':''}
+  const map=$('digitization-upload-map');
+  if(
+    files.length>1 &&
+    files.every(item=>item.name.toLowerCase().endsWith('.pdf'))
+  ){
+    map.innerHTML=`
+      <p class="text-xs muted">
+        Для каждого PDF можно выбрать учебник. Пустое значение —
+        попробовать сопоставить автоматически по имени.
+      </p>
+      ${files.map(item=>`
+        <div class="grid sm:grid-cols-[minmax(0,1fr)_18rem] gap-2 items-center">
+          <span class="truncate text-sm">${EduAI.escapeHtml(item.name)}</span>
+          <select
+            class="select digitization-book-map"
+            data-name="${EduAI.escapeHtml(item.name)}"
           >
-            ${EduAI.escapeHtml(bookOptionLabel(book))}
-          </option>`).join('')}
-      </select>`;
+            <option value="">Автосопоставление</option>
+            ${state.books.map(book=>`
+              <option value="${book.book_id}">
+                ${book.book_class} кл. · ${EduAI.escapeHtml(book.book_title)}
+              </option>`).join('')}
+          </select>
+        </div>`).join('')}`;
+  }else{
+    map.innerHTML='';
   }
+}
 
-  function renderMatchingBatch(batchId,jobs){
-    const matched=jobs.filter(job=>job.book_id).length;
-    const ready=matched===jobs.length && jobs.length>0;
+file.addEventListener('change',renderDigitizationUploadMap);
 
-    return `
-      <section class="rounded-2xl border border-white/10 bg-white/[.025] p-4">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h4 class="font-extrabold">Сопоставление учебников</h4>
-            <p class="mt-1 text-sm ${ready?'text-emerald-200':'muted'}">
-              ${matched} / ${jobs.length} файлов сопоставлены
-            </p>
-          </div>
-          <button
-            class="btn-primary confirm-digitization-batch"
-            data-batch="${batchId}"
-            type="button"
-            ${ready?'':'disabled'}
-          >
-            Начать оцифровку
-          </button>
-        </div>
+['dragenter','dragover'].forEach(type=>zone.addEventListener(type,event=>{
+  event.preventDefault();
+  zone.classList.add('dragging');
+}));
 
-        <div class="mt-4 grid gap-3">
-          ${jobs.map(job=>`
-            <article class="rounded-xl bg-white/[.04] p-3">
-              <div class="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] lg:items-center">
-                <div class="min-w-0">
-                  <p class="font-bold break-words">
-                    ${job.book_id?'✅':'⚠️'}
-                    ${EduAI.escapeHtml(job.original_name)}
-                  </p>
-                  <p class="mt-1 text-xs muted">
-                    ${EduAI.escapeHtml(matchText(job))}
-                    ${job.book_title
-                      ? ` · → ${EduAI.escapeHtml(job.book_title)}`
-                      : ''}
-                  </p>
-                </div>
-                ${renderBookSelect(job,jobs)}
-              </div>
-            </article>`).join('')}
-        </div>
+['dragleave','drop'].forEach(type=>zone.addEventListener(type,event=>{
+  event.preventDefault();
+  zone.classList.remove('dragging');
+}));
 
-        <p class="mt-3 text-xs muted">
-          Если нужного учебника нет, создайте его в разделе «Учебники»,
-          затем нажмите «Обновить учебники».
-        </p>
-      </section>`;
-  }
+zone.addEventListener('drop',event=>{
+  const transfer=new DataTransfer();
+  Array.from(event.dataTransfer.files||[]).forEach(item=>transfer.items.add(item));
+  file.files=transfer.files;
+  file.dispatchEvent(new Event('change'));
+});
 
-  function renderQueueJob(job){
-    return `
-      <article class="rounded-2xl bg-white/[.04] p-4">
-        <div class="flex flex-wrap justify-between gap-3">
-          <div class="min-w-0">
-            <p class="font-bold break-words">
-              ${statusIcon(job.status)}
-              ${EduAI.escapeHtml(job.original_name)}
-            </p>
-            <p class="mt-1 text-xs muted">
-              ${statusText(job.status)}
-              ${job.book_title?` · ${EduAI.escapeHtml(job.book_title)}`:''}
-              ${job.match_type?` · ${job.match_type==='automatic'?'авто':'вручную'}`:''}
-              ${job.total_pages?` · ${job.processed_pages}/${job.total_pages} стр.`:''}
-            </p>
-            ${job.stage?`
+function digitizationStatusText(value){
+  return {
+    waiting_for_book:'Нужно выбрать учебник',
+    pending:'Ожидает',
+    processing:'Обрабатывается',
+    completed:'Завершено',
+    failed:'Ошибка'
+  }[value]||value;
+}
+
+function digitizationStatusIcon(value){
+  return {
+    waiting_for_book:'⚠️',
+    pending:'🕓',
+    processing:'⚙️',
+    completed:'✅',
+    failed:'❌'
+  }[value]||'•';
+}
+
+async function loadDigitizationQueue(){
+  try{
+    const items=await EduAI.api('/api/v1/admin/digitization/jobs');
+    $('digitization-queue').innerHTML=items.length
+      ? items.map(job=>`
+        <article class="rounded-2xl bg-white/[.04] p-4">
+          <div class="flex flex-wrap justify-between gap-3">
+            <div class="min-w-0">
+              <p class="font-bold truncate">
+                ${digitizationStatusIcon(job.status)}
+                ${EduAI.escapeHtml(job.original_name)}
+              </p>
               <p class="mt-1 text-xs muted">
-                Этап: ${EduAI.escapeHtml(job.stage)}
-              </p>`:''}
-            ${job.error_text?`
-              <p class="mt-2 text-sm text-rose-200">
-                ${EduAI.escapeHtml(job.error_text)}
-              </p>`:''}
+                ${digitizationStatusText(job.status)}
+                ${job.book_title?' · '+EduAI.escapeHtml(job.book_title):''}
+                ${job.total_pages
+                  ? ` · ${job.processed_pages}/${job.total_pages} стр.`
+                  : ''}
+              </p>
+              ${job.stage?`
+                <p class="mt-1 text-xs muted">
+                  Этап: ${EduAI.escapeHtml(job.stage)}
+                </p>`:''}
+              ${job.error_text?`
+                <p class="mt-2 text-sm text-rose-200">
+                  ${EduAI.escapeHtml(job.error_text)}
+                </p>`:''}
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+              ${job.status==='failed'?`
+                <button
+                  class="btn-secondary retry-digitization"
+                  data-id="${job.job_id}"
+                  type="button"
+                >Повторить</button>`:''}
+
+              ${job.status==='waiting_for_book'||job.status==='failed'?`
+                <select
+                  class="select assign-digitization-book"
+                  data-id="${job.job_id}"
+                >
+                  <option value="">Выбрать учебник…</option>
+                  ${state.books.map(book=>`
+                    <option value="${book.book_id}">
+                      ${book.book_class} кл. · ${EduAI.escapeHtml(book.book_title)}
+                    </option>`).join('')}
+                </select>`:''}
+            </div>
           </div>
+        </article>`).join('')
+      : '<p class="muted">Очередь пока пуста.</p>';
+  }catch(error){
+    EduAI.toast(error.message,'error');
+  }
+}
 
-          ${job.status==='failed'?`
-            <button
-              class="btn-secondary retry-digitization"
-              data-id="${job.job_id}"
-              type="button"
-            >
-              Повторить
-            </button>`:''}
-        </div>
-      </article>`;
+$('refresh-digitization-queue').addEventListener(
+  'click',
+  loadDigitizationQueue
+);
+
+$('digitization-queue').addEventListener('click',async event=>{
+  const retry=event.target.closest('.retry-digitization');
+  if(!retry)return;
+
+  try{
+    await EduAI.api(
+      `/api/v1/admin/digitization/jobs/${retry.dataset.id}/retry`,
+      {method:'POST'}
+    );
+    await loadDigitizationQueue();
+  }catch(error){
+    EduAI.toast(error.message,'error');
+  }
+});
+
+$('digitization-queue').addEventListener('change',async event=>{
+  const select=event.target.closest('.assign-digitization-book');
+  if(!select||!select.value)return;
+
+  try{
+    await EduAI.api(
+      `/api/v1/admin/digitization/jobs/${select.dataset.id}/assign/${select.value}`,
+      {method:'POST'}
+    );
+    await loadDigitizationQueue();
+  }catch(error){
+    EduAI.toast(error.message,'error');
+  }
+});
+
+$('upload-pdf').addEventListener('click',async event=>{
+  const files=selectedDigitizationFiles();
+  if(!files.length)return;
+
+  const button=event.currentTarget;
+  const form=new FormData();
+
+  files.forEach(item=>form.append('files',item));
+
+  const map={};
+  document.querySelectorAll('.digitization-book-map').forEach(select=>{
+    if(select.value){
+      map[select.dataset.name]=Number(select.value);
+    }
+  });
+
+  form.append('book_map_json',JSON.stringify(map));
+
+  if(
+    files.length===1 &&
+    files[0].name.toLowerCase().endsWith('.pdf') &&
+    $('upload-book').value
+  ){
+    form.append('default_book_id',$('upload-book').value);
   }
 
-  async function loadDigitizationQueue(){
-    try{
-      const items=await EduAI.api('/api/v1/admin/digitization/jobs');
-      const matching=items.filter(job=>job.status==='matching');
-      const queue=items.filter(job=>job.status!=='matching');
+  EduAI.setBusy(button,true,'Добавляем в очередь…');
 
-      const batches=new Map();
-      matching.forEach(job=>{
-        const key=String(job.batch_id);
-        if(!batches.has(key))batches.set(key,[]);
-        batches.get(key).push(job);
-      });
+  try{
+    const result=await EduAI.api(
+      '/api/v1/admin/digitization/upload',
+      {method:'POST',body:form}
+    );
 
-      $('digitization-match-summary').innerHTML=batches.size
-        ? `
-          <div class="rounded-xl bg-violet-300/[.06] p-3 text-sm">
-            Есть ${batches.size} пакет(а), ожидающих подтверждения сопоставления.
-            Пока они здесь, worker их не обрабатывает.
-          </div>`
-        : '';
+    const created=(result.jobs||[]).filter(item=>!item.duplicate).length;
+    const duplicates=(result.jobs||[]).filter(item=>item.duplicate).length;
 
-      $('digitization-queue').innerHTML=[
-        ...Array.from(batches.entries()).map(
-          ([batchId,jobs])=>renderMatchingBatch(batchId,jobs)
-        ),
-        ...queue.map(renderQueueJob)
-      ].join('') || '<p class="muted">Очередь пока пуста.</p>';
-    }catch(error){
-      EduAI.toast(error.message,'error');
-    }
+    EduAI.toast(
+      duplicates
+        ? `Добавлено: ${created}. Дубликатов: ${duplicates}.`
+        : `Добавлено задач: ${created}`,
+      'success'
+    );
+
+    file.value='';
+    renderDigitizationUploadMap();
+    await loadDigitizationQueue();
+  }catch(error){
+    EduAI.toast(error.message,'error');
+  }finally{
+    EduAI.setBusy(button,false);
   }
+});
 
-  $('refresh-digitization-books').addEventListener('click',async()=>{
-    try{
-      await Promise.all([loadBooks(),loadEmptyDigitizationBooks()]);
-      await loadDigitizationQueue();
-      EduAI.toast('Список пустых учебников обновлён','success');
-    }catch(error){
-      EduAI.toast(error.message,'error');
-    }
-  });
+await loadDigitizationQueue();
+setInterval(loadDigitizationQueue,4000);
 
-  $('refresh-digitization-queue').addEventListener('click',loadDigitizationQueue);
-
-  $('digitization-queue').addEventListener('change',async event=>{
-    const select=event.target.closest('.assign-digitization-book');
-    if(!select||!select.value)return;
-
-    try{
-      await EduAI.api(
-        `/api/v1/admin/digitization/jobs/${select.dataset.id}/assign/${select.value}`,
-        {method:'POST'}
-      );
-      await Promise.all([
-        loadEmptyDigitizationBooks(),
-        loadDigitizationQueue()
-      ]);
-    }catch(error){
-      EduAI.toast(error.message,'error');
-      await loadDigitizationQueue();
-    }
-  });
-
-  $('digitization-queue').addEventListener('click',async event=>{
-    const confirmButton=event.target.closest('.confirm-digitization-batch');
-    if(confirmButton){
-      EduAI.setBusy(confirmButton,true,'Проверяем…');
-      try{
-        await EduAI.api(
-          `/api/v1/admin/digitization/batches/${confirmButton.dataset.batch}/confirm`,
-          {method:'POST'}
-        );
-        EduAI.toast(
-          'Сопоставление подтверждено. Пакет добавлен в очередь.',
-          'success'
-        );
-        await Promise.all([
-          loadEmptyDigitizationBooks(),
-          loadDigitizationQueue()
-        ]);
-      }catch(error){
-        EduAI.toast(error.message,'error');
-      }finally{
-        EduAI.setBusy(confirmButton,false);
-      }
-      return;
-    }
-
-    const retry=event.target.closest('.retry-digitization');
-    if(!retry)return;
-
-    try{
-      await EduAI.api(
-        `/api/v1/admin/digitization/jobs/${retry.dataset.id}/retry`,
-        {method:'POST'}
-      );
-      EduAI.toast('Задача повторно поставлена в очередь','success');
-      await loadDigitizationQueue();
-    }catch(error){
-      EduAI.toast(error.message,'error');
-    }
-  });
-
-  $('upload-pdf').addEventListener('click',async event=>{
-    const files=selectedDigitizationFiles();
-    if(!files.length)return;
-
-    const button=event.currentTarget;
-    const form=new FormData();
-    files.forEach(item=>form.append('files',item));
-
-    EduAI.setBusy(button,true,'Загружаем и сопоставляем…');
-
-    try{
-      const result=await EduAI.api(
-        '/api/v1/admin/digitization/upload',
-        {method:'POST',body:form}
-      );
-
-      const created=(result.jobs||[]).filter(item=>!item.duplicate).length;
-      const duplicates=(result.jobs||[]).filter(item=>item.duplicate).length;
-
-      EduAI.toast(
-        duplicates
-          ? `Загружено: ${created}. Дубликатов: ${duplicates}. Проверьте сопоставление.`
-          : `Загружено файлов: ${created}. Проверьте сопоставление.`,
-        'success'
-      );
-
-      file.value='';
-      renderSelectedUploadFiles();
-
-      await Promise.all([
-        loadEmptyDigitizationBooks(),
-        loadDigitizationQueue()
-      ]);
-    }catch(error){
-      EduAI.toast(error.message,'error');
-    }finally{
-      EduAI.setBusy(button,false);
-    }
-  });
-
-  await loadEmptyDigitizationBooks();
-  await loadDigitizationQueue();
-  setInterval(loadDigitizationQueue,4000);
-  async function loadPages(bookId){if(!bookId){state.pages=[];$('editor-page').innerHTML='<option>Выберите учебник</option>';return;}try{state.pages=await EduAI.api(`/api/v1/admin/books/${bookId}/pages`);$('editor-page').innerHTML='<option value="">Выберите страницу</option>'+state.pages.map(p=>`<option value="${p.page_id}">Страница ${p.page_number} · ${EduAI.escapeHtml(p.page_title||'Без заголовка')}</option>`).join('');}catch(e){EduAI.toast(e.message,'error');}}
+async function loadPages(bookId){if(!bookId){state.pages=[];$('editor-page').innerHTML='<option>Выберите учебник</option>';return;}try{state.pages=await EduAI.api(`/api/v1/admin/books/${bookId}/pages`);$('editor-page').innerHTML='<option value="">Выберите страницу</option>'+state.pages.map(p=>`<option value="${p.page_id}">Страница ${p.page_number} · ${EduAI.escapeHtml(p.page_title||'Без заголовка')}</option>`).join('');}catch(e){EduAI.toast(e.message,'error');}}
   $('editor-book').addEventListener('change',e=>loadPages(e.target.value));$('editor-page').addEventListener('change',e=>{const p=state.pages.find(x=>x.page_id===Number(e.target.value));$('editor-empty').hidden=!!p;$('editor-workspace').hidden=!p;if(!p)return;$('page-id').value=p.page_id;$('page-number').value=p.page_number;$('page-title').value=p.page_title||'';$('page-paragraph').value=p.page_paragraph||'';$('page-markdown').value=p.page_markdown||'';$('page-html').value=p.page_html||'';$('page-text').value=p.page_text||'';$('page-image').src=p.page_image||'';});
   document.querySelectorAll('.editor-tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.editor-tab').forEach(x=>x.classList.toggle('btn-primary',x===b));document.querySelectorAll('.editor-pane').forEach(x=>x.hidden=x.dataset.pane!==b.dataset.tab);}));document.querySelector('.editor-tab').click();
   $('page-form').addEventListener('submit',async e=>{e.preventDefault();const b=e.submitter;const payload={page_number:Number($('page-number').value),page_title:$('page-title').value||null,page_paragraph:$('page-paragraph').value||null,page_markdown:$('page-markdown').value.replaceAll('$',''),page_html:$('page-html').value,page_text:$('page-text').value};EduAI.setBusy(b,true,'Сохраняем…');try{await EduAI.api(`/api/v1/admin/pages/${$('page-id').value}`,{method:'PUT',body:JSON.stringify(payload)});EduAI.toast('Страница сохранена','success');await loadPages($('editor-book').value);}catch(err){EduAI.toast(err.message,'error');}finally{EduAI.setBusy(b,false);}});
