@@ -302,3 +302,256 @@
     mathDebug: { normalizeLatexTransport, latexFallback }
   };
 })();
+
+/* === TZ23 RICH CONTENT START === */
+(function () {
+  if (!window.EduAI) return;
+
+  const oldInitShell = EduAI.initShell;
+  let katexPromise = null;
+
+  function encodeMath(value) {
+    return btoa(unescape(encodeURIComponent(String(value ?? ''))));
+  }
+
+  function decodeMath(value) {
+    return decodeURIComponent(escape(atob(value || '')));
+  }
+
+  function normalizeLatexTransport(value) {
+    let text = String(value ?? '');
+    text = text.replace(/\\\\(?=[()[\]])/g, '\\');
+    text = text.replace(
+      /\\\\(?=(?:frac|sqrt|times|cdot|div|text|begin|end|quad|qquad|Rightarrow|Leftarrow|rightarrow|leftarrow|pm|leq?|geq?|neq?|pi|infty|left|right)\b)/g,
+      '\\'
+    );
+    return text;
+  }
+
+  function latexFallback(value) {
+    let text = normalizeLatexTransport(value).trim();
+    let previous = null;
+
+    while (text !== previous) {
+      previous = text;
+      text = text.replace(
+        /\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g,
+        '($1) / ($2)'
+      );
+    }
+
+    text = text
+      .replace(/\\sqrt\s*\{([^{}]+)\}/g, '√($1)')
+      .replace(/\\text\s*\{([^{}]*)\}/g, '$1')
+      .replace(/\\(?:quad|qquad)\b/g, ' ')
+      .replace(/\\Rightarrow\b/g, ' ⇒ ')
+      .replace(/\\Leftarrow\b/g, ' ⇐ ')
+      .replace(/\\rightarrow\b/g, ' → ')
+      .replace(/\\leftarrow\b/g, ' ← ')
+      .replace(/\\times\b/g, ' × ')
+      .replace(/\\cdot\b/g, ' · ')
+      .replace(/\\div\b/g, ' : ')
+      .replace(/\\pm\b/g, ' ± ')
+      .replace(/\\leq?\b/g, ' ≤ ')
+      .replace(/\\geq?\b/g, ' ≥ ')
+      .replace(/\\neq?\b/g, ' ≠ ')
+      .replace(/\\pi\b/g, 'π')
+      .replace(/\\infty\b/g, '∞')
+      .replace(/\\begin\{cases\}|\\end\{cases\}/g, '')
+      .replace(/\\(?:left|right)\b/g, '')
+      .replace(/\\\\/g, '\n')
+      .replace(/\\\[|\\\]|\\\(|\\\)/g, '')
+      .replace(/\\[A-Za-z]+/g, '')
+      .replace(/[{}]/g, '');
+
+    return text.replace(/[ \t]{2,}/g, ' ').trim();
+  }
+
+  function ensureKatex() {
+    if (window.katex) return Promise.resolve(window.katex);
+    if (katexPromise) return katexPromise;
+
+    katexPromise = new Promise((resolve, reject) => {
+      if (!document.querySelector('link[data-eduai-katex]')) {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.dataset.eduaiKatex = '1';
+        link.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css';
+        document.head.append(link);
+      }
+
+      const existing = document.querySelector('script[data-eduai-katex]');
+      if (existing) {
+        if (window.katex) resolve(window.katex);
+        else {
+          existing.addEventListener('load', () => resolve(window.katex), { once: true });
+          existing.addEventListener('error', reject, { once: true });
+        }
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.dataset.eduaiKatex = '1';
+      script.src = 'https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js';
+      script.defer = true;
+      script.onload = () => resolve(window.katex);
+      script.onerror = reject;
+      document.head.append(script);
+    });
+
+    return katexPromise;
+  }
+
+  function mathNodes(root) {
+    const result = [];
+    if (root?.matches?.('[data-eduai-math]')) result.push(root);
+    if (root?.querySelectorAll) {
+      result.push(...root.querySelectorAll('[data-eduai-math]'));
+    }
+    return result;
+  }
+
+  function renderMath(root = document) {
+    const nodes = mathNodes(root).filter(node => !node.dataset.rendered);
+    if (!nodes.length) return;
+
+    ensureKatex()
+      .then(katex => {
+        nodes.forEach(node => {
+          const source = decodeMath(node.dataset.eduaiMath || '');
+          try {
+            node.innerHTML = katex.renderToString(source, {
+              displayMode: node.dataset.display === '1',
+              throwOnError: true,
+              strict: 'warn',
+              trust: false,
+              output: 'htmlAndMathml'
+            });
+            node.dataset.rendered = '1';
+          } catch (_) {
+            node.textContent = latexFallback(source);
+            node.classList.add('math-fallback');
+            node.dataset.rendered = 'fallback';
+          }
+        });
+      })
+      .catch(() => {
+        nodes.forEach(node => {
+          node.textContent = latexFallback(
+            decodeMath(node.dataset.eduaiMath || '')
+          );
+          node.classList.add('math-fallback');
+          node.dataset.rendered = 'fallback';
+        });
+      });
+  }
+
+  function hasBareLatex(line) {
+    return /\\(?:frac|sqrt|times|cdot|div|text|begin|end|quad|qquad|Rightarrow|Leftarrow|rightarrow|leftarrow|pm|leq?|geq?|neq?)\b/.test(line);
+  }
+
+  function renderRichContent(value) {
+    const raw = normalizeLatexTransport(value);
+    const protectedParts = [];
+    const protect = html => {
+      const token = `@@EDUAI_RICH_${protectedParts.length}@@`;
+      protectedParts.push(html);
+      return token;
+    };
+
+    // Code must be protected before math processing. URLs are not touched by
+    // the fallback because it only reacts to TeX commands beginning with '\\'.
+    let text = raw.replace(/```([\s\S]*?)```/g, (_, code) =>
+      protect(
+        `<pre class="eduai-code"><code>${EduAI.escapeHtml(
+          code.replace(/^\n|\n$/g, '')
+        )}</code></pre>`
+      )
+    );
+    text = text.replace(/`([^`]+)`/g, (_, code) =>
+      protect(
+        `<code class="rounded bg-black/20 px-1">${EduAI.escapeHtml(code)}</code>`
+      )
+    );
+
+    // Canonical display and inline math.
+    text = text.replace(
+      /\\\[([\s\S]+?)\\\]|\$\$([\s\S]+?)\$\$/g,
+      (_, a, b) => protect(
+        `<span class="math-display" data-eduai-math="${encodeMath(a || b || '')}" data-display="1"></span>`
+      )
+    );
+    text = text.replace(/\\\(([\s\S]+?)\\\)/g, (_, expr) =>
+      protect(
+        `<span class="math-inline" data-eduai-math="${encodeMath(expr)}" data-display="0"></span>`
+      )
+    );
+
+    // Legacy messages sometimes contain bare TeX without delimiters. Do not
+    // show technical commands to the user: convert such lines to a readable
+    // fallback while preserving normal prose around them.
+    text = text
+      .split('\n')
+      .map(line => hasBareLatex(line) ? latexFallback(line) : line)
+      .join('\n');
+
+    let safe = EduAI.escapeHtml(text);
+    safe = safe
+      .replace(/^### (.+)$/gm, '<strong class="block text-base mt-2">$1</strong>')
+      .replace(/^## (.+)$/gm, '<strong class="block text-lg mt-2">$1</strong>')
+      .replace(/^# (.+)$/gm, '<strong class="block text-xl mt-2">$1</strong>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/^[-•] (.+)$/gm, '<span class="block pl-3">• $1</span>')
+      .replace(/\n/g, '<br>');
+
+    protectedParts.forEach((html, index) => {
+      safe = safe.replace(`@@EDUAI_RICH_${index}@@`, html);
+    });
+
+    queueMicrotask(() => renderMath(document));
+    return `<div class="rich-content">${safe}</div>`;
+  }
+
+  function setActiveSection() {
+    const active = document.querySelector('.page-section.active');
+    if (active?.id) document.body.dataset.activeSection = active.id;
+  }
+
+  EduAI.initShell = function (...args) {
+    const result = oldInitShell.apply(this, args);
+    setActiveSection();
+    document.querySelectorAll('[data-section]').forEach(button => {
+      button.addEventListener('click', () => {
+        requestAnimationFrame(setActiveSection);
+      });
+    });
+    return result;
+  };
+
+  EduAI.renderRichContent = renderRichContent;
+  EduAI.markdown = renderRichContent; // backward compatibility
+  EduAI.renderMath = renderMath;
+  EduAI.latexFallback = latexFallback;
+  EduAI.MATH_RENDERER_VERSION = '20260813-tz23-1';
+
+  const installObserver = () => {
+    if (!document.body || window.__eduaiMathObserver) return;
+    const observer = new MutationObserver(mutations => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType === Node.ELEMENT_NODE) renderMath(node);
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    window.__eduaiMathObserver = observer;
+    renderMath(document);
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', installObserver, { once: true });
+  } else {
+    installObserver();
+  }
+})();
+/* === TZ23 RICH CONTENT END === */

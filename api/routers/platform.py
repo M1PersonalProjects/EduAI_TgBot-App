@@ -1618,16 +1618,73 @@ async def admin_family_tree(user=Depends(require_roles("admin"))):
 async def admin_activity(user=Depends(require_roles("admin"))):
     async with db.pool.acquire() as conn:
         chats = await conn.fetch(
-            "SELECT message_id AS id, user_id, sender, message_text AS detail, created_at FROM chat_messages ORDER BY created_at DESC LIMIT 40"
+            """
+            SELECT
+                cm.message_id AS id,
+                cm.user_id,
+                cm.sender,
+                cm.message_text AS detail,
+                cm.created_at,
+                cm.session_id,
+                u.username,
+                u.role::text AS user_role,
+                cs.title AS session_title
+            FROM chat_messages cm
+            LEFT JOIN users u
+                ON u.tg_id = cm.user_id
+            LEFT JOIN chat_sessions cs
+                ON cs.session_id = cm.session_id
+            ORDER BY cm.created_at DESC
+            LIMIT 40
+            """
         )
         tasks = await conn.fetch(
-            "SELECT task_id AS id, student_id AS user_id, status::text AS detail, created_at FROM tasks_history ORDER BY created_at DESC LIMIT 40"
+            """
+            SELECT
+                th.task_id AS id,
+                th.student_id AS user_id,
+                th.status::text AS detail,
+                th.created_at,
+                NULL::uuid AS session_id,
+                u.username,
+                u.role::text AS user_role,
+                NULL::varchar AS session_title
+            FROM tasks_history th
+            LEFT JOIN users u
+                ON u.tg_id = th.student_id
+            ORDER BY th.created_at DESC
+            LIMIT 40
+            """
         )
         purchases = await conn.fetch(
-            "SELECT purchase_id AS id, student_id AS user_id, ('Награда #' || reward_id || ', ' || cost_coins || ' монет') AS detail, purchased_at AS created_at FROM reward_purchases ORDER BY purchased_at DESC LIMIT 40"
+            """
+            SELECT
+                rp.purchase_id AS id,
+                rp.student_id AS user_id,
+                (
+                    'Награда #' || rp.reward_id ||
+                    ', ' || rp.cost_coins || ' монет'
+                ) AS detail,
+                rp.purchased_at AS created_at,
+                NULL::uuid AS session_id,
+                u.username,
+                u.role::text AS user_role,
+                NULL::varchar AS session_title
+            FROM reward_purchases rp
+            LEFT JOIN users u
+                ON u.tg_id = rp.student_id
+            ORDER BY rp.purchased_at DESC
+            LIMIT 40
+            """
         )
-    result = ([{"type": "chat", **dict(row)} for row in chats]
-              + [{"type": "task", **dict(row)} for row in tasks]
-              + [{"type": "purchase", **dict(row)} for row in purchases])
-    result.sort(key=lambda item: item["created_at"], reverse=True)
+
+    result = (
+        [{"type": "chat", **dict(row)} for row in chats]
+        + [{"type": "task", **dict(row)} for row in tasks]
+        + [{"type": "purchase", **dict(row)} for row in purchases]
+    )
+    result.sort(
+        key=lambda item: item["created_at"],
+        reverse=True,
+    )
     return result[:100]

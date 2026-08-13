@@ -164,3 +164,214 @@ button:disabled { cursor: not-allowed; opacity: .5; transform: none !important; 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* === TZ23 FRONTEND LAYOUT START === */
+html {
+  min-height: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+body {
+  min-height: 100dvh;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+.app-shell {
+  min-height: 100dvh;
+}
+.main-area,
+.page-section,
+.card,
+.glass,
+.message,
+.table-wrap {
+  min-width: 0;
+}
+.page-section {
+  max-width: 100%;
+}
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+.modal-panel {
+  max-height: calc(100dvh - 2rem);
+  overscroll-behavior: contain;
+}
+.table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.rich-content,
+.message {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.math-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+.math-fallback {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 1024px) {
+  body[data-active-section="tutor"],
+  body[data-active-section="assistant"] {
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  body[data-active-section="tutor"] .app-shell,
+  body[data-active-section="assistant"] .app-shell {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  body[data-active-section="tutor"] .main-area,
+  body[data-active-section="assistant"] .main-area {
+    display: flex;
+    height: 100dvh;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 1.15rem;
+  }
+
+  body[data-active-section="tutor"] .topbar,
+  body[data-active-section="assistant"] .topbar {
+    flex: 0 0 auto;
+  }
+
+  /* The student stats are useful on the dashboard, but on the tutor screen
+     they steal the vertical space needed by the chat. */
+  body[data-active-section="tutor"] .student-dashboard-stats {
+    display: none !important;
+  }
+
+  body[data-active-section="tutor"] #tutor,
+  body[data-active-section="assistant"] #assistant {
+    display: block;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  body[data-active-section="tutor"] #tutor > .grid,
+  body[data-active-section="assistant"] #assistant > .grid {
+    height: 100%;
+    min-height: 0;
+    align-items: stretch;
+  }
+
+  body[data-active-section="tutor"] #tutor > .grid > *,
+  body[data-active-section="assistant"] #assistant > .grid > * {
+    min-height: 0;
+    max-height: 100%;
+  }
+
+  body[data-active-section="tutor"] #tutor > .grid > aside,
+  body[data-active-section="assistant"] #assistant > .grid > aside {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  body[data-active-section="tutor"] #tutor > .grid > aside:first-child,
+  body[data-active-section="assistant"] #assistant > .grid > aside:first-child {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  body[data-active-section="tutor"] #tutor > .grid > aside:first-child .thread-list,
+  body[data-active-section="assistant"] #assistant > .grid > aside:first-child .thread-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+  }
+
+  body[data-active-section="tutor"] #tutor > .grid > article,
+  body[data-active-section="assistant"] #assistant > .grid > article {
+    display: flex;
+    height: 100%;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  body[data-active-section="tutor"] #tutor .chat-log,
+  body[data-active-section="assistant"] #assistant .chat-log {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  body[data-active-section="tutor"] #tutor form,
+  body[data-active-section="assistant"] #assistant form,
+  body[data-active-section="tutor"] #tutor .attachment-preview,
+  body[data-active-section="assistant"] #assistant .attachment-preview {
+    flex: 0 0 auto;
+  }
+}
+
+@media (max-width: 1023px) {
+  body {
+    height: auto;
+    overflow-y: auto;
+  }
+  .app-shell,
+  .main-area {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .chat-log {
+    min-height: 18rem;
+    max-height: min(60dvh, 34rem);
+    overflow-y: auto;
+  }
+  #tutor > .grid > aside,
+  #assistant > .grid > aside,
+  #tutor > .grid > article,
+  #assistant > .grid > article {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 640px) {
+  .main-area {
+    padding-bottom: max(.85rem, env(safe-area-inset-bottom));
+  }
+  .topbar {
+    top: max(.35rem, env(safe-area-inset-top));
+  }
+  .modal-backdrop {
+    padding:
+      max(.6rem, env(safe-area-inset-top))
+      .6rem
+      max(.6rem, env(safe-area-inset-bottom));
+  }
+  .modal-panel {
+    max-height: calc(100dvh - 1.2rem);
+    width: 100%;
+  }
+  .data-table {
+    font-size: .8rem;
+  }
+}
+/* === TZ23 FRONTEND LAYOUT END === */

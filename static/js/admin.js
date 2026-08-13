@@ -471,7 +471,159 @@ async function loadPages(bookId){if(!bookId){state.pages=[];$('editor-page').inn
 
   async function loadUsers(){const q=new URLSearchParams();if($('user-role').value)q.set('role',$('user-role').value);if($('user-search').value.trim())q.set('search',$('user-search').value.trim());try{const [users,families]=await Promise.all([EduAI.api('/api/v1/admin/users?'+q),EduAI.api('/api/v1/admin/family-tree')]);$('users-body').innerHTML=users.map(u=>`<tr><td>${u.tg_id}</td><td>${EduAI.escapeHtml(u.username?'@'+u.username:'—')}</td><td><span class="badge">${u.role}</span></td><td>${u.parent_id||'—'}</td><td>${EduAI.formatDate(u.created_at)}</td></tr>`).join('')||'<tr><td colspan="5" class="text-center muted">Ничего не найдено</td></tr>';$('family-tree').innerHTML=families.length?families.map(f=>`<article class="glass card"><p class="font-extrabold">${EduAI.escapeHtml(f.parent_username?'@'+f.parent_username:'Родитель '+f.parent_id)}</p><div class="mt-3 grid gap-2">${f.children.length?f.children.map(c=>`<div class="rounded-xl bg-white/[.04] p-2 text-sm">↳ ${EduAI.escapeHtml(c.username?'@'+c.username:'Ученик '+c.tg_id)}</div>`).join(''):'<p class="text-sm muted">Нет привязанных детей</p>'}</div></article>`).join(''):empty('Семейных связей нет.');}catch(e){EduAI.toast(e.message,'error');}}
   $('find-users').addEventListener('click',loadUsers);$('user-search').addEventListener('keydown',e=>{if(e.key==='Enter')loadUsers();});
-  async function loadActivity(){try{const items=await EduAI.api('/api/v1/admin/activity');$('activity-list').innerHTML=items.length?items.map(x=>`<article class="glass card flex items-start justify-between gap-3"><div><div class="flex items-center gap-2"><span class="badge">${x.type}</span><span class="text-xs muted">Пользователь ${x.user_id}</span></div><p class="mt-2 text-sm">${EduAI.escapeHtml(String(x.detail).slice(0,260))}</p></div><time class="text-xs muted shrink-0">${EduAI.formatDate(x.created_at)}</time></article>`).join(''):empty('Событий пока нет.');}catch(e){EduAI.toast(e.message,'error');}}
+  const ACTIVITY_PREVIEW_LIMIT = 260;
+
+  function activityRoleLabel(role, sender) {
+    if (sender === 'assistant') return 'ИИ-тьютор';
+    return {
+      student: 'Ученик',
+      parent: 'Родитель',
+      admin: 'Администратор'
+    }[role] || 'Пользователь';
+  }
+
+  function activityTypeLabel(type, sender) {
+    if (type === 'chat') {
+      return sender === 'assistant' ? 'Ответ ИИ' : 'Сообщение чата';
+    }
+    return {
+      task: 'Задание',
+      purchase: 'Покупка награды'
+    }[type] || type;
+  }
+
+  function activityUserLabel(item) {
+    const role = activityRoleLabel(item.user_role, item.sender);
+    const name = item.username
+      ? `@${item.username}`
+      : `ID ${item.user_id}`;
+    return `${role} · ${name}`;
+  }
+
+  function activityPreview(text, limit = ACTIVITY_PREVIEW_LIMIT) {
+    const value = String(text || '');
+    if (value.length <= limit) return value;
+
+    let cut = value.slice(0, limit);
+    const lastSpace = cut.lastIndexOf(' ');
+    if (lastSpace > Math.floor(limit * 0.72)) {
+      cut = cut.slice(0, lastSpace);
+    }
+    return `${cut.trimEnd()}…`;
+  }
+
+  function renderActivityDetail(text) {
+    const renderer = EduAI.renderRichContent || EduAI.markdown;
+    return renderer
+      ? renderer(String(text || ''))
+      : EduAI.escapeHtml(String(text || ''));
+  }
+
+  function renderActivityCard(item) {
+    const detail = String(item.detail || '');
+    const isLong = detail.length > ACTIVITY_PREVIEW_LIMIT;
+    const preview = isLong ? activityPreview(detail) : detail;
+
+    const sessionMeta = item.type === 'chat' && item.session_id
+      ? `
+        <p class="mt-1 text-xs muted break-words">
+          Чат: ${
+            item.session_title
+              ? EduAI.escapeHtml(item.session_title)
+              : 'Без названия'
+          }
+          · ${EduAI.escapeHtml(String(item.session_id))}
+        </p>`
+      : '';
+
+    return `
+      <article
+        class="activity-card glass card min-w-0"
+        data-activity-id="${EduAI.escapeHtml(`${item.type}:${item.id}`)}"
+        data-expanded="false"
+      >
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="badge">
+                ${EduAI.escapeHtml(activityTypeLabel(item.type, item.sender))}
+              </span>
+              <strong class="text-sm">
+                ${EduAI.escapeHtml(activityUserLabel(item))}
+              </strong>
+            </div>
+            ${sessionMeta}
+          </div>
+
+          <time class="text-xs muted shrink-0">
+            ${EduAI.formatDate(item.created_at)}
+          </time>
+        </div>
+
+        <div class="activity-message-preview mt-4 text-sm leading-6 break-words">
+          ${renderActivityDetail(preview)}
+        </div>
+
+        ${isLong ? `
+          <div
+            class="activity-message-full mt-4 text-sm leading-6 break-words"
+            hidden
+          >
+            ${renderActivityDetail(detail)}
+          </div>
+
+          <button
+            type="button"
+            class="activity-toggle btn-secondary mt-4 text-sm"
+            aria-expanded="false"
+          >
+            Показать полностью
+          </button>` : ''}
+      </article>
+    `;
+  }
+
+  async function loadActivity() {
+    try {
+      const items = await EduAI.api('/api/v1/admin/activity');
+      $('activity-list').innerHTML = items.length
+        ? items.map(renderActivityCard).join('')
+        : empty('Событий пока нет.');
+
+      if (EduAI.renderMath) {
+        EduAI.renderMath($('activity-list'));
+      }
+    } catch (e) {
+      EduAI.toast(e.message, 'error');
+    }
+  }
+
+    $('activity-list').addEventListener('click', event => {
+    const button = event.target.closest('.activity-toggle');
+    if (!button) return;
+
+    const card = button.closest('.activity-card');
+    if (!card) return;
+
+    const preview = card.querySelector('.activity-message-preview');
+    const full = card.querySelector('.activity-message-full');
+    if (!preview || !full) return;
+
+    const expanded = card.dataset.expanded === 'true';
+
+    card.dataset.expanded = String(!expanded);
+    preview.hidden = !expanded;
+    full.hidden = expanded;
+    button.textContent = expanded
+      ? 'Показать полностью'
+      : 'Свернуть';
+    button.setAttribute('aria-expanded', String(!expanded));
+
+    if (!expanded && EduAI.renderMath) {
+      EduAI.renderMath(full);
+    }
+  });
+
   $('refresh-activity').addEventListener('click',loadActivity);$('refresh-admin').addEventListener('click',()=>Promise.all([loadOverview(),loadBooks()]));document.querySelectorAll('.jump-section').forEach(b=>b.addEventListener('click',()=>document.querySelector(`[data-section="${b.dataset.target}"]`).click()));
   await Promise.all([loadOverview(),loadBooks(),loadUsers(),loadActivity()]);
 });
