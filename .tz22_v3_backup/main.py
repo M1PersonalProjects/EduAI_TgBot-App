@@ -24,8 +24,6 @@ from api.routers.rewards import router as rewards_router
 from api.routers.auth import router as auth_v1_router
 from api.routers.platform import router as platform_v1_router
 from api.routers.tutor import router as tutor_v1_router
-from api.routers.digitization import router as digitization_router
-from services.digitization_queue import start_digitization_worker, stop_digitization_worker
 
 from logger_config import logger
 
@@ -34,10 +32,8 @@ BASE_DIR = Path(__file__).resolve().parent
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await db.connect()
-    await start_digitization_worker()
     logger.info(" 🗄  Пул базы данных PostgreSQL успешно инициализирован.")
     yield
-    await stop_digitization_worker()
     await db.disconnect()
     logger.info(" 🗄  Пул базы данных закрыт.")
 
@@ -73,7 +69,6 @@ app.include_router(auth_v1_router)
 app.include_router(platform_v1_router)
 app.include_router(tutor_v1_router)
 app.include_router(attachments_v1_router)
-app.include_router(digitization_router)
 
 bot = Bot(token=settings.bot_token.get_secret_value())
 dp = Dispatcher()
