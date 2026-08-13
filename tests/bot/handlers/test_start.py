@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from aiogram.filters import CommandObject
+from unittest.mock import ANY
 
 # Явно прописываем admin_ids для тестов
 from config import settings
@@ -35,7 +36,12 @@ async def test_cmd_start_successful_child_registration(make_message, mock_db):
     assert mock_db.mock_conn.execute.call_count == 2
     
     # Проверяем приветствие для ребенка
-    assert "Успех! Вы успешно связали аккаунт с Родителем." in message.answer.call_args[0][0]
+    answer_text = message.answer.call_args[0][0]
+
+    assert "Аккаунт успешно связан с Родителем!" in answer_text
+    assert "В Telegram можно:" in answer_text
+    assert "В EduAI WebApp доступно больше:" in answer_text
+    assert "🌐 Открыть EduAI" in answer_text
     
     # Проверяем, что родителю улетела нотификация
     message.bot.send_message.assert_called_once_with(
@@ -59,7 +65,22 @@ async def test_cmd_start_admin_first_time(make_message, mock_db):
     # Проверяем, что его роль сохранилась как admin
     mock_db.mock_conn.execute.assert_called_once()
     assert "admin" in mock_db.mock_conn.execute.call_args[0][0]
-    assert "Добро пожаловать, Главный Администратор EduAI!" in message.answer.call_args[0][0]
+    answer_text = message.answer.call_args[0][0]
+
+    assert "режим Администратора" in answer_text
+    assert "В Telegram" in answer_text
+    assert "В EduAI WebApp:" in answer_text
+    assert "🌐 Открыть EduAI" in answer_text
+
+    markup = message.answer.call_args.kwargs["reply_markup"]
+    texts = [
+        button.text
+        for row in markup.inline_keyboard
+        for button in row
+    ]
+
+    assert "🌐 Открыть EduAI" in texts
+    assert "👨‍👩‍👦 Переключиться на Родителя" in texts
 
 
 @pytest.mark.asyncio
@@ -75,7 +96,34 @@ async def test_cmd_start_existing_parent(make_message, mock_db):
     await cmd_start(message, command)
     
     # Меняем pytest.any_str на ANY
-    message.answer.assert_called_once_with("Добро пожаловать в EduAI! Вы вошли как Родитель.", reply_markup=ANY)
+    message.answer.assert_called_once()
+
+    answer_text = message.answer.call_args.args[0]
+    kwargs = message.answer.call_args.kwargs
+
+    assert "Добро пожаловать в EduAI!" in answer_text
+    assert "В Telegram можно:" in answer_text
+    assert "В EduAI WebApp доступно больше:" in answer_text
+    assert "🌐 Открыть EduAI" in answer_text
+
+    assert kwargs["parse_mode"] == "Markdown"
+
+    markup = kwargs["reply_markup"]
+    texts = [
+        button.text
+        for row in markup.keyboard
+        for button in row
+    ]
+
+    assert "➕ Привязать ребенка" in texts
+    assert "📊 Мониторинг в чате" in texts
+    assert "📚 Каталог учебников" in texts
+    assert "🌐 Открыть EduAI" in texts
+
+    assert "📊 Панель Родителя (Web App)" not in texts
+    assert "📝 Создать ИИ-тест (Web App)" not in texts
+
+
 
 
 @pytest.mark.asyncio
@@ -85,11 +133,16 @@ async def test_cmd_start_new_user_role_selection(make_message, mock_db):
     message = make_message(text="/start", user_id=user_id, first_name= "Иван")
     command = CommandObject(prefix="/", command="start", args=None)
     
-    mock_db.mock_conn.fetchrow.return_value = None  # В базе нет
+    mock_db.mock_conn.fetchrow.return_value = None
     
     await cmd_start(message, command)
     
-    assert "пожалуйста, выбери свою роль:" in message.answer.call_args[0][0]
+    answer_text = message.answer.call_args[0][0]
+
+    assert "Добро пожаловать в EduAI!" in answer_text
+    assert "Telegram" in answer_text
+    assert "WebApp" in answer_text
+    assert "выберите свою роль:" in answer_text
 
 
 @pytest.mark.asyncio

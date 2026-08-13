@@ -5,11 +5,67 @@ from aiogram import Router, F
 from aiogram.filters import CommandStart, CommandObject, Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from database import db
-from bot.keyboards import get_role_keyboard
-from bot.handlers.webapp import get_student_menu, get_parent_menu
+from bot.keyboards import (
+    get_admin_menu,
+    get_parent_menu,
+    get_role_keyboard,
+    get_student_menu,
+)
 from logger_config import logger
 
 router = Router()
+
+STUDENT_START_TEXT = (
+    "👋 *Добро пожаловать в EduAI!*\n\n"
+    "🤖 *В Telegram можно:*\n"
+    "• общаться с ИИ-тьютором и разбирать учебные темы;\n"
+    "• отправлять фотографии и учебные файлы;\n"
+    "• работать с каталогом учебников;\n"
+    "• получать задания и отправлять решения;\n"
+    "• следить за своим учебным прогрессом.\n\n"
+    "🌐 *В EduAI WebApp доступно больше:*\n"
+    "• полноценный чат и история диалогов;\n"
+    "• удобная работа с заданиями и результатами;\n"
+    "• учебники, награды и подробный прогресс.\n\n"
+    "Для полного интерфейса нажмите *«🌐 Открыть EduAI»*."
+)
+
+PARENT_START_TEXT = (
+    "👋 *Добро пожаловать в EduAI!*\n\n"
+    "🤖 *В Telegram можно:*\n"
+    "• привязать ребёнка;\n"
+    "• быстро посмотреть учебную активность;\n"
+    "• открыть каталог учебников;\n"
+    "• получать важные уведомления о заданиях и результатах.\n\n"
+    "🌐 *В EduAI WebApp доступно больше:*\n"
+    "• создавать задания вручную или с помощью ИИ;\n"
+    "• прикреплять учебные материалы;\n"
+    "• просматривать историю заданий, попытки и результаты;\n"
+    "• управлять детьми и учебным процессом.\n\n"
+    "Для полного интерфейса нажмите *«🌐 Открыть EduAI»*."
+)
+
+ADMIN_START_TEXT = (
+    "👑 *EduAI · режим Администратора*\n\n"
+    "🤖 В Telegram доступны быстрые действия и переключение роли.\n\n"
+    "🌐 *В EduAI WebApp:*\n"
+    "• управление учебниками и страницами;\n"
+    "• пакетная оцифровка;\n"
+    "• пользователи и активности;\n"
+    "• административные инструменты.\n\n"
+    "Откройте полный интерфейс кнопкой *«🌐 Открыть EduAI»*."
+)
+
+NEW_USER_START_TEXT = (
+    "👋 *Добро пожаловать в EduAI!*\n\n"
+    "EduAI — образовательный помощник для учеников и родителей.\n\n"
+    "🤖 Telegram подходит для быстрых действий, общения, уведомлений "
+    "и работы с учебными заданиями.\n"
+    "🌐 WebApp открывает полный интерфейс и расширенные возможности.\n\n"
+    "Для начала выберите свою роль:"
+)
+
+
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, command: CommandObject):
@@ -49,7 +105,7 @@ async def cmd_start(message: Message, command: CommandObject):
                 )
 
         await message.answer(
-            "🎉 Успех! Вы успешно связали аккаунт с Родителем.\nВам доступен интерактивный ИИ-тьютор, квесты и магазин наград!",
+            "🎉 Аккаунт успешно связан с Родителем!\n\n" + STUDENT_START_TEXT,
             reply_markup=get_student_menu()
         )
 
@@ -80,19 +136,14 @@ async def cmd_start(message: Message, command: CommandObject):
                 role = user["role"]
 
         if role == "admin":
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="👨‍👩‍👦 Переключиться на Родителя", callback_data="admin_toggle_role")]
-            ])
             await message.answer(
-                "👑 *Добро пожаловать, Главный Администратор EduAI!*\n\n"
-                "Система распознала ваш Telegram ID. Вам доступно управление базой знаний.\n"
-                "Вы можете переключаться между режимом администрирования и интерфейсом родителя с помощью кнопки ниже или команды /toggle.",
-                reply_markup=kb,
-                parse_mode="Markdown"
+                ADMIN_START_TEXT,
+                reply_markup=get_admin_menu(),
+                parse_mode="Markdown",
             )
         else:
             await message.answer(
-                "Добро пожаловать в EduAI! Вы вошли в режиме *Родитель*.\nИспользуйте команду /toggle, чтобы вернуться в режим Администратора.",
+                PARENT_START_TEXT + "\n\nИспользуйте /toggle, чтобы вернуться в режим Администратора.",
                 reply_markup=get_parent_menu(),
                 parse_mode="Markdown"
             )
@@ -105,17 +156,24 @@ async def cmd_start(message: Message, command: CommandObject):
     if user:
         role = user['role']
         if role == 'parent':
-            await message.answer("Добро пожаловать в EduAI! Вы вошли как Родитель.", reply_markup=get_parent_menu())
+            await message.answer(
+                PARENT_START_TEXT,
+                reply_markup=get_parent_menu(),
+                parse_mode="Markdown",
+            )
         elif role == 'student':
-            await message.answer("Привет! Рад снова видеть тебя в EduAI. Готов к новым знаниям?", reply_markup=get_student_menu())
+            await message.answer(
+                STUDENT_START_TEXT,
+                reply_markup=get_student_menu(),
+                parse_mode="Markdown",
+            )
         return
 
     # --- СЦЕНАРИЙ 4: Новый пользователь (Выбор роли) ---
     await message.answer(
-        f"Привет, {message.from_user.first_name}! 👋 \n"
-        "Я EduAI — твой интеллектуальный помощник по школьной программе.\n\n"
-        "Для начала работы, пожалуйста, выбери свою роль:",
+        NEW_USER_START_TEXT,
         reply_markup=get_role_keyboard(),
+        parse_mode="Markdown",
     )
 
 
@@ -143,9 +201,7 @@ async def toggle_admin_role_logic(user_id: int, message_or_call) -> None:
             "👑 *Режим Администратора активирован!*\n\n"
             "Вы вернулись в панель управления. Все админские права и доступ к API восстановлены."
         )
-        inline_kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="👨‍👩‍👦 Переключиться на Родителя", callback_data="admin_toggle_role")]
-        ])
+        inline_kb = get_admin_menu()
     else:
         text_msg = (
             "👨‍👩‍👦 *Режим Родителя активирован!*\n\n"
@@ -213,14 +269,16 @@ async def callbacks_num(callback: CallbackQuery):
     if selected_role == 'student':
         await callback.message.edit_text("✅ Роль успешно сохранена!\n\nТы зарегистрирован как **Ученик**.", parse_mode="Markdown")
         await callback.message.answer(
-            "Тебе доступен интерактивный ИИ-тьютор, квесты и магазин наград!",
-            reply_markup=get_student_menu()
+            STUDENT_START_TEXT,
+            reply_markup=get_student_menu(),
+            parse_mode="Markdown",
         )
     elif selected_role == 'parent':
         await callback.message.edit_text("✅ Роль успешно сохранена!\n\nВы зарегистрированы как **Родитель**.", parse_mode="Markdown")
         await callback.message.answer(
-            "Используйте нижнее меню для взаимодействия с платформой:",
-            reply_markup=get_parent_menu()
+            PARENT_START_TEXT,
+            reply_markup=get_parent_menu(),
+            parse_mode="Markdown",
         )
 
     await callback.answer()

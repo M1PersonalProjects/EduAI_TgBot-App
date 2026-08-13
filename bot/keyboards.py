@@ -12,41 +12,61 @@ def get_role_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_parent_menu() -> ReplyKeyboardMarkup:
-    """Меню для родителей"""
+    """Compact Telegram menu for parents."""
     buttons = [
         [
             KeyboardButton(text="➕ Привязать ребенка"),
-            KeyboardButton(
-                text="📊 Панель Родителя (Web App)",
-                web_app=WebAppInfo(url=f"{settings.webapp_base_url}/parent/dashboard")
-            )
+            KeyboardButton(text="📊 Мониторинг в чате"),
         ],
         [
+            KeyboardButton(text="📚 Каталог учебников"),
             KeyboardButton(
-                text="📝 Создать ИИ-тест (Web App)",
-                web_app=WebAppInfo(url=f"{settings.webapp_base_url}/parent/create-test")
+                text="🌐 Открыть EduAI",
+                web_app=WebAppInfo(url=settings.webapp_base_url),
             ),
-            KeyboardButton(text="📊 Мониторинг в чате")
         ],
-        [
-            KeyboardButton(text="📚 Каталог учебников")
-        ]
     ]
-    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+    return ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=True,
+    )
 
 
 def get_student_menu() -> ReplyKeyboardMarkup:
-    """Меню для учеников"""
+    """Compact Telegram menu for students."""
     buttons = [
         [
-            KeyboardButton(
-                text="🚀 Открыть EduAI (Web App)",
-                web_app=WebAppInfo(url=settings.webapp_base_url)
-            ),
-            KeyboardButton(text="📚 Каталог учебников")
+            KeyboardButton(text="📚 Каталог учебников"),
+            KeyboardButton(text="🏆 Мой профиль"),
         ],
         [
-            KeyboardButton(text="🏆 Мой профиль")
-        ]
+            KeyboardButton(
+                text="🌐 Открыть EduAI",
+                web_app=WebAppInfo(url=settings.webapp_base_url),
+            ),
+        ],
     ]
-    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+    return ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=True,
+    )
+
+
+def get_admin_menu() -> InlineKeyboardMarkup:
+    """Administrator quick actions without duplicating WebApp pages."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🌐 Открыть EduAI",
+                    web_app=WebAppInfo(url=settings.webapp_base_url),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="👨‍👩‍👦 Переключиться на Родителя",
+                    callback_data="admin_toggle_role",
+                )
+            ],
+        ]
+    )
