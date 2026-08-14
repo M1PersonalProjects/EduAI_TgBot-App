@@ -11,7 +11,7 @@ from bot.messages import answer_plain
 from bot.handlers.ai_chat import exit_book_keyboard
 from services.file_parser import AttachmentError
 from services.thinking import TelegramThinkingIndicator
-from services.tutor import exit_book_mode, openai_client, respond
+from services.tutor import exit_book_mode, openai_client, respond, ensure_telegram_session
 
 router = Router()
 
@@ -244,7 +244,8 @@ async def enter_ai_question_mode(target_message: Message, state: FSMContext):
 @router.message(BookFilterStates.waiting_for_ai_question, Command("exit_book"))
 async def exit_selected_book(message: Message, state: FSMContext):
     try:
-        await exit_book_mode(message.from_user.id)
+        session = await ensure_telegram_session(message.from_user.id)
+        await exit_book_mode(message.from_user.id, str(session["session_id"]))
     except LookupError:
         pass
     await state.clear()
@@ -272,13 +273,16 @@ async def accept_final_ai_question(message: Message, state: FSMContext):
             "page_id": data.get("chosen_page_id"),
             "page_paragraph": data.get("chosen_topic"),
         }
+        session = await ensure_telegram_session(message.from_user.id)
         result = await respond(
             user_id=message.from_user.id,
             role=data.get("user_role", "student"),
+            session_id=str(session["session_id"]),
             message_text=question_text,
             attachment=attachment,
             manual_context=manual_context,
             lock_selected_context=bool(data.get("chosen_book_id")),
+            message_source="telegram",
         )
         await indicator.stop()
         await answer_plain(

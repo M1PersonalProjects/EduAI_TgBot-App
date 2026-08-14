@@ -85,6 +85,10 @@ async def test_ai_tutor_multimodal_photo(make_message, mock_db, mock_fsm_context
     mock_create = AsyncMock()
     mock_create.return_value.choices[0].message.content = "Ответ: x = 5"
     monkeypatch.setattr(openai_client.chat.completions, "create", mock_create)
+    monkeypatch.setattr(
+        "bot.handlers.quests.ensure_telegram_session",
+        AsyncMock(return_value={"session_id": "00000000-0000-0000-0000-000000000777"}),
+    )
     
     await accept_final_ai_question(message, state)
     

@@ -9,7 +9,7 @@ from database import db
 from logger_config import logger
 from services.file_parser import AttachmentError
 from services.thinking import TelegramThinkingIndicator
-from services.tutor import create_session, exit_book_mode, respond
+from services.tutor import ensure_telegram_session, exit_book_mode, respond
 
 
 router = Router()
@@ -24,7 +24,8 @@ def exit_book_keyboard() -> InlineKeyboardMarkup:
 @router.message(Command("exit_book"))
 async def exit_book_command(message: Message, state: FSMContext):
     try:
-        await exit_book_mode(message.from_user.id)
+        session = await ensure_telegram_session(message.from_user.id)
+        await exit_book_mode(message.from_user.id, str(session["session_id"]))
     except LookupError:
         pass
     await state.clear()
@@ -34,7 +35,8 @@ async def exit_book_command(message: Message, state: FSMContext):
 @router.callback_query(F.data == "exit_book_mode")
 async def exit_book_callback(callback: CallbackQuery, state: FSMContext):
     try:
-        await exit_book_mode(callback.from_user.id)
+        session = await ensure_telegram_session(callback.from_user.id)
+        await exit_book_mode(callback.from_user.id, str(session["session_id"]))
     except LookupError:
         pass
     await state.clear()
@@ -44,8 +46,11 @@ async def exit_book_callback(callback: CallbackQuery, state: FSMContext):
 
 @router.message(Command("new_chat"))
 async def new_bot_chat(message: Message):
-    await create_session(message.from_user.id)
-    await message.answer("✨ Создан новый чат с ИИ-тьютором.")
+    session = await ensure_telegram_session(message.from_user.id)
+    await message.answer(
+        "📱 Telegram использует один постоянный чат "
+        f"«{session['title']}». Дополнительные чаты создаются в EduAI WebApp."
+    )
 
 
 @router.message(StateFilter(None), F.text | F.photo | F.document)
@@ -73,24 +78,38 @@ async def quick_ai_chat_fallback(message: Message):
     indicator = await TelegramThinkingIndicator(message, "ИИ-тьютор думает").start()
     try:
         attachment = await parse_telegram_attachment(message)
+        session = await ensure_telegram_session(message.from_user.id)
         result = await respond(
             user_id=message.from_user.id,
             role=user["role"],
+            session_id=str(session["session_id"]),
             message_text=user_text,
             attachment=attachment,
+            message_source="telegram",
         )
-        await indicator.stop()
+        await indicator.stop(delete=False)
         await answer_plain(
             message,
-            result["message_text"],
-            reply_markup=exit_book_keyboard() if result["book_mode"] else None,
+            result.get("message_text") or "",
+            reply_markup=exit_book_keyboard() if result.get("book_mode") else None,
         )
+        await indicator.stop()
     except AttachmentError as exc:
         await indicator.stop(delete=False)
         await indicator.status_message.edit_text(f"❌ {exc}")
     except Exception as exc:
         logger.exception("Telegram tutor failed for %s: %s", message.from_user.id, exc)
         await indicator.stop(delete=False)
-        await indicator.status_message.edit_text(
-            "❌ Не удалось связаться с ИИ-тьютором. Попробуйте позже."
-        )
+        try:
+            if indicator.status_message:
+                await indicator.status_message.edit_text(
+                    "❌ Не удалось связаться с ИИ-тьютором. Попробуйте позже."
+                )
+            else:
+                await message.answer(
+                    "❌ Не удалось связаться с ИИ-тьютором. Попробуйте позже."
+                )
+        except Exception:
+            await message.answer(
+                "❌ Не удалось связаться с ИИ-тьютором. Попробуйте позже."
+            )

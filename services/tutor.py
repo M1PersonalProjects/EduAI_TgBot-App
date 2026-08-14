@@ -19,7 +19,22 @@ from services.chat_memory import (
     message_attachments_payload,
     persist_session_state,
     select_relevant_attachments,
+    session_attachments,
     update_state_dict,
+)
+from services.conversation_context import (
+    ATTACHMENT_MODE,
+    BOOK_MODE,
+    activate_attachment_context,
+    activate_book_context,
+    activate_general_context,
+    active_attachment_ids,
+    context_activated_at,
+    ensure_telegram_session_row,
+    explicit_attachment_reference,
+    explicit_mixed_source_request,
+    filter_history_since_activation,
+    normalize_mode,
 )
 
 
@@ -77,6 +92,8 @@ async def ensure_session(conn, user_id: int, session_id: Optional[str] = None):
         session = await conn.fetchrow(
             """
             SELECT session_id, user_id, title, book_id, page_id, context_locked,
+                   chat_type, active_context_mode, active_paragraph,
+                   active_attachment_ids, active_context_updated_at,
                    created_at, updated_at
             FROM chat_sessions WHERE session_id = $1 AND user_id = $2
             """,
@@ -115,6 +132,14 @@ async def ensure_session(conn, user_id: int, session_id: Optional[str] = None):
     return session
 
 
+async def ensure_telegram_session(
+    user_id: int,
+) -> Dict[str, Any]:
+    async with db.pool.acquire() as conn:
+        row = await ensure_telegram_session_row(conn, user_id)
+    return dict(row)
+
+
 async def create_session(user_id: int, title: str = "Новый чат") -> Dict[str, Any]:
     session_id = uuid.uuid4()
     async with db.pool.acquire() as conn:
@@ -138,6 +163,8 @@ async def list_sessions(user_id: int) -> List[Dict[str, Any]]:
         rows = await conn.fetch(
             """
             SELECT s.session_id, s.title, s.book_id, s.page_id, s.context_locked,
+                    s.chat_type, s.active_context_mode, s.active_paragraph,
+                    s.active_attachment_ids, s.active_context_updated_at,
                    s.created_at, s.updated_at, COUNT(m.message_id) AS message_count,
                    b.book_title, p.page_number
             FROM chat_sessions s
@@ -175,13 +202,27 @@ async def rename_session(user_id: int, session_id: str, title: str) -> Dict[str,
 
 async def delete_session(user_id: int, session_id: str) -> None:
     async with db.pool.acquire() as conn:
-        deleted = await conn.fetchval(
-            "DELETE FROM chat_sessions WHERE session_id = $1 AND user_id = $2 RETURNING session_id",
+        session = await conn.fetchrow(
+            """
+            SELECT session_id, chat_type
+            FROM chat_sessions
+            WHERE session_id = $1 AND user_id = $2
+            """,
             _session_uuid(session_id),
             user_id,
         )
-    if not deleted:
-        raise LookupError("Чат не найден")
+        if not session:
+            raise LookupError("Чат не найден")
+        if session["chat_type"] == "telegram_default":
+            raise ValueError(
+                "Постоянный Telegram-чат нельзя удалить. "
+                "Его можно переименовать и использовать как обычный чат в WebApp."
+            )
+        await conn.execute(
+            "DELETE FROM chat_sessions WHERE session_id = $1 AND user_id = $2",
+            session["session_id"],
+            user_id,
+        )
 
 
 async def get_messages(user_id: int, session_id: str) -> List[Dict[str, Any]]:
@@ -189,7 +230,8 @@ async def get_messages(user_id: int, session_id: str) -> List[Dict[str, Any]]:
         session = await ensure_session(conn, user_id, session_id)
         rows = await conn.fetch(
             """
-            SELECT message_id, sender, message_text, attachment_name, attachment_type, created_at
+            SELECT message_id, sender, message_text, attachment_name, attachment_type,
+                   message_source, created_at
             FROM chat_messages
             WHERE user_id = $1 AND session_id = $2
             ORDER BY created_at ASC, message_id ASC
@@ -219,15 +261,13 @@ async def lock_context(
         context = await resolve_context(conn, "", manual_context)
         if not context:
             raise LookupError("Не удалось найти выбранный учебный контекст")
-        await conn.execute(
-            """
-            UPDATE chat_sessions SET book_id = $1, page_id = $2, context_locked = TRUE,
-                   updated_at = CURRENT_TIMESTAMP
-            WHERE session_id = $3
-            """,
-            context.book_id,
-            context.page_id,
-            session["session_id"],
+        await activate_book_context(
+            conn,
+            user_id=user_id,
+            session_id=session["session_id"],
+            book_id=context.book_id,
+            page_id=context.page_id,
+            paragraph=context.page_paragraph,
         )
     context.source = "locked"
     return context
@@ -236,14 +276,10 @@ async def lock_context(
 async def exit_book_mode(user_id: int, session_id: Optional[str] = None) -> Dict[str, Any]:
     async with db.pool.acquire() as conn:
         session = await ensure_session(conn, user_id, session_id)
-        row = await conn.fetchrow(
-            """
-            UPDATE chat_sessions SET book_id = NULL, page_id = NULL, context_locked = FALSE,
-                   updated_at = CURRENT_TIMESTAMP
-            WHERE session_id = $1
-            RETURNING session_id, title, context_locked
-            """,
-            session["session_id"],
+        row = await activate_general_context(
+            conn,
+            user_id=user_id,
+            session_id=session["session_id"],
         )
     return dict(row)
 
@@ -409,6 +445,21 @@ def _system_prompt(
 Отвечай по-русски.
 Use Markdown for structure and follow the mathematical formatting rules below.
 
+CONTEXT PRIORITY RULES
+
+Always follow the currently active conversation context.
+If Book Mode is active, the selected textbook, page and paragraph are the
+primary source of truth. Do not use previously uploaded attachments unless
+they are explicitly active or the user clearly asks to return to, compare
+with, or combine them.
+A previously discussed attachment must never override a newly selected
+Book Mode context.
+When the user changes textbook, page, paragraph, or context mode, treat the
+new selection as the current active context.
+Do not mix unrelated sources unless the user explicitly asks to compare or
+combine them. Resolve phrases such as "this task", "this rule", "next",
+"second" and "here" against the active context before older history.
+
 """ + MATH_FORMATTING_RULES
 
     if role == "student":
@@ -478,20 +529,23 @@ async def _save_guard_refusal(
     user_id: int,
     session_id: uuid.UUID,
     refusal_message: str,
+    message_source: str = "web",
 ) -> int:
+    source = "telegram" if message_source == "telegram" else "web"
+
     async with db.pool.acquire() as conn:
         message_id = await conn.fetchval(
             """
             INSERT INTO chat_messages
-                (user_id, session_id, sender, message_text)
-            VALUES ($1, $2, 'ai', $3)
+                (user_id, session_id, sender, message_text, message_source)
+            VALUES ($1, $2, 'ai', $3, $4)
             RETURNING message_id
             """,
             user_id,
             session_id,
             refusal_message,
+            source,
         )
-
         await conn.execute(
             """
             UPDATE chat_sessions
@@ -503,7 +557,6 @@ async def _save_guard_refusal(
 
     return message_id
 
-
 async def respond(
     user_id: int,
     role: str,
@@ -513,6 +566,7 @@ async def respond(
     attachment_id: Optional[int] = None,
     manual_context: Optional[Dict[str, Any]] = None,
     lock_selected_context: bool = False,
+    message_source: str = "web",
 ) -> Dict[str, Any]:
     clean_text = clean_ai_text(message_text) or "Проанализируй вложение и помоги разобраться."
     if attachment_id is None and attachment is not None:
@@ -524,46 +578,50 @@ async def respond(
 
     async with db.pool.acquire() as conn:
         session = await ensure_session(conn, user_id, session_id)
+        active_mode = normalize_mode(_session_field(session, "active_context_mode"))
+        activated_at = context_activated_at(session)
         locked_context = await load_locked_context(conn, session)
         explicit_context = bool((manual_context or {}).get("book_id"))
-        if locked_context and not locked_context.page_id:
+        if explicit_context and (lock_selected_context or not locked_context):
+            context = await resolve_context(conn, clean_text, manual_context)
+        elif locked_context and not locked_context.page_id:
             context = await resolve_context(
                 conn, clean_text, {"book_id": locked_context.book_id}
             ) or locked_context
             locked_context = context
         elif locked_context:
             context = locked_context
-        elif explicit_context:
-            context = await resolve_context(conn, clean_text, manual_context)
         else:
             context = None
 
         should_lock_context = bool(lock_selected_context and context)
-        if should_lock_context and context and not locked_context:
-            await conn.execute(
-                """
-                UPDATE chat_sessions SET book_id=$1, page_id=$2, context_locked=TRUE,
-                       updated_at=CURRENT_TIMESTAMP WHERE session_id=$3 AND user_id=$4
-                """,
-                context.book_id,
-                context.page_id,
-                session["session_id"],
-                user_id,
+        if should_lock_context and context:
+            activated_at = await activate_book_context(
+                conn,
+                user_id=user_id,
+                session_id=session["session_id"],
+                book_id=context.book_id,
+                page_id=context.page_id,
+                paragraph=context.page_paragraph,
             )
+            active_mode = BOOK_MODE
             context.source = "locked"
             locked_context = context
-
         message_id = await conn.fetchval(
             """
             INSERT INTO chat_messages
-                (user_id, session_id, sender, message_text, attachment_name, attachment_type)
-            VALUES ($1, $2, 'user', $3, $4, $5) RETURNING message_id
+                (
+                    user_id, session_id, sender, message_text,
+                    attachment_name, attachment_type, message_source
+                )
+            VALUES ($1, $2, 'user', $3, $4, $5, $6) RETURNING message_id
             """,
             user_id,
             session["session_id"],
             clean_text,
             attachment.filename if attachment else None,
             attachment.mime_type if attachment else None,
+            "telegram" if message_source == "telegram" else "web",
         )
         if attachment_id is not None:
             owned = await conn.fetchval(
@@ -585,10 +643,89 @@ async def respond(
                 session["session_id"],
             )
 
-        selected_attachments = await select_relevant_attachments(
-            conn, user_id, session["session_id"], clean_text
-        )
-        selected_ids = [row["attachment_id"] for row in selected_attachments]
+        mixed_request = explicit_mixed_source_request(clean_text)
+        attachment_reference = explicit_attachment_reference(clean_text)
+        selected_attachments = []
+        all_session_attachments = None
+
+        if attachment_id is not None:
+            all_session_attachments = await session_attachments(
+                conn, user_id, session["session_id"]
+            )
+            selected_attachments = [
+                row for row in all_session_attachments
+                if int(row["attachment_id"]) == int(attachment_id)
+            ]
+            if not mixed_request:
+                activated_at = await activate_attachment_context(
+                    conn,
+                    user_id=user_id,
+                    session_id=session["session_id"],
+                    attachment_ids=[attachment_id],
+                )
+                active_mode = ATTACHMENT_MODE
+                context = None
+                locked_context = None
+
+        elif active_mode == BOOK_MODE:
+            if attachment_reference:
+                selected_attachments = await select_relevant_attachments(
+                    conn, user_id, session["session_id"], clean_text
+                )
+                if selected_attachments and not mixed_request:
+                    activated_at = await activate_attachment_context(
+                        conn,
+                        user_id=user_id,
+                        session_id=session["session_id"],
+                        attachment_ids=[
+                            row["attachment_id"] for row in selected_attachments
+                        ],
+                    )
+                    active_mode = ATTACHMENT_MODE
+                    context = None
+                    locked_context = None
+
+        elif active_mode == ATTACHMENT_MODE:
+            selected_attachments = await select_relevant_attachments(
+                conn, user_id, session["session_id"], clean_text
+            )
+            if not selected_attachments:
+                all_session_attachments = await session_attachments(
+                    conn, user_id, session["session_id"]
+                )
+                wanted = set(active_attachment_ids(session))
+                selected_attachments = [
+                    row for row in all_session_attachments
+                    if int(row["attachment_id"]) in wanted
+                ][:3]
+            elif attachment_reference:
+                selected_now = [
+                    int(row["attachment_id"]) for row in selected_attachments
+                ]
+                if set(selected_now) != set(active_attachment_ids(session)):
+                    activated_at = await activate_attachment_context(
+                        conn,
+                        user_id=user_id,
+                        session_id=session["session_id"],
+                        attachment_ids=selected_now,
+                    )
+
+        elif attachment_reference:
+            selected_attachments = await select_relevant_attachments(
+                conn, user_id, session["session_id"], clean_text
+            )
+            if selected_attachments:
+                activated_at = await activate_attachment_context(
+                    conn,
+                    user_id=user_id,
+                    session_id=session["session_id"],
+                    attachment_ids=[
+                        row["attachment_id"] for row in selected_attachments
+                    ],
+                )
+                active_mode = ATTACHMENT_MODE
+
+        selected_ids = [int(row["attachment_id"]) for row in selected_attachments]
         memory_state, existing_summary = await load_session_state(
             conn, user_id, session["session_id"]
         )
@@ -596,13 +733,22 @@ async def respond(
             memory_state,
             message_text=clean_text,
             message_id=message_id,
-            book_id=context.book_id if context else _session_field(session, "book_id"),
-            page_id=context.page_id if context else _session_field(session, "page_id"),
-            referenced_attachment_ids=selected_ids or ([attachment_id] if attachment_id else None),
+            book_id=context.book_id if context else None,
+            page_id=context.page_id if context else None,
+            referenced_attachment_ids=(
+                selected_ids if active_mode == ATTACHMENT_MODE else None
+            ),
         )
         history = await load_context_messages(
             conn, user_id, session["session_id"], clean_text
         )
+        if active_mode in {BOOK_MODE, ATTACHMENT_MODE}:
+            history = filter_history_since_activation(
+                history,
+                activated_at,
+                current_message_id=message_id,
+            )
+
         message_count = await conn.fetchval(
             "SELECT COUNT(*) FROM chat_messages WHERE user_id=$1 AND session_id=$2",
             user_id,
@@ -653,6 +799,7 @@ async def respond(
             user_id=user_id,
             session_id=session["session_id"],
             refusal_message=refusal,
+            message_source=message_source,
         )
         return {
             "message_id": ai_message_id,
@@ -710,12 +857,14 @@ async def respond(
     async with db.pool.acquire() as conn:
         ai_message_id = await conn.fetchval(
             """
-            INSERT INTO chat_messages (user_id, session_id, sender, message_text)
-            VALUES ($1, $2, 'ai', $3) RETURNING message_id
+            INSERT INTO chat_messages
+                (user_id, session_id, sender, message_text, message_source)
+            VALUES ($1, $2, 'ai', $3, $4) RETURNING message_id
             """,
             user_id,
             session["session_id"],
             reply,
+            "telegram" if message_source == "telegram" else "web",
         )
         if isinstance(ai_message_id, int) and not isinstance(ai_message_id, bool):
             memory_state["last_assistant_message_id"] = ai_message_id

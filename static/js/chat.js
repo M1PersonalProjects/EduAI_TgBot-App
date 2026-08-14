@@ -46,8 +46,17 @@
     renderThreads() {
       this.$('threadsId').innerHTML = this.state.sessions.map(item => {
         const id = String(item.session_id); const active = id === this.state.activeId;
-        const context = item.context_locked ? `${item.book_title || 'Book Mode'}${item.page_number ? ', стр. ' + item.page_number : ''}` : `${item.message_count} сообщ.`;
-        return `<div class="thread-item ${active ? 'active' : ''}" data-session="${id}"><button class="thread-open"><strong>${EduAI.escapeHtml(item.title)}</strong><small>${EduAI.escapeHtml(context)}</small></button><button class="thread-action" data-rename title="Переименовать">✎</button><button class="thread-action" data-delete title="Удалить чат" aria-label="Удалить чат">🗑</button></div>`;
+        const telegramDefault = item.chat_type === 'telegram_default';
+        const context = item.context_locked
+          ? `${item.book_title || 'Book Mode'}${item.page_number ? ', стр. ' + item.page_number : ''}`
+          : item.active_context_mode === 'attachment'
+            ? 'Активен файловый контекст'
+            : `${item.message_count} сообщ.`;
+        const sourceLabel = telegramDefault ? '📱 Telegram · ' : '';
+        const deleteButton = telegramDefault
+          ? ''
+          : '<button class="thread-action" data-delete title="Удалить чат" aria-label="Удалить чат">🗑</button>';
+        return `<div class="thread-item ${active ? 'active' : ''}" data-session="${id}"><button class="thread-open"><strong>${EduAI.escapeHtml(item.title)}</strong><small>${EduAI.escapeHtml(sourceLabel + context)}</small></button><button class="thread-action" data-rename title="Переименовать">✎</button>${deleteButton}</div>`;
       }).join('');
       const session = this.state.sessions.find(item => String(item.session_id) === this.state.activeId);
       this.renderContextState(session);
@@ -105,10 +114,11 @@
       </div>`;
     }
 
-    append(sender, text, attachments = []) {
+    append(sender, text, attachments = [], source = null) {
       if (typeof attachments === 'string') attachments = attachments ? [{ original_name: attachments }] : [];
       const bubble = document.createElement('div'); bubble.className = `message ${sender === 'user' ? 'user' : ''}`;
-      bubble.innerHTML = `${EduAI.markdown(text)}${(attachments || []).map(item => this.attachmentHtml(item)).join('')}`;
+      const sourceBadge = source === 'telegram' ? '<div class="mb-1 text-[.65rem] muted">📱 Telegram</div>' : '';
+      bubble.innerHTML = `${sourceBadge}${EduAI.markdown(text)}${(attachments || []).map(item => this.attachmentHtml(item)).join('')}`;
       this.$('logId').append(bubble); this.$('logId').scrollTop = this.$('logId').scrollHeight; return bubble;
     }
 
@@ -117,7 +127,7 @@
         const messages = await EduAI.api(`/api/v1/tutor/sessions/${this.state.activeId}/messages`);
         this.$('logId').innerHTML = '';
         if (!messages.length) this.append('ai', this.options.welcome);
-        else messages.forEach(item => this.append(item.sender, item.message_text, item.attachments?.length ? item.attachments : (item.attachment_name || '')));
+        else messages.forEach(item => this.append(item.sender, item.message_text, item.attachments?.length ? item.attachments : (item.attachment_name || ''), item.message_source));
       } catch (error) { EduAI.toast(error.message, 'error'); }
     }
 
@@ -227,7 +237,8 @@
     }
     renderContextState(session) {
       const locked = Boolean(session?.context_locked);
-      this.$('contextStatusId').textContent = locked ? `🔒 ${session.book_title}${session.page_number ? ', стр. ' + session.page_number : ''}` : 'Автопоиск по тексту вопроса';
+      const mode = session?.active_context_mode || (locked ? 'book' : 'general');
+      this.$('contextStatusId').textContent = locked ? `🔒 ${session.book_title}${session.page_number ? ', стр. ' + session.page_number : ''}` : mode === 'attachment' ? '📎 Активен файловый контекст' : 'Автопоиск по тексту вопроса';
       this.$('exitId').hidden = !locked;
     }
   }

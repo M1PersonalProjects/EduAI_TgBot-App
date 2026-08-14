@@ -19,6 +19,11 @@ async def test_quick_tutor_handles_plain_text(make_message, mock_db, monkeypatch
         "book_mode": False,
     })
     monkeypatch.setattr(ai_chat, "respond", responder)
+    monkeypatch.setattr(
+        ai_chat,
+        "ensure_telegram_session",
+        AsyncMock(return_value={"session_id": "00000000-0000-0000-0000-000000000501"}),
+    )
 
     await ai_chat.quick_ai_chat_fallback(message)
 
@@ -51,6 +56,11 @@ async def test_quick_tutor_passes_telegram_document_to_ai(
         "book_mode": False,
     })
     monkeypatch.setattr(ai_chat, "respond", responder)
+    monkeypatch.setattr(
+        ai_chat,
+        "ensure_telegram_session",
+        AsyncMock(return_value={"session_id": "00000000-0000-0000-0000-000000000502"}),
+    )
 
     await ai_chat.quick_ai_chat_fallback(message)
 
