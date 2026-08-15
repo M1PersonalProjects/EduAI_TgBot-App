@@ -56,6 +56,175 @@ _CSP = (
     "form-action 'none'; base-uri 'none'"
 )
 
+_MATH_SOURCE_RE = re.compile(
+    r"(?:\\{1,2}\[|\\{1,2}\(|\$\$|\\{1,2}(?:frac|sqrt|times|cdot|div|text|begin|end|pm|leq?|geq?|neq?|pi|infty|alpha|beta|gamma|delta|theta|lambda|mu|sigma|phi|omega)\b)",
+    re.IGNORECASE,
+)
+
+_INLINE_DOLLAR_MATH_RE = re.compile(r"(?<!\$)\$[^$\n]{1,300}\$(?!\$)")
+
+_MATH_RENDERER = r"""
+<style data-eduai-interactive-math>
+.eduai-math-inline{display:inline-flex;align-items:center;gap:.08em;vertical-align:middle;max-width:100%;font-family:inherit}
+.eduai-math-display{display:flex;justify-content:center;align-items:center;max-width:100%;margin:.55rem 0;overflow-x:auto;overflow-y:hidden;padding:.2rem 0}
+.eduai-math-display>.eduai-math-inline{font-size:1.08em;min-width:max-content}
+.eduai-frac{display:inline-grid;grid-template-rows:auto auto;align-items:center;vertical-align:middle;line-height:1.08;text-align:center;margin:0 .12em}
+.eduai-frac>.num{border-bottom:1.4px solid currentColor;padding:0 .16em .08em}
+.eduai-frac>.den{padding:.08em .16em 0}
+.eduai-root{display:inline-flex;align-items:flex-start;vertical-align:middle}
+.eduai-root>.radical{font-size:1.15em;line-height:1}
+.eduai-root>.radicand{border-top:1.4px solid currentColor;padding:.02em .12em 0}
+.eduai-math-inline sup,.eduai-math-inline sub{font-size:.72em;line-height:1}
+.eduai-cases{display:inline-flex;align-items:center;gap:.28em}.eduai-cases>.brace{font-size:1.8em;line-height:1}.eduai-cases>.rows{display:grid;gap:.12em}
+</style>
+<script data-eduai-interactive-math>
+(() => {
+  const COMMAND = /\\(?:frac|sqrt|times|cdot|div|text|begin|end|pm|leq?|geq?|neq?|pi|infty|alpha|beta|gamma|delta|theta|lambda|mu|sigma|phi|omega)\b/;
+  const SKIP = new Set(['SCRIPT','STYLE','TEXTAREA','NOSCRIPT']);
+  const symbols = {
+    times:'×', cdot:'·', div:'÷', pm:'±', le:'≤', leq:'≤', ge:'≥', geq:'≥',
+    ne:'≠', neq:'≠', pi:'π', infty:'∞', alpha:'α', beta:'β', gamma:'γ', delta:'δ',
+    theta:'θ', lambda:'λ', mu:'μ', sigma:'σ', phi:'φ', omega:'ω'
+  };
+  const normalize = value => String(value ?? '')
+    .replace(/\\\\(?=(?:frac|sqrt|times|cdot|div|text|begin|end|pm|leq?|geq?|neq?|pi|infty|alpha|beta|gamma|delta|theta|lambda|mu|sigma|phi|omega)\b)/g, '\\')
+    .replace(/\\\\(?=[()[\]])/g, '\\');
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const balanced = (source, start) => {
+    if (source[start] !== '{') return null;
+    let depth = 0;
+    for (let i = start; i < source.length; i += 1) {
+      if (source[i] === '{') depth += 1;
+      else if (source[i] === '}') {
+        depth -= 1;
+        if (depth === 0) return { value: source.slice(start + 1, i), end: i + 1 };
+      }
+    }
+    return null;
+  };
+  const render = source => {
+    source = normalize(source).replace(/\\left|\\right/g, '');
+    let out = '';
+    for (let i = 0; i < source.length;) {
+      if (source.startsWith('\\frac', i)) {
+        let a = i + 5; while (/\s/.test(source[a] || '')) a += 1;
+        const num = balanced(source, a);
+        if (num) {
+          let b = num.end; while (/\s/.test(source[b] || '')) b += 1;
+          const den = balanced(source, b);
+          if (den) {
+            out += `<span class="eduai-frac"><span class="num">${render(num.value)}</span><span class="den">${render(den.value)}</span></span>`;
+            i = den.end; continue;
+          }
+        }
+      }
+      if (source.startsWith('\\sqrt', i)) {
+        let a = i + 5; while (/\s/.test(source[a] || '')) a += 1;
+        const body = balanced(source, a);
+        if (body) {
+          out += `<span class="eduai-root"><span class="radical">√</span><span class="radicand">${render(body.value)}</span></span>`;
+          i = body.end; continue;
+        }
+      }
+      if (source.startsWith('\\text', i)) {
+        let a = i + 5; while (/\s/.test(source[a] || '')) a += 1;
+        const body = balanced(source, a);
+        if (body) { out += esc(body.value); i = body.end; continue; }
+      }
+      if (source.startsWith('\\begin{cases}', i)) {
+        const end = source.indexOf('\\end{cases}', i + 13);
+        if (end >= 0) {
+          const rows = source.slice(i + 13, end).split(/\\\\/).map(row => `<span>${render(row.trim())}</span>`).join('');
+          out += `<span class="eduai-cases"><span class="brace">{</span><span class="rows">${rows}</span></span>`;
+          i = end + 11; continue;
+        }
+      }
+      if ((source[i] === '^' || source[i] === '_') && source[i + 1] === '{') {
+        const body = balanced(source, i + 1);
+        if (body) {
+          const tag = source[i] === '^' ? 'sup' : 'sub';
+          out += `<${tag}>${render(body.value)}</${tag}>`; i = body.end; continue;
+        }
+      }
+      if (source[i] === '\\') {
+        const match = source.slice(i + 1).match(/^([A-Za-z]+)/);
+        if (match) {
+          const name = match[1];
+          out += esc(symbols[name] ?? name);
+          i += name.length + 1; continue;
+        }
+        if (source[i + 1] === '\\') { out += '<br>'; i += 2; continue; }
+      }
+      if (source[i] === '{' || source[i] === '}') { i += 1; continue; }
+      out += esc(source[i]); i += 1;
+    }
+    return out;
+  };
+  const mathNode = (expr, display) => {
+    const node = document.createElement(display ? 'div' : 'span');
+    node.className = display ? 'eduai-math-display' : 'eduai-math-inline';
+    const inner = document.createElement('span'); inner.className = 'eduai-math-inline'; inner.innerHTML = render(expr);
+    node.append(inner); return node;
+  };
+  const replaceText = textNode => {
+    const text = normalize(textNode.nodeValue || '');
+    const explicit = /\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|\$\$([\s\S]+?)\$\$|(?<!\$)\$([^$\n]+?)\$(?!\$)/g;
+    let last = 0; let match; let used = false; const frag = document.createDocumentFragment();
+    while ((match = explicit.exec(text))) {
+      used = true;
+      if (match.index > last) frag.append(document.createTextNode(text.slice(last, match.index)));
+      frag.append(mathNode(match[1] || match[2] || match[3] || match[4] || '', Boolean(match[1] || match[3])));
+      last = explicit.lastIndex;
+    }
+    if (used) {
+      if (last < text.length) frag.append(document.createTextNode(text.slice(last)));
+      textNode.replaceWith(frag); return;
+    }
+    if (!COMMAND.test(text)) return;
+    const span = mathNode(text, false); textNode.replaceWith(span);
+  };
+  const run = () => {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const nodes = []; let node;
+    while ((node = walker.nextNode())) {
+      if (!node.parentElement || SKIP.has(node.parentElement.tagName)) continue;
+      if (/\\\[|\\\(|\$\$|(?<!\$)\$[^$\n]+\$(?!\$)/.test(node.nodeValue || '') || COMMAND.test(node.nodeValue || '')) nodes.push(node);
+    }
+    nodes.forEach(replaceText);
+    document.documentElement.dataset.eduaiMathReady = '1';
+  };
+  let queued = false;
+  const observer = new MutationObserver(() => {
+    if (queued) return; queued = true;
+    queueMicrotask(() => { queued = false; run(); });
+  });
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => { run(); observer.observe(document.body, {childList:true, subtree:true, characterData:true}); }, { once:true });
+  } else { run(); observer.observe(document.body, {childList:true, subtree:true, characterData:true}); }
+})();
+</script>
+""".strip()
+
+
+def interactive_html_has_math(value: str) -> bool:
+    """Return True when generated HTML or its inline JS contains TeX math."""
+    html = str(value or "")
+    # Interactive apps commonly keep question text in inline JavaScript arrays and
+    # only insert it into the DOM after a click. Detect those strings too so the
+    # trusted renderer is present before any dynamic question becomes visible.
+    return bool(_MATH_SOURCE_RE.search(html) or "$$" in html or _INLINE_DOLLAR_MATH_RE.search(html))
+
+
+def inject_interactive_math_renderer(html: str) -> str:
+    if not interactive_html_has_math(html):
+        return html
+    if "data-eduai-interactive-math" in html:
+        return html
+    if re.search(r"</body\s*>", html, flags=re.I):
+        return re.sub(r"</body\s*>", lambda _: _MATH_RENDERER + "\n</body>", html, count=1, flags=re.I)
+    return html + _MATH_RENDERER
+
+
 _BRIDGE = r"""
 <script>
 (() => {
@@ -233,6 +402,7 @@ async def _generate(
     if not parsed:
         raise RuntimeError("ИИ не вернул интерактивное приложение")
     parsed.html_document = sanitize_interactive_html(parsed.html_document)
+    parsed.html_document = inject_interactive_math_renderer(parsed.html_document)
     return parsed
 
 

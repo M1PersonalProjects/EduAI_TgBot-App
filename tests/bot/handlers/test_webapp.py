@@ -6,21 +6,21 @@ from bot.handlers.webapp import generate_child_link, show_parent_monitoring
 @pytest.mark.asyncio
 async def test_generate_child_link_not_parent(make_message, mock_db):
     """Проверка: обычный пользователь или ученик не может сгенерировать инвайт-ссылку."""
-    message = make_message(text="➕ Привязать ребенка", user_id=123)
+    message = make_message(text="➕ Привязать Ученика", user_id=123)
     
     # Имитируем, что у пользователя роль 'student'
     mock_db.mock_conn.fetchrow.return_value = {"role": "student"}
     
     await generate_child_link(message)
     
-    message.answer.assert_called_once_with("Эта команда доступна только для пользователей с ролью Родитель.")
+    message.answer.assert_called_once_with("Эта команда доступна только Учителю или Администратору.")
 
 
 @pytest.mark.asyncio
 async def test_generate_child_link_success(make_message, mock_db):
     """Проверка: Успешная генерация реферальной ссылки для Родителя."""
     parent_id = 987
-    message = make_message(text="➕ Привязать ребенка", user_id=parent_id)
+    message = make_message(text="➕ Привязать Ученика", user_id=parent_id)
     
     # Имитируем роль Родителя
     mock_db.mock_conn.fetchrow.return_value = {"role": "parent"}
@@ -34,6 +34,9 @@ async def test_generate_child_link_success(make_message, mock_db):
     response_text = message.answer.call_args[0][0]
     assert f"https://t.me/EduAITestBot?start=reg_{parent_id}" in response_text
     assert "Markdown" in message.answer.call_args[1].values()
+    markup = message.answer.call_args.kwargs["reply_markup"]
+    assert markup.inline_keyboard[0][0].text == "Поделиться ссылкой"
+    assert "t.me/share/url" in markup.inline_keyboard[0][0].url
 
 
 @pytest.mark.asyncio
@@ -49,7 +52,7 @@ async def test_show_parent_monitoring_no_children(make_message, mock_db):
     
     await show_parent_monitoring(message)
     
-    assert "У вас пока нет привязанных детей." in message.answer.call_args[0][0]
+    assert "У вас пока нет привязанных Учеников." in message.answer.call_args[0][0]
 
 
 @pytest.mark.asyncio

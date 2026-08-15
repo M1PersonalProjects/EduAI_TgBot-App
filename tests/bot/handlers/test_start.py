@@ -38,6 +38,10 @@ async def test_cmd_start_successful_child_registration(make_message, mock_db):
         command="start",
         args=f"reg_{parent_id}",
     )
+    mock_db.mock_conn.fetchrow.side_effect = [
+        {"role": "parent"},
+        None,
+    ]
 
     await cmd_start(message, command)
 
@@ -57,6 +61,48 @@ async def test_cmd_start_successful_child_registration(make_message, mock_db):
             "свой аккаунт к вашему профилю!"
         ),
     )
+
+
+@pytest.mark.asyncio
+async def test_cmd_start_rejects_invalid_teacher_invite(make_message, mock_db):
+    message = make_message(text="/start reg_555", user_id=777)
+    command = CommandObject(prefix="/", command="start", args="reg_555")
+    mock_db.mock_conn.fetchrow.return_value = None
+
+    await cmd_start(message, command)
+
+    assert "ссылка привязки недействительна" in message.answer.call_args.args[0]
+    mock_db.mock_conn.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cmd_start_does_not_steal_student_from_other_teacher(make_message, mock_db):
+    message = make_message(text="/start reg_555", user_id=777)
+    command = CommandObject(prefix="/", command="start", args="reg_555")
+    mock_db.mock_conn.fetchrow.side_effect = [
+        {"role": "parent"},
+        {"role": "student", "parent_id": 999},
+    ]
+
+    await cmd_start(message, command)
+
+    assert "уже привязан к другому Учителю" in message.answer.call_args.args[0]
+    mock_db.mock_conn.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cmd_start_same_teacher_invite_is_idempotent(make_message, mock_db):
+    message = make_message(text="/start reg_555", user_id=777)
+    command = CommandObject(prefix="/", command="start", args="reg_555")
+    mock_db.mock_conn.fetchrow.side_effect = [
+        {"role": "parent"},
+        {"role": "student", "parent_id": 555},
+    ]
+
+    await cmd_start(message, command)
+
+    assert "уже привязан к этому Учителю" in message.answer.call_args.args[0]
+    mock_db.mock_conn.execute.assert_not_awaited()
 
 
 @pytest.mark.asyncio

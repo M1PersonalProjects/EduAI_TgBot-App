@@ -1,8 +1,8 @@
-"""Deprecated chat aliases kept for old WebApp clients.
+"""Устаревшие псевдонимы чатов, сохраненные для старых клиентов WebApp.
 
-New clients use ``/api/v1/tutor``.  These routes deliberately share the same
-session service and authentication dependency so they cannot bypass thread
-isolation or read another Telegram user's messages.
+ Новые клиенты используют ``/api/v1/tutor``. 
+ Эти маршруты намеренно используют тот же сервис сессий и аутентификацию, 
+ чтобы не обходить изоляцию потоков и не читать сообщения других пользователей Telegram.
 """
 
 from typing import List
@@ -26,7 +26,6 @@ class MessageSchema(BaseModel):
 
 
 class SendMessageRequest(BaseModel):
-    # Kept in the payload for backward compatibility; it must match the token.
     tg_id: int
     message_text: str = Field(..., min_length=1, max_length=12000)
 

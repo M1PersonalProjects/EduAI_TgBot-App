@@ -491,3 +491,351 @@ svg {
   .chat-plus-menu { position: fixed; left: 1rem; right: 1rem; bottom: max(5rem, calc(env(safe-area-inset-bottom) + 4.2rem)); width: auto; }
 }
 /* === CHAT PLUS MENU + INTERACTIVE COMPOSE MODE END === */
+
+/* === TZ30 CHAT LAYOUT + SCROLL UX START === */
+.tutor-chat-layout {
+  position: relative;
+  min-width: 0;
+}
+.chat-center-card {
+  position: relative;
+  min-width: 0;
+}
+.chat-log-wrap {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.chat-log-wrap > .chat-log {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.chat-jump-bottom {
+  position: absolute;
+  z-index: 8;
+  right: .8rem;
+  bottom: .8rem;
+  display: grid;
+  width: 2.7rem;
+  height: 2.7rem;
+  place-items: center;
+  border: 1px solid rgba(66,216,196,.32);
+  border-radius: 999px;
+  color: #07111f;
+  background: linear-gradient(135deg, #55e1cd, #83eadf);
+  box-shadow: 0 12px 30px rgba(0,0,0,.28);
+  font-size: 1.1rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+.chat-jump-bottom[hidden] { display: none !important; }
+.chat-jump-bottom:hover { transform: translateY(-1px); filter: brightness(1.04); }
+
+.chat-thread-sidebar {
+  min-width: 0;
+  align-self: stretch;
+}
+.chat-thread-sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+}
+.chat-sidebar-rail-button { display: none; }
+.chat-sidebar-main-toggle { flex: 0 0 auto; }
+.chat-thread-backdrop { display: none; }
+
+.thread-list {
+  align-content: start;
+  gap: .3rem;
+}
+.thread-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 2rem;
+  align-items: center;
+  gap: .25rem;
+  min-height: 3.15rem;
+  padding: .25rem;
+}
+.thread-open {
+  padding: .35rem .4rem;
+}
+.thread-open strong {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.thread-open small {
+  margin-top: .18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-menu {
+  position: relative;
+  align-self: start;
+}
+.thread-menu > summary {
+  list-style: none;
+}
+.thread-menu > summary::-webkit-details-marker { display: none; }
+.thread-menu-toggle {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: .6rem;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.thread-menu-toggle:hover,
+.thread-menu[open] .thread-menu-toggle {
+  color: var(--text);
+  background: rgba(255,255,255,.08);
+}
+.thread-menu-panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + .25rem);
+  right: 0;
+  display: grid;
+  min-width: 10.5rem;
+  gap: .2rem;
+  border: 1px solid var(--line);
+  border-radius: .75rem;
+  padding: .3rem;
+  background: rgba(8,20,36,.98);
+  box-shadow: 0 16px 42px rgba(0,0,0,.35);
+}
+.thread-menu-panel button {
+  border: 0;
+  border-radius: .55rem;
+  padding: .55rem .65rem;
+  color: var(--text);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+.thread-menu-panel button:hover { background: rgba(255,255,255,.08); }
+
+.attachment-action,
+.interactive-card-action {
+  display: inline-flex;
+  width: auto;
+  min-width: max-content;
+  min-height: 2.2rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: .7rem;
+  padding: .42rem .7rem;
+  color: var(--text);
+  background: rgba(255,255,255,.055);
+  font-size: .75rem;
+  font-weight: 750;
+  line-height: 1.15;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.attachment-action:hover,
+.interactive-card-action:hover { background: rgba(255,255,255,.1); }
+
+.interactive-chat-card {
+  display: grid;
+  width: min(100%, 44rem);
+  min-width: 0;
+  gap: .65rem;
+  overflow: hidden;
+}
+.interactive-card-head,
+.interactive-card-title {
+  min-width: 0;
+}
+.interactive-card-title {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.interactive-card-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: .45rem;
+}
+
+.chat-composer-input {
+  min-height: 3rem;
+  max-height: 10rem;
+  resize: none !important;
+  overflow-y: hidden;
+  line-height: 1.4;
+}
+.chat-send-button {
+  max-width: 10rem;
+  white-space: nowrap;
+}
+
+@media (min-width: 1280px) {
+  .tutor-chat-layout {
+    grid-template-columns: 15rem minmax(0, 1fr) 18rem !important;
+    align-items: stretch;
+    transition: grid-template-columns .2s ease;
+  }
+  .tutor-chat-layout > .chat-thread-sidebar,
+  .tutor-chat-layout > .chat-center-card,
+  .tutor-chat-layout > aside:last-child {
+    min-height: 0;
+  }
+  .tutor-chat-layout > .chat-thread-sidebar {
+    display: flex;
+    height: 100%;
+    max-height: 100%;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .tutor-chat-layout > .chat-thread-sidebar .thread-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+  }
+  .tutor-chat-layout.threads-collapsed {
+    grid-template-columns: 3.35rem minmax(0, 1fr) 18rem !important;
+  }
+  .tutor-chat-layout.threads-collapsed .chat-thread-sidebar {
+    padding: .35rem;
+  }
+  .tutor-chat-layout.threads-collapsed .chat-thread-sidebar-head,
+  .tutor-chat-layout.threads-collapsed .chat-thread-sidebar .thread-list,
+  .tutor-chat-layout.threads-collapsed .chat-thread-help {
+    display: none;
+  }
+  .tutor-chat-layout.threads-collapsed .chat-sidebar-rail-button {
+    display: inline-flex;
+    margin: .15rem auto;
+  }
+  .tutor-chat-layout:not(.threads-collapsed) .chat-sidebar-main-toggle {
+    display: none;
+  }
+}
+
+@media (max-width: 1279px) {
+  .tutor-chat-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .tutor-chat-layout > .chat-center-card { grid-row: 1; }
+  .tutor-chat-layout > aside:last-child { grid-row: 2; }
+  .chat-thread-sidebar {
+    position: fixed;
+    z-index: 72;
+    top: max(.65rem, env(safe-area-inset-top));
+    bottom: max(.65rem, env(safe-area-inset-bottom));
+    left: .65rem;
+    width: min(20rem, calc(100vw - 1.3rem));
+    max-height: none !important;
+    transform: translateX(calc(-100% - 1.2rem));
+    transition: transform .2s ease;
+    box-shadow: 0 22px 70px rgba(0,0,0,.5);
+    overflow: hidden !important;
+  }
+  .chat-thread-sidebar .thread-list {
+    max-height: none;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .chat-thread-sidebar { display: flex; flex-direction: column; }
+  .tutor-chat-layout.threads-drawer-open .chat-thread-sidebar { transform: translateX(0); }
+  .chat-thread-backdrop {
+    position: fixed;
+    z-index: 70;
+    inset: 0;
+    border: 0;
+    background: rgba(0,0,0,.5);
+    cursor: default;
+  }
+  .tutor-chat-layout.threads-drawer-open .chat-thread-backdrop { display: block; }
+  .chat-sidebar-collapse { transform: rotate(180deg); }
+
+  body[data-active-section="tutor"] .chat-center-card,
+  body[data-active-section="assistant"] .chat-center-card {
+    display: flex;
+    height: auto !important;
+    min-height: 0;
+    max-height: none !important;
+    flex-direction: column;
+    overflow: visible !important;
+  }
+  body[data-active-section="tutor"] .chat-log-wrap,
+  body[data-active-section="assistant"] .chat-log-wrap {
+    flex: 0 0 auto;
+    width: 100%;
+    height: clamp(18rem, 52dvh, 34rem);
+    max-height: max(18rem, calc(var(--eduai-viewport-height, 100dvh) - 13rem));
+    min-height: 18rem;
+  }
+  body[data-active-section="tutor"] .chat-log,
+  body[data-active-section="assistant"] .chat-log {
+    height: 100%;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .chat-thread-sidebar {
+    top: max(.4rem, env(safe-area-inset-top));
+    bottom: max(.4rem, env(safe-area-inset-bottom));
+    left: .4rem;
+    width: min(21rem, calc(100vw - .8rem));
+  }
+  .interactive-card-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .interactive-card-action {
+    width: 100%;
+    min-width: 0;
+    white-space: normal;
+  }
+  .chat-composer-input { max-height: 8rem; }
+}
+
+@media (max-width: 639px) {
+  .chat-center-card { padding: .75rem; }
+  .chat-log-wrap { height: clamp(17rem, 50dvh, 28rem) !important; }
+  .chat-jump-bottom {
+    right: .55rem;
+    bottom: .55rem;
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+  .chat-send-button {
+    width: 3rem;
+    min-width: 3rem;
+    max-width: 3rem;
+    padding-inline: 0;
+  }
+  .chat-send-label { display: none; }
+  #chat-form,
+  #parent-chat-form { gap: .45rem; }
+  .chat-plus-button { width: 3rem; min-width: 3rem; }
+}
+/* === TZ30 CHAT LAYOUT + SCROLL UX END === */
+@media (min-width: 1280px) {
+  .tutor-chat-layout .chat-sidebar-main-toggle { display: none; }
+}

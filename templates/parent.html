@@ -15,7 +15,7 @@
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;550;650;750;850&display=swap"
     rel="stylesheet"
   >
-  <link rel="stylesheet" href="/static/css/app.css?v=20260815-plus-interactive-1">
+  <link rel="stylesheet" href="/static/css/app.css?v=20260815-tz30-2">
 </head>
 <body>
   <div class="app-shell">
@@ -112,32 +112,35 @@
       </section>
 
       <section id="assistant" class="page-section">
-        <div class="grid xl:grid-cols-[17rem_minmax(0,1fr)_19rem] gap-4">
-          <aside class="glass card h-fit">
-            <button id="parent-new-chat" class="btn-primary w-full">
-              + Новый чат
-            </button>
+        <div class="tutor-chat-layout grid gap-4" data-chat-layout>
+          <aside class="glass card chat-thread-sidebar" data-chat-sidebar>
+            <div class="chat-thread-sidebar-head">
+              <button id="parent-new-chat" class="btn-primary min-w-0 flex-1">+ Новый чат</button>
+              <button class="icon-btn chat-sidebar-collapse" type="button" data-chat-sidebar-toggle aria-expanded="true" title="Свернуть список чатов">‹</button>
+            </div>
+            <button class="icon-btn chat-sidebar-rail-button" type="button" data-chat-sidebar-toggle aria-expanded="false" title="Открыть список чатов">☰</button>
             <div id="parent-chat-threads" class="thread-list mt-3"></div>
-            <p class="mt-3 text-xs muted">
-              История доступна на любом устройстве. Название — до 35 символов.
-            </p>
+            <p class="chat-thread-help mt-3 text-xs muted">Меню ⋮ позволяет переименовать или удалить чат.</p>
           </aside>
+          <button class="chat-thread-backdrop" type="button" data-chat-sidebar-backdrop aria-label="Закрыть список чатов"></button>
 
-          <article class="glass card min-w-0">
+          <article class="glass card min-w-0 chat-center-card">
             <div class="border-b border-white/10 pb-4">
-              <span class="badge">✦ Учебный ИИ-тьютор</span>
-              <h2 class="mt-3 text-xl font-extrabold">
-                Объясняйте темы и создавайте задания
-              </h2>
-              <p class="mt-1 text-sm muted">
-                Тьютор помогает с учёбой и обычными вопросами. В Book Mode выбранный учебник приоритетен, а при нехватке материала ответ может быть дополнен внешними знаниями.
-              </p>
+              <div class="flex items-start gap-2">
+                <button class="icon-btn chat-sidebar-main-toggle" type="button" data-chat-sidebar-toggle aria-expanded="true" title="Чаты">☰</button>
+                <div class="min-w-0">
+                  <span class="badge">✦ Учебный ИИ-тьютор</span>
+                  <h2 class="mt-3 text-xl font-extrabold">Объясняйте темы и создавайте задания</h2>
+                  <p class="mt-1 text-sm muted">Тьютор помогает с учёбой и обычными вопросами. В Book Mode выбранный учебник приоритетен, а при нехватке материала ответ может быть дополнен внешними знаниями.</p>
+                </div>
+              </div>
             </div>
 
-            <div id="parent-chat-log" class="chat-log py-3">
-              <div class="message">
-                Здравствуйте! Можете задать учебный или обычный вопрос, выбрать учебник, прикрепить материал или попросить создать интерактивное задание.
+            <div class="chat-log-wrap">
+              <div id="parent-chat-log" class="chat-log py-3">
+                <div class="message">Здравствуйте! Можете задать учебный или обычный вопрос, выбрать учебник, прикрепить материал или попросить создать интерактивное задание.</div>
               </div>
+              <button class="chat-jump-bottom" type="button" data-chat-jump-bottom hidden aria-label="Перейти к последнему сообщению" title="К последнему сообщению">↓</button>
             </div>
 
             <div id="parent-chat-attachment-preview" class="attachment-preview" hidden>
@@ -181,13 +184,13 @@
 
               <textarea
                 id="parent-chat-input"
-                class="input min-h-[3rem] max-h-32 resize-y flex-1 min-w-0"
+                class="input chat-composer-input flex-1 min-w-0"
                 maxlength="4000"
                 placeholder="Напишите вопрос, приложите материал или попросите создать интерактивный тест…"
               ></textarea>
 
-              <button class="btn-primary shrink-0" type="submit">
-                Отправить ↑
+              <button class="btn-primary chat-send-button shrink-0" type="submit">
+                <span class="chat-send-label">Отправить</span><span aria-hidden="true">↑</span>
               </button>
             </form>
           </article>
@@ -580,7 +583,7 @@
   <div class="toast-stack" aria-live="polite"></div>
 
   <script src="/static/js/app.js?v=20260814-tz29-1"></script>
-  <script src="/static/js/chat.js?v=20260815-plus-interactive-1"></script>
+  <script src="/static/js/chat.js?v=20260815-tz30-2"></script>
   <script src="/static/js/parent.js?v=20260812-20-2"></script>
 </body>
 </html>

@@ -25,11 +25,20 @@
   async function load() {
     try {
       app = await EduAI.api(`/api/v1/interactive/${encodeURIComponent(appId)}`);
-      title.textContent = app.title || 'Интерактивное задание';
+      title.innerHTML = EduAI.markdown(app.title || 'Интерактивное задание');
+      EduAI.renderMath?.(title);
       version.textContent = `Версия v${app.current_version || 1}${app.question_count ? ` · ${app.question_count} вопросов` : ''}`;
+      frame.hidden = true;
+      loading.hidden = false;
+      loading.textContent = 'Подготавливаем интерактивное задание…';
+      const reveal = () => {
+        loading.hidden = true;
+        frame.hidden = false;
+      };
+      frame.addEventListener('load', reveal, { once: true });
       frame.srcdoc = app.html_document || '<!doctype html><p>Нет содержимого</p>';
-      loading.hidden = true;
-      frame.hidden = false;
+      // Safety fallback for unusual WebView implementations that do not emit load for srcdoc.
+      setTimeout(() => { if (frame.hidden) reveal(); }, 1800);
     } catch (error) {
       loading.textContent = error.message || 'Не удалось загрузить интерактивное задание';
     }

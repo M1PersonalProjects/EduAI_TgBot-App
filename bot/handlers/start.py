@@ -86,12 +86,45 @@ async def cmd_start(message: Message, command: CommandObject):
             return
 
         async with db.pool.acquire() as conn:
+            inviter = await conn.fetchrow(
+                "SELECT role FROM users WHERE tg_id = $1",
+                parent_id,
+            )
+            if not inviter or inviter["role"] not in ("parent", "admin"):
+                await message.answer("Эта ссылка привязки недействительна или её Учитель больше недоступен.")
+                return
+
+            existing = await conn.fetchrow(
+                "SELECT role, parent_id FROM users WHERE tg_id = $1",
+                user_id,
+            )
+            if existing and existing["role"] in ("parent", "admin"):
+                await message.answer(
+                    "Аккаунт Учителя или Администратора нельзя перепривязать как Ученика по реферальной ссылке."
+                )
+                return
+            if existing and existing["role"] == "student":
+                current_parent = existing.get("parent_id")
+                if current_parent and int(current_parent) != parent_id:
+                    await message.answer(
+                        "Этот аккаунт Ученика уже привязан к другому Учителю. "
+                        "Сначала отвяжите существующую связь в EduAI."
+                    )
+                    return
+                if current_parent and int(current_parent) == parent_id:
+                    await message.answer(
+                        "✅ Ваш аккаунт уже привязан к этому Учителю.",
+                        reply_markup=get_student_menu(),
+                    )
+                    return
+
             async with conn.transaction():
                 await conn.execute(
                     """
                     INSERT INTO users (tg_id, username, role, parent_id)
                     VALUES ($1, $2, 'student'::user_role, $3)
-                    ON CONFLICT (tg_id) DO UPDATE SET parent_id = $3, role = 'student'::user_role
+                    ON CONFLICT (tg_id) DO UPDATE
+                    SET parent_id = $3, role = 'student'::user_role, username = EXCLUDED.username
                     """,
                     user_id, username, parent_id
                 )

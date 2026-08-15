@@ -128,6 +128,11 @@ that can communicate outside the document. Do not try to access window.parent, w
 opener, or the host EduAI DOM/session. When the learner obtains a result, optionally call
 EduAIInteractive.complete({score, max_score, completed, answers}) only if that helper is
 available; this bridge is for result reporting only. Keep score/max_score numeric.
+MATH OUTPUT
+- Use canonical LaTeX for mathematical expressions, preferably \(...\) inline and \[...\] for display math.
+- Never intentionally show LaTeX command text such as \frac, \sqrt, \times or \text to the learner.
+- EduAI injects a trusted offline math renderer after generation. Do not load KaTeX, MathJax,
+  fonts, scripts, or styles from external URLs yourself.
 """
 
 
