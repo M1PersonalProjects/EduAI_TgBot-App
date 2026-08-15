@@ -407,3 +407,87 @@ svg {
   }
 }
 /* === TZ29 MOBILE TUTOR HEIGHT FIX END === */
+
+
+/* === CHAT PLUS MENU + INTERACTIVE COMPOSE MODE START === */
+.chat-plus-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+.chat-plus-button {
+  font-size: 1.55rem;
+  line-height: 1;
+  transition: transform .18s ease, background .18s ease, border-color .18s ease;
+}
+.chat-plus-button[aria-expanded="true"] {
+  transform: rotate(45deg);
+  background: rgba(66,216,196,.13);
+  border-color: rgba(66,216,196,.32);
+}
+.chat-plus-menu {
+  position: absolute;
+  z-index: 85;
+  left: 0;
+  bottom: calc(100% + .55rem);
+  width: min(20rem, calc(100vw - 2rem));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: .35rem;
+  background: rgba(8, 20, 36, .98);
+  box-shadow: 0 20px 60px rgba(0,0,0,.42);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.chat-plus-menu[hidden] { display: none !important; }
+.chat-plus-menu button {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 2.2rem minmax(0, 1fr);
+  align-items: center;
+  gap: .65rem;
+  border: 0;
+  border-radius: .75rem;
+  padding: .7rem .75rem;
+  color: var(--text);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.chat-plus-menu button:hover,
+.chat-plus-menu button:focus-visible {
+  outline: none;
+  background: rgba(255,255,255,.07);
+}
+.chat-plus-menu button > span:first-child {
+  display: grid;
+  width: 2.2rem;
+  height: 2.2rem;
+  place-items: center;
+  border-radius: .7rem;
+  background: rgba(66,216,196,.08);
+  font-size: 1.05rem;
+}
+.chat-plus-menu strong,
+.chat-plus-menu small { display: block; }
+.chat-plus-menu strong { font-size: .82rem; }
+.chat-plus-menu small { margin-top: .12rem; color: var(--muted); font-size: .7rem; font-weight: 500; }
+.chat-compose-mode {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  margin-top: .6rem;
+  border: 1px solid rgba(66,216,196,.2);
+  border-radius: .8rem;
+  padding: .5rem .65rem;
+  color: #b7f8ee;
+  background: rgba(66,216,196,.075);
+  font-size: .78rem;
+  font-weight: 700;
+}
+.chat-compose-mode[hidden] { display: none !important; }
+@media (max-width: 639px) {
+  .chat-plus-menu { position: fixed; left: 1rem; right: 1rem; bottom: max(5rem, calc(env(safe-area-inset-bottom) + 4.2rem)); width: auto; }
+}
+/* === CHAT PLUS MENU + INTERACTIVE COMPOSE MODE END === */

@@ -2,7 +2,7 @@
   class ChatUI {
     constructor(options) {
       this.options = options;
-      this.state = { sessions: [], activeId: null, editingInteractiveId: null };
+      this.state = { sessions: [], activeId: null, editingInteractiveId: null, interactiveAction: null };
       this.$ = name => document.getElementById(options[name]);
     }
 
@@ -26,11 +26,83 @@
       });
       this.$('attachId').addEventListener('change', () => this.previewAttachment());
       this.$('removeAttachId').addEventListener('click', () => this.clearAttachment());
+      this.bindPlusMenu();
       this.$('classId').addEventListener('change', () => this.loadSubjects());
       this.$('subjectId').addEventListener('change', () => this.loadBooks());
       this.$('bookId').addEventListener('change', () => this.loadPages());
       this.$('lockId').addEventListener('click', () => this.lockContext());
       this.$('exitId').addEventListener('click', () => this.exitContext());
+    }
+
+    bindPlusMenu() {
+      const form = this.$('formId');
+      if (!form) return;
+      const wrap = form.querySelector('.chat-plus-wrap');
+      const plus = form.querySelector('[data-chat-plus]');
+      const menu = form.querySelector('[data-chat-plus-menu]');
+      const attachTrigger = form.querySelector('[data-chat-attach-trigger]');
+      const interactiveTrigger = form.querySelector('[data-chat-interactive-trigger]');
+      const modePreview = form.parentElement?.querySelector('[data-chat-compose-mode]');
+      const modeClear = modePreview?.querySelector('[data-chat-compose-mode-clear]');
+
+      const closeMenu = () => {
+        if (!menu || !plus) return;
+        menu.hidden = true;
+        plus.setAttribute('aria-expanded', 'false');
+      };
+      const toggleMenu = () => {
+        if (!menu || !plus) return;
+        menu.hidden = !menu.hidden;
+        plus.setAttribute('aria-expanded', menu.hidden ? 'false' : 'true');
+      };
+
+      plus?.addEventListener('click', event => { event.stopPropagation(); toggleMenu(); });
+      attachTrigger?.addEventListener('click', () => { closeMenu(); this.$('attachId').click(); });
+      interactiveTrigger?.addEventListener('click', () => {
+        closeMenu();
+        this.startInteractiveCompose('create');
+      });
+      modeClear?.addEventListener('click', () => this.clearInteractiveCompose());
+      document.addEventListener('click', event => {
+        if (wrap && !wrap.contains(event.target)) closeMenu();
+      });
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closeMenu();
+      });
+    }
+
+    interactiveActionInput() {
+      return this.$('formId')?.querySelector('[data-chat-interactive-action]') || null;
+    }
+
+    startInteractiveCompose(action = 'create', appId = null) {
+      this.state.interactiveAction = action;
+      this.state.editingInteractiveId = appId || null;
+      const hidden = this.interactiveActionInput();
+      if (hidden) hidden.value = action;
+      const preview = this.$('formId')?.parentElement?.querySelector('[data-chat-compose-mode]');
+      const label = preview?.querySelector('[data-chat-compose-mode-label]');
+      if (preview) preview.hidden = false;
+      if (label) label.textContent = action === 'edit' ? '🧩 Редактирование интерактивного приложения' : '🧩 Создание интерактивного приложения';
+      const input = this.$('inputId');
+      if (input) {
+        if (!input.dataset.defaultPlaceholder) input.dataset.defaultPlaceholder = input.placeholder || '';
+        input.placeholder = action === 'edit'
+          ? 'Опишите, что изменить: добавить вопросы, таймер, оформление…'
+          : 'Опишите приложение: тема, количество вопросов, сложность, оформление…';
+        input.focus();
+      }
+    }
+
+    clearInteractiveCompose() {
+      this.state.interactiveAction = null;
+      this.state.editingInteractiveId = null;
+      const hidden = this.interactiveActionInput();
+      if (hidden) hidden.value = '';
+      const preview = this.$('formId')?.parentElement?.querySelector('[data-chat-compose-mode]');
+      if (preview) preview.hidden = true;
+      const input = this.$('inputId');
+      if (input?.dataset.defaultPlaceholder) input.placeholder = input.dataset.defaultPlaceholder;
     }
 
     async loadSessions(preferredId = null) {
@@ -168,9 +240,8 @@
           window.open(`/interactive/${encodeURIComponent(appId)}`, '_blank', 'noopener,noreferrer'); return;
         }
         if (event.target.closest('[data-interactive-edit]')) {
-          this.state.editingInteractiveId = appId;
-          this.$('inputId').value = 'Измени это интерактивное задание: ';
-          this.$('inputId').focus();
+          this.startInteractiveCompose('edit', appId);
+          this.$('inputId').value = '';
           EduAI.toast('Опишите изменение и отправьте сообщение', 'success'); return;
         }
         if (event.target.closest('[data-interactive-download]')) {
@@ -223,12 +294,18 @@
       event.preventDefault();
       const button = event.submitter || this.$('formId').querySelector('button[type="submit"], button:not([type])');
       let stopThinking = () => {};
+      const input = this.$('inputId');
+      const originalText = input.value;
+      const text = originalText.trim().split('$').join('');
+      const file = this.$('attachId').files[0];
+      const interactiveAction = this.interactiveActionInput()?.value || this.state.interactiveAction || '';
       try {
         if (!this.state.activeId) await this.loadSessions();
         if (!this.state.activeId) throw new Error('Не удалось создать чат. Обновите страницу.');
-        const text = this.$('inputId').value.trim().split('$').join('');
-        const file = this.$('attachId').files[0];
-        if (!text && !file) return;
+        if (!text && !file) {
+          if (interactiveAction) EduAI.toast('Сначала опишите, какое интерактивное приложение нужно создать или изменить', 'error');
+          return;
+        }
         const isPdf = file && (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'));
         const sizeLimit = isPdf ? 100 * 1024 * 1024 : 15 * 1024 * 1024;
         if (file && file.size > sizeLimit) throw new Error(`Максимальный размер ${isPdf ? 'PDF' : 'файла'} — ${isPdf ? 100 : 15} МБ`);
@@ -236,20 +313,33 @@
         const form = new FormData();
         form.append('session_id', this.state.activeId);
         form.append('message_text', text);
+        if (interactiveAction) form.append('interactive_action', interactiveAction);
         if (this.state.editingInteractiveId) form.append('interactive_app_id', this.state.editingInteractiveId);
         if (file) form.append('attachment', file);
         const mapping = [['classId','book_class'],['subjectId','book_program'],['bookId','book_id'],['pageId','page_id']];
         mapping.forEach(([id,key]) => { const element = this.$(id); if (element && element.value) form.append(key, element.value); });
-        this.$('inputId').value = '';
-        this.clearAttachment();
-        EduAI.setBusy(button, true, 'Отправляем…');
-        stopThinking = EduAI.startThinking(file ? 'ИИ обрабатывает вложение' : 'ИИ формулирует ответ');
+        EduAI.setBusy(button, true, interactiveAction ? 'Создаём…' : 'Отправляем…');
+        stopThinking = EduAI.startThinking(
+          interactiveAction === 'edit' ? 'ИИ изменяет интерактивное приложение' :
+          interactiveAction === 'create' ? 'ИИ создаёт интерактивное приложение' :
+          file ? 'ИИ обрабатывает вложение' : 'ИИ формулирует ответ'
+        );
         const result = await EduAI.api('/api/v1/tutor/messages', { method: 'POST', body: form });
-        this.append('ai', result.message_text, [], null, result.interactive_app || null); this.state.editingInteractiveId = null; await this.loadSessions(result.session_id);
+        this.append('ai', result.message_text, [], null, result.interactive_app || null);
+        if (!result.interactive_error) {
+          input.value = '';
+          this.clearAttachment();
+          this.clearInteractiveCompose();
+        } else {
+          input.value = originalText;
+          EduAI.toast('Интерактивное приложение не создано. Запрос оставлен в поле — можно повторить.', 'error');
+        }
+        await this.loadSessions(result.session_id);
       } catch (error) {
         console.error('EduAI tutor submit failed', error);
+        input.value = originalText;
         EduAI.toast(error.message || 'Не удалось отправить сообщение', 'error');
-      } finally { stopThinking(); EduAI.setBusy(button, false); this.$('inputId').focus(); }
+      } finally { stopThinking(); EduAI.setBusy(button, false); input.focus(); }
     }
 
     previewAttachment() {

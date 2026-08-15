@@ -15,7 +15,7 @@
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;550;650;750;850&display=swap"
     rel="stylesheet"
   >
-  <link rel="stylesheet" href="/static/css/app.css?v=20260814-tz29-1">
+  <link rel="stylesheet" href="/static/css/app.css?v=20260815-plus-interactive-1">
 </head>
 <body>
   <div class="app-shell">
@@ -151,28 +151,42 @@
               </button>
             </div>
 
+            <div class="chat-compose-mode" data-chat-compose-mode hidden>
+              <span data-chat-compose-mode-label>🧩 Интерактивное приложение</span>
+              <button class="thread-action" type="button" data-chat-compose-mode-clear aria-label="Отменить режим">×</button>
+            </div>
+
             <form
               id="parent-chat-form"
-              class="flex flex-col sm:flex-row gap-2 border-t border-white/10 pt-4"
+              class="flex items-end gap-2 border-t border-white/10 pt-4"
             >
-              <label class="icon-btn shrink-0 cursor-pointer">
-                📎
+              <div class="chat-plus-wrap">
+                <button class="icon-btn chat-plus-button" type="button" data-chat-plus aria-haspopup="menu" aria-expanded="false" title="Добавить">+</button>
+                <div class="chat-plus-menu" data-chat-plus-menu role="menu" hidden>
+                  <button type="button" role="menuitem" data-chat-attach-trigger>
+                    <span>📎</span><span><strong>Прикрепить документ</strong><small>Фото, PDF, DOCX и другие файлы</small></span>
+                  </button>
+                  <button type="button" role="menuitem" data-chat-interactive-trigger>
+                    <span>🧩</span><span><strong>Интерактивное приложение</strong><small>Тест, тренажёр или учебная страница</small></span>
+                  </button>
+                </div>
                 <input
                   id="parent-chat-attachment"
                   class="sr-only"
                   type="file"
                   accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.docx,.xlsx,.pptx,.odt,.ods,.odp,.epub,.djvu,.txt,.md,.csv,.json,.rtf,.html,.xml,.yaml,.yml"
                 >
-              </label>
+                <input type="hidden" data-chat-interactive-action value="">
+              </div>
 
               <textarea
                 id="parent-chat-input"
-                class="input min-h-[3rem] max-h-32 resize-y flex-1"
+                class="input min-h-[3rem] max-h-32 resize-y flex-1 min-w-0"
                 maxlength="4000"
                 placeholder="Напишите вопрос, приложите материал или попросите создать интерактивный тест…"
               ></textarea>
 
-              <button class="btn-primary sm:self-end" type="submit">
+              <button class="btn-primary shrink-0" type="submit">
                 Отправить ↑
               </button>
             </form>
@@ -566,7 +580,7 @@
   <div class="toast-stack" aria-live="polite"></div>
 
   <script src="/static/js/app.js?v=20260814-tz29-1"></script>
-  <script src="/static/js/chat.js?v=20260814-tz29-1"></script>
+  <script src="/static/js/chat.js?v=20260815-plus-interactive-1"></script>
   <script src="/static/js/parent.js?v=20260812-20-2"></script>
 </body>
 </html>

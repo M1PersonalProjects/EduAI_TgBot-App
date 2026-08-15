@@ -13,6 +13,7 @@ from services.scope_guard import validate_request_scope
 
 from services.tutor_policy import build_tutor_prompt, should_search_eduai_materials, should_use_external_sources
 from services.interactive_apps import (
+    InteractiveAppTemporaryError,
     maybe_handle_chat_request,
     card_text as interactive_card_text,
     set_source_message as set_interactive_source_message,
@@ -439,6 +440,7 @@ async def respond(
     lock_selected_context: bool = False,
     message_source: str = "web",
     interactive_app_id: Optional[str] = None,
+    interactive_action: Optional[str] = None,
 ) -> Dict[str, Any]:
     clean_text = clean_ai_text(message_text) or "Проанализируй вложение и помоги разобраться."
     if attachment_id is None and attachment is not None:
@@ -691,17 +693,45 @@ async def respond(
             "scope_reason": scope_result.reason,
         }
 
-    interactive_app = await maybe_handle_chat_request(
-        user_id=user_id,
-        session_id=session["session_id"],
-        role=role,
-        message_text=clean_text,
-        context=context,
-        attachment_text=attachment_text,
-        database_context=database_context,
-        web_context=web_context,
-        interactive_app_id=interactive_app_id,
-    )
+    try:
+        interactive_app = await maybe_handle_chat_request(
+            user_id=user_id,
+            session_id=session["session_id"],
+            role=role,
+            message_text=clean_text,
+            context=context,
+            attachment_text=attachment_text,
+            database_context=database_context,
+            web_context=web_context,
+            interactive_app_id=interactive_app_id,
+            interactive_action=interactive_action,
+        )
+    except InteractiveAppTemporaryError as exc:
+        reply = canonicalize_message(str(exc))
+        ai_message_id = await _save_guard_refusal(
+            user_id=user_id,
+            session_id=session["session_id"],
+            refusal_message=reply,
+            message_source=message_source,
+        )
+        if isinstance(ai_message_id, int) and not isinstance(ai_message_id, bool):
+            memory_state["last_assistant_message_id"] = ai_message_id
+        async with db.pool.acquire() as conn:
+            await persist_session_state(
+                conn, user_id, session["session_id"], memory_state, summary
+            )
+        return {
+            "message_id": ai_message_id,
+            "session_id": str(session["session_id"]),
+            "sender": "ai",
+            "message_text": reply,
+            "context": context.to_dict() if context else None,
+            "book_mode": bool(locked_context),
+            "used_attachment_ids": selected_ids,
+            "interactive_app": None,
+            "interactive_error": True,
+            "retryable": True,
+        }
     if interactive_app:
         reply = canonicalize_message(interactive_card_text(interactive_app))
         if locked_context:

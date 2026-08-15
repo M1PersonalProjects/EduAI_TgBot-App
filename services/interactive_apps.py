@@ -5,11 +5,12 @@ import re
 import uuid
 from typing import Any, Dict, Optional
 
-from openai import AsyncOpenAI
+from openai import APIConnectionError, APITimeoutError, AsyncOpenAI
 from pydantic import BaseModel, Field
 
 from config import settings
 from database import db
+from logger_config import logger
 from services.context_resolver import ResolvedContext
 from services.tutor_policy import (
     BASE_TUTOR_RULES,
@@ -18,7 +19,7 @@ from services.tutor_policy import (
 )
 
 
-openai_client = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
+openai_client = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value(), timeout=45.0, max_retries=1)
 
 
 class InteractiveGeneration(BaseModel):
@@ -26,6 +27,10 @@ class InteractiveGeneration(BaseModel):
     app_type: str = Field(default="interactive_test", max_length=40)
     question_count: int = Field(default=0, ge=0, le=100)
     html_document: str = Field(..., min_length=40, max_length=220000)
+
+
+class InteractiveAppTemporaryError(RuntimeError):
+    """Temporary upstream failure that should not turn the whole tutor request into HTTP 502."""
 
 
 _CREATE_RE = re.compile(
@@ -207,15 +212,23 @@ async def _generate(
     if previous_html:
         user_text += "\n\nCURRENT HTML VERSION (DATA TO EDIT):\n" + previous_html[:160000]
 
-    response = await openai_client.beta.chat.completions.parse(
-        model="gpt-4o",
-        temperature=0.25,
-        messages=[
-            {"role": "system", "content": _generation_prompt(role)},
-            {"role": "user", "content": user_text},
-        ],
-        response_format=InteractiveGeneration,
-    )
+    try:
+        response = await openai_client.beta.chat.completions.parse(
+            model="gpt-4o",
+            temperature=0.25,
+            messages=[
+                {"role": "system", "content": _generation_prompt(role)},
+                {"role": "user", "content": user_text},
+            ],
+            response_format=InteractiveGeneration,
+        )
+    except (APITimeoutError, APIConnectionError) as exc:
+        logger.warning("Interactive app generation temporarily unavailable: %s", exc)
+        raise InteractiveAppTemporaryError(
+            "Не удалось сейчас создать или изменить интерактивное приложение: "
+            "сервис ИИ не ответил вовремя. Ваш запрос сохранён в чате — "
+            "попробуйте повторить через несколько секунд."
+        ) from exc
     parsed = response.choices[0].message.parsed
     if not parsed:
         raise RuntimeError("ИИ не вернул интерактивное приложение")
@@ -393,8 +406,34 @@ async def maybe_handle_chat_request(
     database_context: str = "",
     web_context: str = "",
     interactive_app_id: Optional[str] = None,
+    interactive_action: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
+    action = str(interactive_action or "").strip().casefold()
     target_id = interactive_app_id
+
+    if action == "create":
+        return await create_app(
+            user_id=user_id,
+            session_id=session_id,
+            role=role,
+            request=message_text,
+            context=context,
+            attachment_text=attachment_text,
+            database_context=database_context,
+            web_context=web_context,
+        )
+
+    if action == "edit" and target_id:
+        return await edit_app(
+            user_id=user_id,
+            app_id=str(target_id),
+            role=role,
+            request=message_text,
+            context=context,
+            attachment_text=attachment_text,
+            database_context=database_context,
+            web_context=web_context,
+        )
     if (
         not target_id
         and _EDIT_RE.search(str(message_text or ""))

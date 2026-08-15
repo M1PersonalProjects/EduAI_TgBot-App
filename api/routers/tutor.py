@@ -131,6 +131,7 @@ async def send_message(
     page_paragraph: Optional[str] = Form(default=None),
     lock_context: bool = Form(default=False),
     interactive_app_id: Optional[str] = Form(default=None),
+    interactive_action: Optional[str] = Form(default=None),
     user=Depends(get_current_user),
 ):
     ensure_tutor_role(user)
@@ -187,6 +188,7 @@ async def send_message(
             manual_context=manual_context,
             lock_selected_context=lock_context,
             interactive_app_id=interactive_app_id,
+            interactive_action=interactive_action,
         )
     except LookupError as exc:
         raise _not_found(exc)
