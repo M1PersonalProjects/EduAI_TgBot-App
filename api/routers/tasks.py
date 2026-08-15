@@ -10,6 +10,7 @@ from api.schemas.tasks import TaskGenerationResponse, SubmitAnswerRequest, Submi
 from logger_config import logger
 from services.response_formatter import MATH_FORMATTING_RULES
 from services.context_resolver import resolve_book_context
+from services.tutor_policy import student_task_prompt, task_grading_prompt
 
 router = APIRouter(prefix="/api/tasks", tags=["Tasks"])
 
@@ -23,7 +24,7 @@ class OpenAITaskGeneration(BaseModel):
 
 class OpenAITaskVerification(BaseModel):
     is_correct: bool = Field(..., description="True если ответ верен, иначе False")
-    explanation: str = Field(..., description="Доброжелательное объяснение для ребенка на русском языке")
+    explanation: str = Field(..., description="Доброжелательное объяснение для Ученика на русском языке")
 
 class GenerateTaskRequest(BaseModel):
     student_id: int
@@ -83,10 +84,7 @@ async def generate_task_legacy(tg_id: int):
                 {
                     "role": "system",
                     "content": (
-                        "You create exactly one school-level educational task for EduAI. "
-                        "Use only the supplied textbook material. Return the task in Russian. "
-                        "Use canonical Markdown + LaTeX for mathematical notation.\n\n"
-                        + MATH_FORMATTING_RULES
+                        student_task_prompt()
                     ),
                 },
                 {
@@ -169,9 +167,6 @@ async def generate_task(tg_id: int, payload: GenerateTaskRequest):
             raise HTTPException(status_code=404, detail="База знаний пуста.")
         if payload.page_id is not None and context.page_id is None:
             raise HTTPException(status_code=404, detail="Страница не относится к выбранному учебнику")
-        if not context.content:
-            raise HTTPException(status_code=422, detail="Тема не найдена в выбранном учебнике. Измените тему, выберите другую страницу или учебник либо прикрепите дополнительные материалы.")
-
     try:
         response = await openai_client.beta.chat.completions.parse(
             model="gpt-4o",
@@ -179,19 +174,12 @@ async def generate_task(tg_id: int, payload: GenerateTaskRequest):
                 {
                     "role": "system",
                     "content": (
-                        "Ты создаёшь учебные задания для платформы EduAI. "
-                        "Работай исключительно по предоставленному материалу учебника. "
-                        "Не добавляй сведения из других предметов и не придумывай темы, "
-                        "которых нет в контексте. "
-                        "Учитывай класс ученика, инструкции родителя и прикреплённые материалы. "
-                        "Создай ровно одно задание на русском языке. "
-                        "Use canonical Markdown + LaTeX for mathematical notation.\n\n"
-                        + MATH_FORMATTING_RULES
+                        student_task_prompt()
                     )
                 },
                 {
                     "role": "user",
-                    "content": (f"Textbook: {context.book_title} ({context.book_program})\n" f"Context mode: {context.context_mode}\n" f"Topic: {payload.topic or ''}\n" f"Parent instructions: {payload.instructions or ''}\n" f"Textbook context:\n{context.content}")
+                    "content": (f"Textbook: {context.book_title} ({context.book_program})\n" f"Context mode: {context.context_mode}\n" f"Topic: {payload.topic or ''}\n" f"Teacher instructions: {payload.instructions or ''}\n" f"Textbook context:\n{context.content}")
                 }
             ],
             response_format=OpenAITaskGeneration
@@ -263,16 +251,7 @@ async def submit_task_answer(payload: SubmitAnswerRequest):
             messages=[
                 {
                     "role": "system",
-                    "content": (
-                        "You are a supportive and encouraging school mathematics teacher grading a student's answer. "
-                        "Compare the student's answer with the provided reference answer.\n\n"
-                        "GRADING RULES:\n"
-                        "1. If the student's answer matches the reference answer in meaning or is mathematically equivalent "
-                        "(e.g., '0.5' and '1/2', '5' and '5 cm', 'x=3' and '3'), set 'is_correct' to True. Otherwise, set it to False.\n"
-                        "2. Provide a friendly, polite, and constructive explanation ('explanation') in Russian tailored for a child.\n"
-                        "3. Use canonical Markdown + LaTeX for mathematical notation.\n\n"
-                        + MATH_FORMATTING_RULES
-                    )
+                    "content": task_grading_prompt()
                 },
                 {
                     "role": "user",

@@ -194,6 +194,24 @@ def telegram_formula_fallback(expr: str) -> str:
     return _latex_fallback(expr)
 
 
+
+def telegram_safe_text(value: object) -> str:
+    """Final Telegram text firewall: never expose recognized raw TeX commands."""
+    work = canonicalize_message(value)
+    if contains_raw_latex(work):
+        # Product requirement: no raw LaTeX may reach Telegram, including old
+        # stored messages or TeX accidentally wrapped in code spans. Only known
+        # math tokens are transformed; unrelated programming backslashes remain.
+        work = "\n".join(
+            _latex_fallback(line) if contains_raw_latex(line) else line
+            for line in work.splitlines()
+        )
+        # _latex_fallback is the human-readable conversion. This final pass only
+        # removes any still-recognized TeX token; it does not touch ordinary \n,
+        # Windows paths, regex escapes, or programming backslashes.
+        work = _RAW_LATEX_RE.sub("", work)
+    return work.strip()
+
 def render_formula_png(expr: str) -> bytes | None:
     """Best-effort PNG renderer. Returns None when matplotlib/mathtext cannot render."""
     try:

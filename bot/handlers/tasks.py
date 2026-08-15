@@ -10,6 +10,7 @@ from openai import AsyncOpenAI
 from config import settings
 from logger_config import logger
 from bot.messages import answer_plain
+from services.tutor_policy import student_task_prompt, task_grading_prompt
 
 router = Router()
 
@@ -77,7 +78,7 @@ async def start_quest(message: Message, state: FSMContext):
                 parent_comment_value = None
             parent_comment = (parent_comment_value or "").strip()
             parent_comment_block = (
-                f"\n\n💬 Комментарий от родителя:\n{parent_comment}"
+                f"\n\n💬 Комментарий от Учителя:\n{parent_comment}"
                 if parent_comment else ""
             )
             async with db.pool.acquire() as conn:
@@ -93,7 +94,7 @@ async def start_quest(message: Message, state: FSMContext):
             await status_msg.delete()
             await answer_plain(
                 message,
-                f"👨‍👩‍👦 Персональное задание от родителя!\n"
+                f"👨‍👩‍👦 Персональное задание от Учителя!\n"
                 f"🏆 Квест: {quest.get('title')}\n\n"
                 f"{quest.get('question_text')}"
                 f"{parent_comment_block}"
@@ -103,7 +104,7 @@ async def start_quest(message: Message, state: FSMContext):
             )
             return
         except Exception as e:
-            logger.error(f"Ошибка парсинга родительского теста: {e}")
+            logger.error(f"Ошибка парсинга задания Учителя: {e}")
     async with db.pool.acquire() as conn:
         page = await conn.fetchrow(
             """
@@ -127,15 +128,7 @@ async def start_quest(message: Message, state: FSMContext):
                 {
                     "role": "system",
                     "content": (
-                        "You are an expert school mathematics tutor on the EduAI platform. "
-                        "Based on the provided textbook page context, generate exactly ONE engaging exercise or practical question to test the student's understanding.\n\n"
-                        "CRITICAL FORMATTING RULES:\n"
-                        "1. NEVER use LaTeX service symbols such as '$', '$$', '\\(', or '\\)'.\n"
-                        "2. Format all mathematical notations using beautiful, human-readable Unicode characters: "
-                        "use superscripts for powers (e.g., x², y³), '•' or 'x' for multiplication, '°' for degrees (e.g., 90°, 180°).\n"
-                        "3. Ensure the 'correct_answer' field contains a concise, unambiguous baseline answer for automated verification.\n"
-                        "4. Write the final 'title' and 'description' in Russian, as they will be displayed directly to the child."
-                    )
+                        student_task_prompt()                    )
                 },
                 {
                     "role": "user",
@@ -210,14 +203,7 @@ async def check_quest_answer(message: Message, state: FSMContext):
                 {
                     "role": "system",
                     "content": (
-                        "You are a supportive and encouraging school mathematics teacher grading a student's answer. "
-                        "Compare the student's answer with the provided reference answer.\n\n"
-                        "GRADING RULES:\n"
-                        "1. If the student's answer matches the reference answer in meaning or is mathematically equivalent "
-                        "(e.g., '0.5' and '1/2', '5' and '5 cm'), set 'is_correct' to True. Otherwise, set it to False.\n"
-                        "2. Provide a friendly, polite, and constructive explanation ('explanation') in Russian tailored for a child.\n"
-                        "3. Do not use any LaTeX symbols ('$') in your explanation. Use clean text and Unicode characters if necessary."
-                    )
+                        task_grading_prompt()                    )
                 },
                 {
                     "role": "user",
@@ -276,7 +262,7 @@ async def check_quest_answer(message: Message, state: FSMContext):
                 try:
                     await message.bot.send_message(
                         chat_id=parent_id,
-                        text=f"📈 *Ваш ребенок успешно выполнил домашнее задание!*\nОтвет ребенка: _'{user_answer}'_\nРазбор ИИ: {verification.explanation}"
+                        text=f"📈 *Ваш Ученик успешно выполнил домашнее задание!*\nОтвет Ученика: _'{user_answer}'_\nРазбор ИИ: {verification.explanation}"
                     )
                 except Exception:
                     pass

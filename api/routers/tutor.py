@@ -20,14 +20,14 @@ from services.tutor import (
 )
 
 router = APIRouter(prefix="/api/v1/tutor", tags=["AI Tutor v1"])
-ALLOWED_TUTOR_ROLES = {"student", "parent"}
+ALLOWED_TUTOR_ROLES = {"student", "parent", "admin"}
 
 
 def ensure_tutor_role(user) -> None:
     if user["role"] not in ALLOWED_TUTOR_ROLES:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="ИИ-тьютор доступен только ученикам и родителям",
+            detail="ИИ-тьютор доступен Ученикам и Учителям",
         )
 
 
@@ -130,6 +130,7 @@ async def send_message(
     page_number: Optional[int] = Form(default=None),
     page_paragraph: Optional[str] = Form(default=None),
     lock_context: bool = Form(default=False),
+    interactive_app_id: Optional[str] = Form(default=None),
     user=Depends(get_current_user),
 ):
     ensure_tutor_role(user)
@@ -185,6 +186,7 @@ async def send_message(
             attachment_id=stored_attachment_id,
             manual_context=manual_context,
             lock_selected_context=lock_context,
+            interactive_app_id=interactive_app_id,
         )
     except LookupError as exc:
         raise _not_found(exc)

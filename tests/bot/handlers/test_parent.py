@@ -29,7 +29,7 @@ async def test_ask_ai_parent_no_child(make_message, mock_db, mock_fsm_context):
     
     await ask_ai_parent_start(message, state)
     
-    message.answer.assert_called_once_with("❌ У вас еще нет привязанных аккаунтов детей. Аналитика недоступна.")
+    message.answer.assert_called_once_with("❌ У вас еще нет привязанных аккаунтов Учеников. Аналитика недоступна.")
 
 
 @pytest.mark.asyncio

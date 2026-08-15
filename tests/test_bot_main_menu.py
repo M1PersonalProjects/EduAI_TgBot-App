@@ -51,7 +51,7 @@ def test_admin_menu_has_webapp_and_role_toggle():
     menu = get_admin_menu()
     texts = _button_texts(menu)
     assert "🌐 Открыть EduAI" in texts
-    assert "👨‍👩‍👦 Переключиться на Родителя" in texts
+    assert "👩‍🏫 Переключиться на Учителя" in texts
     assert len(_webapp_buttons(menu)) == 1
 
 

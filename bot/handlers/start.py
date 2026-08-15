@@ -33,7 +33,7 @@ STUDENT_START_TEXT = (
 PARENT_START_TEXT = (
     "👋 *Добро пожаловать в EduAI!*\n\n"
     "🤖 *В Telegram можно:*\n"
-    "• привязать ребёнка;\n"
+    "• привязать Ученика;\n"
     "• быстро посмотреть учебную активность;\n"
     "• открыть каталог учебников;\n"
     "• получать важные уведомления о заданиях и результатах.\n\n"
@@ -41,7 +41,7 @@ PARENT_START_TEXT = (
     "• создавать задания вручную или с помощью ИИ;\n"
     "• прикреплять учебные материалы;\n"
     "• просматривать историю заданий, попытки и результаты;\n"
-    "• управлять детьми и учебным процессом.\n\n"
+    "• управлять Учениками и учебным процессом.\n\n"
     "Для полного интерфейса нажмите *«🌐 Открыть EduAI»*."
 )
 
@@ -58,7 +58,7 @@ ADMIN_START_TEXT = (
 
 NEW_USER_START_TEXT = (
     "👋 *Добро пожаловать в EduAI!*\n\n"
-    "EduAI — образовательный помощник для учеников и родителей.\n\n"
+    "EduAI — образовательный помощник для Учеников и Учителей.\n\n"
     "🤖 Telegram подходит для быстрых действий, общения, уведомлений "
     "и работы с учебными заданиями.\n"
     "🌐 WebApp открывает полный интерфейс и расширенные возможности.\n\n"
@@ -82,7 +82,7 @@ async def cmd_start(message: Message, command: CommandObject):
             return
 
         if user_id == parent_id:
-            await message.answer("Вы не можете привязать свой собственный аккаунт в качестве ребенка.")
+            await message.answer("Вы не можете привязать свой собственный аккаунт в качестве Ученика.")
             return
 
         async with db.pool.acquire() as conn:
@@ -105,7 +105,7 @@ async def cmd_start(message: Message, command: CommandObject):
                 )
 
         await message.answer(
-            "🎉 Аккаунт успешно связан с Родителем!\n\n" + STUDENT_START_TEXT,
+            "🎉 Аккаунт успешно связан с Учителем!\n\n" + STUDENT_START_TEXT,
             reply_markup=get_student_menu()
         )
 
@@ -113,10 +113,10 @@ async def cmd_start(message: Message, command: CommandObject):
         try:
             await message.bot.send_message(
                 chat_id=parent_id,
-                text=f"🔔 Ребенок ({student_label}) успешно привязал свой аккаунт к вашему профилю!"
+                text=f"🔔 Ученик ({student_label}) успешно привязал свой аккаунт к вашему профилю!"
             )
         except Exception as e:
-            logger.warning(f"Не удалось отправить уведомление родителю {parent_id}: {e}")
+            logger.warning(f"Не удалось отправить уведомление Учителю {parent_id}: {e}")
         return
 
     # --- СЦЕНАРИЙ 2: Вход или первичная инициализация Администратора ---
@@ -149,7 +149,7 @@ async def cmd_start(message: Message, command: CommandObject):
             )
         return
 
-    # --- СЦЕНАРИЙ 3: Обычный авторизованный пользователь (Родитель / Ученик) ---
+    # --- СЦЕНАРИЙ 3: Обычный авторизованный пользователь (Учитель / Ученик) ---
     async with db.pool.acquire() as conn:
         user = await conn.fetchrow("SELECT role FROM users WHERE tg_id = $1", user_id)
 
@@ -204,8 +204,8 @@ async def toggle_admin_role_logic(user_id: int, message_or_call) -> None:
         inline_kb = get_admin_menu()
     else:
         text_msg = (
-            "👨‍👩‍👦 *Режим Родителя активирован!*\n\n"
-            "Теперь бот отображает для вас меню родительского контроля. "
+            "👨‍👩‍👦 *Режим Учителя активирован!*\n\n"
+            "Теперь бот отображает для вас меню Учителя. "
             "Чтобы вернуться в режим администрирования, используйте команду /toggle."
         )
         reply_kb = get_parent_menu()
@@ -274,7 +274,7 @@ async def callbacks_num(callback: CallbackQuery):
             parse_mode="Markdown",
         )
     elif selected_role == 'parent':
-        await callback.message.edit_text("✅ Роль успешно сохранена!\n\nВы зарегистрированы как **Родитель**.", parse_mode="Markdown")
+        await callback.message.edit_text("✅ Роль успешно сохранена!\n\nВы зарегистрированы как **Учитель**.", parse_mode="Markdown")
         await callback.message.answer(
             PARENT_START_TEXT,
             reply_markup=get_parent_menu(),

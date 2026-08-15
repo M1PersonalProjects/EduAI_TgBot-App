@@ -19,34 +19,43 @@ async def test_cmd_start_self_registration(make_message, mock_db):
     
     await cmd_start(message, command)
     
-    message.answer.assert_called_once_with("Вы не можете привязать свой собственный аккаунт в качестве ребенка.")
+    message.answer.assert_called_once_with("Вы не можете привязать свой собственный аккаунт в качестве Ученика.")
 
 
 @pytest.mark.asyncio
 async def test_cmd_start_successful_child_registration(make_message, mock_db):
-    """Проверка: Успешная регистрация ребенка по инвайту родителя и отправка уведомления."""
+    """Проверка: успешная регистрация Ученика по инвайту Учителя и отправка уведомления."""
     parent_id = 555
     student_id = 777
-    message = make_message(text=f"/start reg_{parent_id}", user_id=student_id, username="young_genius")
-    command = CommandObject(prefix="/", command="start", args=f"reg_{parent_id}")
-    
+
+    message = make_message(
+        text=f"/start reg_{parent_id}",
+        user_id=student_id,
+        username="young_genius",
+    )
+    command = CommandObject(
+        prefix="/",
+        command="start",
+        args=f"reg_{parent_id}",
+    )
+
     await cmd_start(message, command)
-    
-    # Проверяем, что в базу ушли запросы на создание/апдейт юзера и геймификации
+
     assert mock_db.mock_conn.execute.call_count == 2
-    
-    # Проверяем приветствие для ребенка
+
     answer_text = message.answer.call_args[0][0]
 
-    assert "Аккаунт успешно связан с Родителем!" in answer_text
+    assert "Аккаунт успешно связан с Учителем!" in answer_text
     assert "В Telegram можно:" in answer_text
     assert "В EduAI WebApp доступно больше:" in answer_text
     assert "🌐 Открыть EduAI" in answer_text
-    
-    # Проверяем, что родителю улетела нотификация
+
     message.bot.send_message.assert_called_once_with(
         chat_id=parent_id,
-        text="🔔 Ребенок (@young_genius) успешно привязал свой аккаунт к вашему профилю!"
+        text=(
+            "🔔 Ученик (@young_genius) успешно привязал "
+            "свой аккаунт к вашему профилю!"
+        ),
     )
 
 
@@ -80,7 +89,7 @@ async def test_cmd_start_admin_first_time(make_message, mock_db):
     ]
 
     assert "🌐 Открыть EduAI" in texts
-    assert "👨‍👩‍👦 Переключиться на Родителя" in texts
+    assert "👩‍🏫 Переключиться на Учителя" in texts
 
 
 @pytest.mark.asyncio
@@ -115,7 +124,7 @@ async def test_cmd_start_existing_parent(make_message, mock_db):
         for button in row
     ]
 
-    assert "➕ Привязать ребенка" in texts
+    assert "➕ Привязать Ученика" in texts
     assert "📊 Мониторинг в чате" in texts
     assert "📚 Каталог учебников" in texts
     assert "🌐 Открыть EduAI" in texts

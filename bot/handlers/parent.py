@@ -9,6 +9,7 @@ from config import settings
 from logger_config import logger
 from pydantic import BaseModel
 from bot.messages import answer_plain
+from services.tutor_policy import teacher_task_prompt, teacher_analytics_prompt
 
 router = Router()
 openai_client = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
@@ -19,16 +20,16 @@ class ParentStates(StatesGroup):
     moderating_test = State()
     editing_test = State()
 
-# Схема для Structured Outputs от OpenAI при генерации родительского теста
+# Схема для Structured Outputs от OpenAI при генерации теста Учителя
 class ParentTestGeneration(BaseModel):
     title: str
     description: str
     correct_answer: str
 
 
-# 1. ИИ-АНАЛИТИКА УСПЕВАЕМОСТИ ДЛЯ РОДИТЕЛЯ
+# 1. ИИ-АНАЛИТИКА УСПЕВАЕМОСТИ ДЛЯ УЧИТЕЛЯ
 
-@router.message(F.text == "📊 Аналитика ребенка (ИИ)")
+@router.message(F.text == "📊 Аналитика Ученика (ИИ)")
 async def ask_ai_parent_start(message: Message, state: FSMContext):
     user_id = message.from_user.id
     
@@ -37,18 +38,18 @@ async def ask_ai_parent_start(message: Message, state: FSMContext):
         child = await conn.fetchrow("SELECT tg_id FROM users WHERE parent_id = $1 AND role = 'student' LIMIT 1", user_id)
     
     if not user or user["role"] not in ["parent", "admin"]:
-        await message.answer("Эта функция доступна только для пользователей с ролью Родитель.")
+        await message.answer("Эта функция доступна только для пользователей с ролью Учитель.")
         return
 
     if not child:
-        await message.answer("❌ У вас еще нет привязанных аккаунтов детей. Аналитика недоступна.")
+        await message.answer("❌ У вас еще нет привязанных аккаунтов Учеников. Аналитика недоступна.")
         return
 
     await state.set_state(ParentStates.waiting_for_analytics_question)
     await message.answer(
-        "🤖 *ИИ-Консультант для родителей*\n\n"
-        "Я проанализирую все квесты, которые решал ваш ребенок, его ответы и ошибки.\n"
-        "Задайте любой интересующий вас вопрос (например: _«В каких темах мой ребенок чаще всего ошибается?»_).\n"
+        "🤖 *ИИ-консультант для Учителя*\n\n"
+        "Я проанализирую все квесты, которые решал ваш Ученик, его ответы и ошибки.\n"
+        "Задайте любой интересующий вас вопрос (например: _«В каких темах мой Ученик чаще всего ошибается?»_).\n"
         "Напишите **Отмена** в чате для выхода.",
         parse_mode="Markdown"
     )
@@ -63,13 +64,13 @@ async def process_parent_analytics_query(message: Message, state: FSMContext):
 
     parent_id = message.from_user.id
     parent_query = message.text.strip()
-    status_msg = await message.answer("🔍 *ИИ изучает историю выполненных квестов и строит отчет...* ⏳", parse_mode="Markdown")
+    status_msg = await message.answer("🔍 *ИИ изучает историю выполненных заданий и строит отчет...* ⏳", parse_mode="Markdown")
 
     try:
         async with db.pool.acquire() as conn:
             child = await conn.fetchrow("SELECT tg_id FROM users WHERE parent_id = $1 AND role = 'student' LIMIT 1", parent_id)
             if not child:
-                await status_msg.edit_text("Ошибка: Ребенок не найден.")
+                await status_msg.edit_text("Ошибка: Ученик не найден.")
                 await state.clear()
                 return
             
@@ -106,10 +107,7 @@ async def process_parent_analytics_query(message: Message, state: FSMContext):
                 {
                     "role": "system",
                     "content": (
-                        "You are an expert educational data analyst and psychologist helper for parents. "
-                        "Based on the provided student's task history, answer the parent's question politely and constructively in Russian.\n"
-                        "Focus on highlighting strengths and providing advice on topics that need improvement. Do not use LaTeX."
-                    )
+                        teacher_analytics_prompt()                    )
                 },
                 {
                     "role": "user",
@@ -122,15 +120,15 @@ async def process_parent_analytics_query(message: Message, state: FSMContext):
         await answer_plain(message, response.choices[0].message.content)
     
     except Exception as e:
-        logger.error(f"Ошибка ИИ-аналитики для родителя: {e}")
+        logger.error(f"Ошибка ИИ-аналитики для Учителя: {e}")
         await status_msg.edit_text("❌ Не удалось построить отчет аналитики. Попробуйте позже.")
     
     await state.clear()
 
 
-# 2. ИИ-ГЕНЕРАЦИЯ ТЕСТОВ РОДИТЕЛЕМ ДЛЯ ДЕТЕЙ
+# 2. ИИ-ГЕНЕРАЦИЯ ТЕСТОВ РОДИТЕЛЕМ ДЛЯ УЧЕНИКОВ
 
-@router.message(F.text == "📝 Создать ИИ-тест для ребенка")
+@router.message(F.text == "📝 Создать ИИ-тест для Ученика")
 async def parent_create_test_start(message: Message, state: FSMContext):
     user_id = message.from_user.id
     
@@ -139,17 +137,17 @@ async def parent_create_test_start(message: Message, state: FSMContext):
         child = await conn.fetchrow("SELECT tg_id FROM users WHERE parent_id = $1 AND role = 'student' LIMIT 1", user_id)
         
     if not user or user["role"] not in ["parent", "admin"]:
-        await message.answer("Эта функция доступна только Родителям.")
+        await message.answer("Эта функция доступна только Учителям.")
         return
 
     if not child:
-        await message.answer("❌ У вас еще нет привязанных аккаунтов детей. Направьте ребенку ссылку для регистрации!")
+        await message.answer("❌ У вас еще нет привязанных аккаунтов Учеников. Направьте ребенку ссылку для регистрации!")
         return
 
     await state.set_state(ParentStates.waiting_for_test_topic)
     await message.answer(
         "📝 *Конструктор домашних ИИ-заданий*\n\n"
-        "Напишите тему, по которой вы хотите устроить проверку знаний своему ребенку (например: _«Умножение дробей»_ или _«Теорема Пифагора»_):\n"
+        "Напишите тему, по которой вы хотите устроить проверку знаний своему Ученику (например: _«Умножение дробей»_ или _«Теорема Пифагора»_):\n"
         "Или напишите **Отмена** для выхода.",
         parse_mode="Markdown"
     )
@@ -194,7 +192,7 @@ async def process_custom_test_generation(message: Message, state: FSMContext):
             )
 
     if not page or not page["student_id"]:
-        await status_msg.edit_text("❌ Не удалось найти учебные материалы или аккаунт ребенка.")
+        await status_msg.edit_text("❌ Не удалось найти учебные материалы или аккаунт Ученика.")
         await state.clear()
         return
 
@@ -205,13 +203,7 @@ async def process_custom_test_generation(message: Message, state: FSMContext):
                 {
                     "role": "system",
                     "content": (
-                        "You are an expert school textbook content developer for the EduAI application. "
-                        "Create a deep-knowledge control mini-test or practical complex homework task tailored to the specific topic requested by the parent.\n\n"
-                        "CRITICAL CRITERIA:\n"
-                        "1. Strictly NO LaTeX elements or raw code signs ($ or $$).\n"
-                        "2. Use pretty Unicode (e.g., √x, x², ½).\n"
-                        "3. Make descriptions and text clearly understandable for a student. Write everything in Russian."
-                    )
+                        teacher_task_prompt()                    )
                 },
                 {
                     "role": "user",
@@ -240,7 +232,7 @@ async def process_custom_test_generation(message: Message, state: FSMContext):
         
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text="✅ Отправить ребенку", callback_data="parent_approve_test"),
+                InlineKeyboardButton(text="✅ Отправить Ученику", callback_data="parent_approve_test"),
                 InlineKeyboardButton(text="✏️ Редактировать текст", callback_data="parent_edit_test")
             ],
             [InlineKeyboardButton(text="❌ Отклонить и сбросить", callback_data="parent_reject_test")]
@@ -252,12 +244,12 @@ async def process_custom_test_generation(message: Message, state: FSMContext):
             f"📋 Название: {ai_test.title}\n"
             f"📝 Задание: {ai_test.description}\n"
             f"🔑 Правильный ответ: {ai_test.correct_answer}\n\n"
-            "Вы можете отредактировать текст задания или отправить его ребёнку:",
+            "Вы можете отредактировать текст задания или отправить его Ученику:",
             reply_markup=kb,
         )
 
     except Exception as e:
-        logger.error(f"Ошибка создания родительского теста: {e}")
+        logger.error(f"Ошибка создания теста Учителя: {e}")
         await status_msg.edit_text("❌ Не удалось сгенерировать тест. Попробуйте изменить формулировку темы.")
         await state.clear()
 
@@ -279,7 +271,7 @@ async def process_parent_edited_text(message: Message, state: FSMContext):
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="✅ Отправить ребенку", callback_data="parent_approve_test"),
+            InlineKeyboardButton(text="✅ Отправить Ученику", callback_data="parent_approve_test"),
             InlineKeyboardButton(text="✏️ Редактировать текст", callback_data="parent_edit_test")
         ],
         [InlineKeyboardButton(text="❌ Отклонить и сбросить", callback_data="parent_reject_test")]
@@ -329,7 +321,7 @@ async def callback_approve_and_save(call: CallbackQuery, state: FSMContext):
 
         await call.bot.send_message(
             chat_id=student_id,
-            text="📬 Родитель прислал тебе персональное проверочное задание!\n\n"
+            text="📬 Учитель прислал тебе персональное проверочное задание!\n\n"
                  f"🏆 Тест: {questions_json['title']}\n"
                  f"{questions_json['question_text']}\n\n"
                  "💰 Награда за выполнение: 15 монет | ✨ 50 XP\n"
@@ -337,11 +329,11 @@ async def callback_approve_and_save(call: CallbackQuery, state: FSMContext):
             parse_mode=None,
         )
         
-        await call.message.edit_text("🚀 Тест успешно сохранен в базу и доставлен в Telegram-аккаунт вашего ребенка! Как только он даст ответ, система его проверит.", reply_markup=None)
+        await call.message.edit_text("🚀 Тест успешно сохранен в базу и доставлен в Telegram-аккаунт вашего Ученика! Как только он даст ответ, система его проверит.", reply_markup=None)
         await call.answer("Успешно отправлено!")
     except Exception as e:
         logger.error(f"Не удалось доставить тест ученику {student_id}: {e}")
-        await call.message.edit_text("⚠️ Тест сохранен в базу данных, но не удалось отправить личное уведомление ребенку (возможно, бот заблокирован).", reply_markup=None)
+        await call.message.edit_text("⚠️ Тест сохранен в базу данных, но не удалось отправить личное уведомление Ученику (возможно, бот заблокирован).", reply_markup=None)
         await call.answer()
         
     await state.clear()

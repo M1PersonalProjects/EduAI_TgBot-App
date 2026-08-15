@@ -4,7 +4,7 @@ from config import settings
 def get_role_keyboard() -> InlineKeyboardMarkup:
     buttons = [
         [
-            InlineKeyboardButton(text="👨‍👩‍👦 Я Родитель", callback_data="set_role_parent"),
+            InlineKeyboardButton(text="👩‍🏫 Я Учитель", callback_data="set_role_parent"),
             InlineKeyboardButton(text="👨‍💻 Я Ученик", callback_data="set_role_student")
         ]
     ]
@@ -12,10 +12,10 @@ def get_role_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_parent_menu() -> ReplyKeyboardMarkup:
-    """Compact Telegram menu for parents."""
+    """Compact Telegram menu for Teachers (technical role: parent)."""
     buttons = [
         [
-            KeyboardButton(text="➕ Привязать ребенка"),
+            KeyboardButton(text="➕ Привязать Ученика"),
             KeyboardButton(text="📊 Мониторинг в чате"),
         ],
         [
@@ -64,7 +64,7 @@ def get_admin_menu() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    text="👨‍👩‍👦 Переключиться на Родителя",
+                    text="👩‍🏫 Переключиться на Учителя",
                     callback_data="admin_toggle_role",
                 )
             ],

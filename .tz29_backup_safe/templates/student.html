@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#07111f">
+  <title>Кабинет ученика — EduAI</title>
+  <script src="https://cdn.tailwindcss.com"></script><script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;550;650;750;850&display=swap" rel="stylesheet"><link rel="stylesheet" href="/static/css/app.css?v=20260813-tz23-1">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar"><div class="sidebar-inner glass-strong">
+    <div class="flex items-center gap-3 px-2 mb-7"><span class="brand-mark">E</span><div><p class="font-extrabold">EduAI</p><p class="text-xs muted">Ученик</p></div></div>
+    <nav class="grid gap-1" aria-label="Основная навигация">
+      <button class="nav-link active" data-section="tutor"><span>✦</span> ИИ-тьютор</button>
+      <button class="nav-link" data-section="tasks"><span>✓</span> Задания <span id="task-count-badge" class="ml-auto badge">0</span></button>
+      <button class="nav-link" data-section="rewards"><span>◇</span> Награды</button>
+      <button class="nav-link" data-section="purchases"><span>↗</span> Мои покупки</button>
+    </nav>
+    <div class="mt-auto rounded-2xl bg-white/[.04] p-3"><div class="flex items-center gap-3"><div class="grid h-10 w-10 place-items-center rounded-xl bg-violet-400/10">👤</div><div class="min-w-0"><p data-user-name class="truncate text-sm font-bold">Профиль</p><span class="badge mt-1"><span class="status-dot"></span> В сети</span></div></div><button data-logout class="btn-secondary mt-3 w-full text-sm">Выйти</button></div>
+  </div></aside>
+  <div class="backdrop"></div>
+  <main class="main-area">
+    <header class="topbar glass mb-5"><div class="flex items-center gap-3"><button class="icon-btn menu-toggle lg:hidden" aria-label="Открыть меню">☰</button><div><p class="text-xs font-bold uppercase tracking-[.16em] muted">Учебное пространство</p><h1 class="font-extrabold" data-greeting>Добрый день!</h1></div></div><div class="flex items-center gap-2"><span class="badge hide-mobile"><span class="status-dot"></span> Синхронизировано</span><button class="icon-btn" id="refresh-dashboard" aria-label="Обновить">↻</button></div></header>
+
+    <section class="student-dashboard-stats grid grid-cols-3 gap-2 sm:gap-4 mb-5" aria-label="Показатели">
+      <article class="stat-card glass" style="--glow:rgba(255,176,84,.2)"><p class="text-xs font-bold uppercase tracking-wider muted">Монеты</p><p id="coins" class="stat-value mt-2">—</p><p class="text-xs text-amber-200">семейная валюта</p></article>
+      <article class="stat-card glass" style="--glow:rgba(139,124,255,.2)"><p class="text-xs font-bold uppercase tracking-wider muted">Опыт</p><p id="xp" class="stat-value mt-2">—</p><p class="text-xs text-violet-200">XP всего</p></article>
+      <article class="stat-card glass"><p class="text-xs font-bold uppercase tracking-wider muted">Серия</p><p id="streak" class="stat-value mt-2">—</p><p class="text-xs text-emerald-200">дней подряд</p></article>
+    </section>
+
+    <section id="tutor" class="page-section active">
+      <div class="grid xl:grid-cols-[17rem_minmax(0,1fr)_19rem] gap-4">
+        <aside class="glass card h-fit">
+          <button id="new-chat" class="btn-primary w-full">+ Новый чат</button>
+          <div id="chat-threads" class="thread-list mt-3" aria-label="История чатов"></div>
+          <p class="mt-3 text-xs muted">Нажмите ✎, чтобы переименовать чат. До 35 символов.</p>
+        </aside>
+        <article class="glass card min-w-0">
+          <div class="border-b border-white/10 pb-4"><span class="badge">✦ Контекст определяется автоматически</span><h2 class="mt-3 text-xl font-extrabold">Спросите ИИ-тьютора</h2><p class="mt-1 text-sm muted">Можно сразу написать вопрос или заранее выбрать учебник.</p></div>
+          <div id="chat-log" class="chat-log py-3" aria-live="polite"><div class="message"><strong>Привет! Я твой ИИ-тьютор.</strong><br>Расскажи, какая тема или шаг в задаче вызывает трудность.</div></div>
+          <div id="chat-attachment-preview" class="attachment-preview" hidden><span id="chat-attachment-name"></span><button id="chat-remove-attachment" class="thread-action" type="button">×</button></div>
+          <form id="chat-form" class="flex flex-col sm:flex-row gap-2 border-t border-white/10 pt-4">
+            <label class="icon-btn shrink-0 cursor-pointer" title="Добавить изображение или документ">📎<input id="chat-attachment" class="sr-only" type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.docx,.xlsx,.pptx,.odt,.ods,.odp,.epub,.djvu,.txt,.md,.csv,.json,.rtf,.html,.xml,.yaml,.yml"></label>
+            <label class="sr-only" for="chat-input">Сообщение тьютору</label><textarea id="chat-input" class="input min-h-[3rem] max-h-32 resize-y flex-1" rows="1" maxlength="4000" placeholder="Например: объясни упражнение 3 из учебника Виленкина для 6 класса…"></textarea><button class="btn-primary sm:self-end" type="submit">Отправить <span>↑</span></button>
+          </form>
+        </article>
+        <aside class="grid content-start gap-4"><div class="glass card"><div class="flex items-center justify-between gap-2"><p class="text-sm font-bold">Контекст учебника</p><span id="chat-context-status" class="text-[.68rem] muted text-right">Автопоиск</span></div><div class="context-grid mt-3"><select id="chat-class" class="select"><option>Загрузка…</option></select><select id="chat-subject" class="select"><option value="">Предмет</option></select><select id="chat-book" class="select"><option value="">Учебник</option></select><select id="chat-page" class="select"><option value="">Страница / параграф</option></select><button id="chat-lock-context" class="btn-secondary text-sm">🔒 Закрепить Book Mode</button><button id="chat-exit-context" class="btn-danger text-sm" hidden>Выйти из Book Mode</button></div><p class="mt-3 text-xs muted">Выбор необязателен: класс, автор, учебник и страница распознаются в тексте вопроса.</p></div></aside>
+      </div>
+    </section>
+
+    <section id="tasks" class="page-section"><div class="flex flex-wrap items-end justify-between gap-3 mb-4"><div><p class="text-sm font-bold text-emerald-200">Практика</p><h2 class="text-2xl font-extrabold">Активные задания</h2><p class="mt-1 muted">Задания от родителя и ИИ.</p></div><button id="refresh-tasks" class="btn-secondary">Обновить</button></div><div id="tasks-list" class="grid lg:grid-cols-2 gap-4"></div></section>
+    <section id="rewards" class="page-section"><div class="mb-4"><p class="text-sm font-bold text-amber-200">Семейный магазин</p><h2 class="text-2xl font-extrabold">Награды</h2><p class="mt-1 muted">Копите монеты и выбирайте то, что вас мотивирует.</p></div><div id="rewards-list" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-4"></div></section>
+    <section id="purchases" class="page-section"><div class="mb-4"><p class="text-sm font-bold text-violet-200">История</p><h2 class="text-2xl font-extrabold">Мои покупки</h2></div><div id="purchases-list" class="grid gap-3"></div></section>
+  </main>
+</div>
+<div class="toast-stack" aria-live="polite"></div>
+<script src="/static/js/app.js?v=20260813-tz23-1"></script><script src="/static/js/chat.js?v=20260812-5"></script><script src="/static/js/student.js?v=20260812-5"></script>
+</body></html>

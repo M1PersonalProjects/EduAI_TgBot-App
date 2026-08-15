@@ -24,6 +24,7 @@ from api.routers.rewards import router as rewards_router
 from api.routers.auth import router as auth_v1_router
 from api.routers.platform import router as platform_v1_router
 from api.routers.tutor import router as tutor_v1_router
+from api.routers.interactive import router as interactive_v1_router
 from api.routers.digitization import router as digitization_router
 from services.digitization_queue import start_digitization_worker, stop_digitization_worker
 
@@ -72,6 +73,7 @@ app.include_router(rewards_router)
 app.include_router(auth_v1_router)
 app.include_router(platform_v1_router)
 app.include_router(tutor_v1_router)
+app.include_router(interactive_v1_router)
 app.include_router(attachments_v1_router)
 app.include_router(digitization_router)
 
@@ -113,6 +115,11 @@ async def parent_create_test(request: Request):
 @app.get("/parent/auth", response_class=HTMLResponse)
 async def parent_auth_page(request: Request):
     return templates.TemplateResponse(request, "auth.html")
+
+
+@app.get("/interactive/{app_id}", response_class=HTMLResponse)
+async def serve_interactive_page(request: Request, app_id: str):
+    return templates.TemplateResponse(request, "interactive.html", {"app_id": app_id})
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_home_page(request: Request):

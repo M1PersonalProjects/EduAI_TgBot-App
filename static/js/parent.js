@@ -51,7 +51,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             </label>
           `)
           .join('')
-      : '<p class="text-sm muted">Нет привязанных детей</p>';
+      : '<p class="text-sm muted">Нет привязанных Учеников</p>';
 
     $('children-grid').innerHTML = state.children.length
       ? state.children
@@ -100,7 +100,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             </article>
           `)
           .join('')
-      : empty('Привязанных детей пока нет. Создайте приглашение через Telegram-бота.');
+      : empty('Привязанных Учеников пока нет. Создайте приглашение через Telegram-бота.');
 
     $('family-purchases').innerHTML = data.purchases?.length
       ? data.purchases
@@ -328,18 +328,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         <div class="grid gap-4 lg:grid-cols-2">
           <section class="rounded-2xl border border-amber-300/15 bg-amber-300/[.04] p-4">
-            <p class="text-xs font-bold uppercase tracking-[.12em] text-amber-200">Эталонный ответ · только Родителю</p>
+            <p class="text-xs font-bold uppercase tracking-[.12em] text-amber-200">Эталонный ответ · только Учителю</p>
             <div class="mt-2 text-sm leading-6 text-slate-200">${EduAI.markdown(questions.reference_answer || '—')}</div>
           </section>
           <section class="rounded-2xl border border-violet-300/15 bg-violet-300/[.04] p-4">
-            <p class="text-xs font-bold uppercase tracking-[.12em] text-violet-200">Инструкции для ИИ · только Родителю</p>
+            <p class="text-xs font-bold uppercase tracking-[.12em] text-violet-200">Инструкции для ИИ · только Учителю</p>
             <p class="mt-2 whitespace-pre-wrap text-sm text-slate-200">${EduAI.escapeHtml(task.ai_instructions || '—')}</p>
           </section>
         </div>
 
         ${task.parent_comment ? `
           <section class="rounded-2xl border border-emerald-300/15 bg-emerald-300/[.04] p-4">
-            <p class="text-xs font-bold uppercase tracking-[.12em] text-emerald-200">Комментарий к заданию · виден ребёнку</p>
+            <p class="text-xs font-bold uppercase tracking-[.12em] text-emerald-200">Комментарий к заданию · виден Ученику</p>
             <p class="mt-2 whitespace-pre-wrap text-sm text-slate-200">${EduAI.escapeHtml(task.parent_comment)}</p>
           </section>
         ` : ''}
@@ -485,7 +485,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                   <div class="mt-4 rounded-2xl border border-emerald-300/15 bg-emerald-300/[.06] p-3">
                     <div class="flex items-center justify-between gap-2">
                       <p class="text-xs font-extrabold uppercase tracking-[.12em] text-emerald-200">💬 Комментарий к заданию</p>
-                      <span class="text-[.65rem] muted">Виден ребёнку</span>
+                      <span class="text-[.65rem] muted">Виден Ученику</span>
                     </div>
                     <p class="mt-2 text-sm text-slate-200 whitespace-pre-wrap">${EduAI.escapeHtml(task.parent_comment)}</p>
                   </div>
@@ -495,7 +495,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                   <div class="mt-3 rounded-2xl border border-violet-300/15 bg-violet-300/[.06] p-3">
                     <div class="flex items-center justify-between gap-2">
                       <p class="text-xs font-extrabold uppercase tracking-[.12em] text-violet-200">🤖 Инструкции для ИИ</p>
-                      <span class="text-[.65rem] muted">Только для Родителя</span>
+                      <span class="text-[.65rem] muted">Только для Учителя</span>
                     </div>
                     <p class="mt-2 text-sm text-slate-200 whitespace-pre-wrap">${EduAI.escapeHtml(task.ai_instructions)}</p>
                   </div>
@@ -556,7 +556,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                          class="task-attachment-visible h-4 w-4"
                          data-id="${item.attachment_id}"
                          ${item.visible_to_student ? 'checked' : ''}>
-                  Отправить ребёнку
+                  Отправить Ученику
                 </label>
               </div>
             </div>
@@ -736,7 +736,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function openChildHistory(childId) {
     const child = state.children.find(item => Number(item.tg_id) === Number(childId));
-    $('task-history-title').textContent = child ? `Задания ${childName(child)}` : 'Задания ребёнка';
+    $('task-history-title').textContent = child ? `Задания ${childName(child)}` : 'Задания Ученика';
     $('task-history-summary').innerHTML = '<p class="muted col-span-full">Загрузка…</p>';
     $('task-history-list').innerHTML = '';
     EduAI.openModal('task-history-modal');
@@ -757,7 +757,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           <div class="flex flex-wrap items-center justify-between gap-2"><span class="badge">${EduAI.escapeHtml(taskStatusLabel(task.status))}</span><span class="text-xs muted">${EduAI.formatDate(task.created_at)}</span></div>
           <h3 class="mt-3 font-extrabold">${EduAI.escapeHtml(task.title || questions.title || `Задание №${task.task_id}`)}</h3>
           <p class="mt-1 text-sm muted">${EduAI.escapeHtml(task.subject || 'Без предмета')}${task.score != null ? ` · Балл: ${task.score}` : ''}</p>
-          ${task.parent_comment ? `<div class="mt-3 rounded-xl bg-emerald-300/[.06] p-3"><p class="text-xs font-bold text-emerald-200">💬 Комментарий к заданию · виден ребёнку</p><p class="mt-1 text-sm text-slate-200 whitespace-pre-wrap">${EduAI.escapeHtml(task.parent_comment)}</p></div>` : ''}
+          ${task.parent_comment ? `<div class="mt-3 rounded-xl bg-emerald-300/[.06] p-3"><p class="text-xs font-bold text-emerald-200">💬 Комментарий к заданию · виден Ученику</p><p class="mt-1 text-sm text-slate-200 whitespace-pre-wrap">${EduAI.escapeHtml(task.parent_comment)}</p></div>` : ''}
           ${task.ai_instructions ? `<div class="mt-2 rounded-xl bg-violet-300/[.06] p-3"><p class="text-xs font-bold text-violet-200">🤖 Инструкции для ИИ · только для Родителя</p><p class="mt-1 text-sm text-slate-200 whitespace-pre-wrap">${EduAI.escapeHtml(task.ai_instructions)}</p></div>` : ''}
           ${task.cancellation_reason ? `<p class="mt-2 text-sm text-rose-200">Причина отмены: ${EduAI.escapeHtml(task.cancellation_reason)}</p>` : ''}
         </article>`;
@@ -769,7 +769,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function openTask(childId) {
     if (!state.children.length) {
-      EduAI.toast('Сначала привяжите ребёнка', 'error');
+      EduAI.toast('Сначала привяжите Ученика', 'error');
       return;
     }
 
@@ -896,7 +896,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       else item.use_as_ai_context = true;
 
       EduAI.toast(
-        'Файл должен использоваться ИИ или быть отправлен ребёнку',
+        'Файл должен использоваться ИИ или быть отправлен Ученику',
         'info'
       );
       renderTaskAttachments();
@@ -918,7 +918,7 @@ $('task-form').addEventListener('submit', async event => {
 
     try {
       const studentIds = selectedStudentIds();
-      if (!studentIds.length) throw new Error('Выберите хотя бы одного ребёнка');
+      if (!studentIds.length) throw new Error('Выберите хотя бы одного Ученика');
       const description = $('task-description')
         .value
         .trim()
@@ -982,21 +982,17 @@ $('task-form').addEventListener('submit', async event => {
 
   $('generate-task').addEventListener('click', async event => {
     const topic = $('task-topic').value.trim();
-    const bookId = Number($('task-book').value);
+    const bookId = $('task-book').value ? Number($('task-book').value) : null;
 
     if (!topic) {
       EduAI.toast('Укажите тему задания', 'error');
       return;
     }
 
-    if (!bookId) {
-      EduAI.toast('Для генерации ИИ выберите учебник', 'error');
-      return;
-    }
 
     const studentIds = selectedStudentIds();
     if (!studentIds.length) {
-      EduAI.toast('Выберите хотя бы одного ребёнка', 'error');
+      EduAI.toast('Выберите хотя бы одного Ученика', 'error');
       return;
     }
 
@@ -1232,7 +1228,7 @@ $('task-form').addEventListener('submit', async event => {
     lockId: 'parent-chat-lock-context',
     exitId: 'parent-chat-exit-context',
     contextStatusId: 'parent-chat-context-status',
-    welcome: 'Здравствуйте! Я учебный ИИ-тьютор. Могу объяснить материал выбранного учебника, разобрать учебное вложение или помочь подготовить задание.'
+    welcome: 'Здравствуйте! Я ИИ-тьютор EduAI. Могу помочь с учёбой и обычными вопросами, разобрать вложение, использовать Book Mode или создать интерактивное задание.'
   });
 
   $('refresh-parent').addEventListener('click', loadAll);

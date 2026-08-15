@@ -375,3 +375,35 @@ svg {
   }
 }
 /* === TZ23 FRONTEND LAYOUT END === */
+
+
+/* === TZ29 MOBILE TUTOR HEIGHT FIX START === */
+.interactive-chat-card {
+  border: 1px solid rgba(66,216,196,.22);
+  border-radius: 1rem;
+  padding: .8rem;
+  background: rgba(66,216,196,.055);
+}
+@media (max-width: 1023px) {
+  body[data-active-section="tutor"],
+  body[data-active-section="assistant"] { min-height: 0; height: auto; overflow-y: auto; }
+  body[data-active-section="tutor"] .app-shell,
+  body[data-active-section="assistant"] .app-shell {
+    min-height: var(--eduai-viewport-height, 100dvh);
+    height: auto;
+  }
+  body[data-active-section="tutor"] .main-area,
+  body[data-active-section="assistant"] .main-area { min-height: 0; height: auto; overflow: visible; }
+  body[data-active-section="tutor"] #tutor,
+  body[data-active-section="assistant"] #assistant { min-height: 0; overflow: visible; }
+  body[data-active-section="tutor"] #tutor > .grid,
+  body[data-active-section="assistant"] #assistant > .grid { height: auto; min-height: 0; }
+  body[data-active-section="tutor"] .chat-log,
+  body[data-active-section="assistant"] .chat-log {
+    min-height: min(44dvh, 24rem);
+    max-height: none;
+    overflow: visible;
+    overscroll-behavior: auto;
+  }
+}
+/* === TZ29 MOBILE TUTOR HEIGHT FIX END === */

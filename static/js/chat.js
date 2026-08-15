@@ -2,7 +2,7 @@
   class ChatUI {
     constructor(options) {
       this.options = options;
-      this.state = { sessions: [], activeId: null };
+      this.state = { sessions: [], activeId: null, editingInteractiveId: null };
       this.$ = name => document.getElementById(options[name]);
     }
 
@@ -15,7 +15,7 @@
       this.$('newChatId').addEventListener('click', () => this.newChat());
       this.$('threadsId').addEventListener('click', event => this.threadAction(event));
       this.$('formId').addEventListener('submit', event => this.send(event));
-      this.$('logId').addEventListener('click', event => this.attachmentAction(event));
+      this.$('logId').addEventListener('click', event => this.messageAction(event));
       this.$('inputId').addEventListener('keydown', event => {
         if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
           event.preventDefault();
@@ -114,11 +114,11 @@
       </div>`;
     }
 
-    append(sender, text, attachments = [], source = null) {
+    append(sender, text, attachments = [], source = null, interactiveApp = null) {
       if (typeof attachments === 'string') attachments = attachments ? [{ original_name: attachments }] : [];
       const bubble = document.createElement('div'); bubble.className = `message ${sender === 'user' ? 'user' : ''}`;
       const sourceBadge = source === 'telegram' ? '<div class="mb-1 text-[.65rem] muted">📱 Telegram</div>' : '';
-      bubble.innerHTML = `${sourceBadge}${EduAI.markdown(text)}${(attachments || []).map(item => this.attachmentHtml(item)).join('')}`;
+      bubble.innerHTML = `${sourceBadge}${EduAI.markdown(text)}${(attachments || []).map(item => this.attachmentHtml(item)).join('')}${this.interactiveCardHtml(interactiveApp)}`;
       this.$('logId').append(bubble); this.$('logId').scrollTop = this.$('logId').scrollHeight; return bubble;
     }
 
@@ -127,7 +127,7 @@
         const messages = await EduAI.api(`/api/v1/tutor/sessions/${this.state.activeId}/messages`);
         this.$('logId').innerHTML = '';
         if (!messages.length) this.append('ai', this.options.welcome);
-        else messages.forEach(item => this.append(item.sender, item.message_text, item.attachments?.length ? item.attachments : (item.attachment_name || ''), item.message_source));
+        else messages.forEach(item => this.append(item.sender, item.message_text, item.attachments?.length ? item.attachments : (item.attachment_name || ''), item.message_source, item.interactive_app || null));
       } catch (error) { EduAI.toast(error.message, 'error'); }
     }
 
@@ -144,6 +144,63 @@
       return response.blob();
     }
 
+
+    interactiveCardHtml(app) {
+      if (!app?.app_id) return '';
+      const session = EduAI.readSession?.();
+      const canAssign = ['parent', 'admin'].includes(session?.user?.role);
+      return `<div class="interactive-chat-card mt-3" data-interactive-app="${EduAI.escapeHtml(app.app_id)}">
+        <div class="min-w-0"><strong>🧩 ${EduAI.escapeHtml(app.title || 'Интерактивное задание')}</strong>
+        <div class="text-xs muted">v${Number(app.current_version || 1)}${app.question_count ? ` · ${Number(app.question_count)} вопросов` : ''}</div></div>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <button type="button" class="thread-action" data-interactive-open>Открыть</button>
+          <button type="button" class="thread-action" data-interactive-edit>Изменить</button>
+          <button type="button" class="thread-action" data-interactive-download>Скачать HTML</button>
+          ${canAssign ? '<button type="button" class="thread-action" data-interactive-assign>Отправить Ученику</button>' : ''}
+        </div>
+      </div>`;
+    }
+    async messageAction(event) {
+      const card = event.target.closest('[data-interactive-app]');
+      if (card) {
+        const appId = card.dataset.interactiveApp;
+        if (event.target.closest('[data-interactive-open]')) {
+          window.open(`/interactive/${encodeURIComponent(appId)}`, '_blank', 'noopener,noreferrer'); return;
+        }
+        if (event.target.closest('[data-interactive-edit]')) {
+          this.state.editingInteractiveId = appId;
+          this.$('inputId').value = 'Измени это интерактивное задание: ';
+          this.$('inputId').focus();
+          EduAI.toast('Опишите изменение и отправьте сообщение', 'success'); return;
+        }
+        if (event.target.closest('[data-interactive-download]')) {
+          try {
+            const blob = await this.fetchProtected(`/api/v1/interactive/${encodeURIComponent(appId)}/download`);
+            const url = URL.createObjectURL(blob); const link = document.createElement('a');
+            link.href = url; link.download = 'interactive.html'; document.body.appendChild(link); link.click(); link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+          } catch (error) { EduAI.toast(error.message, 'error'); }
+          return;
+        }
+        if (event.target.closest('[data-interactive-assign]')) { await this.assignInteractive(appId); return; }
+      }
+      await this.attachmentAction(event);
+    }
+    async assignInteractive(appId) {
+      try {
+        const students = await EduAI.api('/api/v1/interactive/students');
+        if (!students.length) { EduAI.toast('Нет привязанных Учеников', 'error'); return; }
+        const menu = students.map((item, index) => `${index + 1}. ${item.username ? '@' + item.username : 'ID ' + item.tg_id}`).join('\n');
+        const choice = prompt(`Выберите Ученика:\n${menu}\n\nВведите номер:`);
+        if (choice === null) return;
+        const student = students[Number(choice) - 1];
+        if (!student) { EduAI.toast('Некорректный выбор Ученика', 'error'); return; }
+        await EduAI.api(`/api/v1/interactive/${encodeURIComponent(appId)}/assign`, {
+          method: 'POST', body: JSON.stringify({ student_ids: [student.tg_id] })
+        });
+        EduAI.toast('Интерактивное задание назначено Ученику', 'success');
+      } catch (error) { EduAI.toast(error.message, 'error'); }
+    }
     async attachmentAction(event) {
       const button = event.target.closest('[data-chat-attachment]');
       if (!button) return;
@@ -179,6 +236,7 @@
         const form = new FormData();
         form.append('session_id', this.state.activeId);
         form.append('message_text', text);
+        if (this.state.editingInteractiveId) form.append('interactive_app_id', this.state.editingInteractiveId);
         if (file) form.append('attachment', file);
         const mapping = [['classId','book_class'],['subjectId','book_program'],['bookId','book_id'],['pageId','page_id']];
         mapping.forEach(([id,key]) => { const element = this.$(id); if (element && element.value) form.append(key, element.value); });
@@ -187,7 +245,7 @@
         EduAI.setBusy(button, true, 'Отправляем…');
         stopThinking = EduAI.startThinking(file ? 'ИИ обрабатывает вложение' : 'ИИ формулирует ответ');
         const result = await EduAI.api('/api/v1/tutor/messages', { method: 'POST', body: form });
-        this.append('ai', result.message_text); await this.loadSessions(result.session_id);
+        this.append('ai', result.message_text, [], null, result.interactive_app || null); this.state.editingInteractiveId = null; await this.loadSessions(result.session_id);
       } catch (error) {
         console.error('EduAI tutor submit failed', error);
         EduAI.toast(error.message || 'Не удалось отправить сообщение', 'error');

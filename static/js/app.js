@@ -1,6 +1,8 @@
 (function () {
   const SESSION_KEY = 'eduai.session.v1';
   const ROLE_PATH = { student: '/student.html', parent: '/parent.html', admin: '/admin.html' };
+  const ROLE_LABELS = { student: 'Ученик', parent: 'Учитель', admin: 'Администратор' };
+  const roleLabel = role => ROLE_LABELS[role] || role || '';
   const MATH_RENDERER_VERSION = '20260812-5';
   let katexPromise = null;
 
@@ -278,6 +280,7 @@
     backdrop?.addEventListener('click', close);
     document.querySelectorAll('[data-section]').forEach(link => link.addEventListener('click', () => {
       const id = link.dataset.section;
+      document.body.dataset.activeSection = id;
       document.querySelectorAll('[data-section]').forEach(item => item.classList.toggle('active', item === link));
       document.querySelectorAll('.page-section').forEach(section => section.classList.toggle('active', section.id === id));
       close();
@@ -285,7 +288,20 @@
     document.querySelectorAll('[data-close-modal]').forEach(button => button.addEventListener('click', () => closeModal(button.dataset.closeModal)));
     document.querySelectorAll('.modal-backdrop').forEach(modal => modal.addEventListener('click', event => { if (event.target === modal) modal.classList.remove('open'); }));
     document.querySelectorAll('[data-logout]').forEach(button => button.addEventListener('click', logout));
+    const initialSection = document.querySelector('.page-section.active')?.id;
+    if (initialSection) document.body.dataset.activeSection = initialSection;
   }
+
+
+  function syncViewportHeight() {
+    const tg = window.Telegram?.WebApp;
+    const height = Number(tg?.viewportStableHeight || tg?.viewportHeight || window.visualViewport?.height || window.innerHeight || 0);
+    if (height > 0) document.documentElement.style.setProperty('--eduai-viewport-height', `${Math.round(height)}px`);
+  }
+  syncViewportHeight();
+  window.addEventListener('resize', syncViewportHeight, { passive: true });
+  window.visualViewport?.addEventListener('resize', syncViewportHeight, { passive: true });
+  window.Telegram?.WebApp?.onEvent?.('viewportChanged', syncViewportHeight);
 
   ensureMathStyles();
   ensureKatex().catch(() => {});
@@ -298,7 +314,7 @@
   window.EduAI = {
     api, guard, readSession, saveSession, clearSession, escapeHtml,
     markdown, renderMath, toast, formatDate, setBusy, openModal, closeModal,
-    logout, startThinking, initShell, ROLE_PATH, MATH_RENDERER_VERSION,
+    logout, startThinking, initShell, ROLE_PATH, ROLE_LABELS, roleLabel, MATH_RENDERER_VERSION,
     mathDebug: { normalizeLatexTransport, latexFallback }
   };
 })();

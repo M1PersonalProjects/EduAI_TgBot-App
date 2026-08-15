@@ -8,6 +8,7 @@ from services.response_formatter import (
     render_formula_png,
     telegram_formula_fallback,
     telegram_parts,
+    telegram_safe_text,
 )
 
 TELEGRAM_TEXT_LIMIT = 4000
@@ -84,7 +85,7 @@ async def answer_plain(
         sent = None
 
         for index, chunk in enumerate(chunks):
-            safe_chunk = str(chunk or "").strip()
+            safe_chunk = telegram_safe_text(chunk).strip()
 
             if not safe_chunk:
                 continue
@@ -161,7 +162,7 @@ async def answer_plain(
 
         if kind == "text":
             for chunk in split_telegram_text(payload):
-                safe_chunk = str(chunk or "").strip()
+                safe_chunk = telegram_safe_text(chunk).strip()
 
                 if safe_chunk:
                     expanded.append(
@@ -211,7 +212,7 @@ async def answer_plain(
             )
 
         else:
-            safe_payload = str(payload or "").strip()
+            safe_payload = telegram_safe_text(payload).strip()
 
             # Telegram API must never receive blank text.
             if not safe_payload:

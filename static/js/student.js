@@ -152,7 +152,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               <article class="glass card" data-task-card="${task.task_id}">
                 <div class="flex items-center justify-between gap-2">
                   <span class="badge">
-                    ${task.parent_id ? 'От родителя' : 'ИИ-практика'}
+                    ${task.parent_id ? 'От Учителя' : 'ИИ-практика'}
                   </span>
                   <span class="text-xs muted">
                     ${EduAI.escapeHtml(subject)}
@@ -175,7 +175,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 ${task.parent_comment ? `
                   <div class="mt-3 rounded-xl bg-violet-300/10 p-3 text-sm">
-                    <p class="text-xs font-bold text-violet-200">Комментарий родителя</p>
+                    <p class="text-xs font-bold text-violet-200">Комментарий Учителя</p>
                     <p class="mt-1 text-slate-300">
                       ${EduAI.escapeHtml(task.parent_comment)}
                     </p>
@@ -183,6 +183,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ` : ''}
 
                 ${renderTaskAttachments(task)}
+                ${questions.interactive_app_id ? `
+                  <a class="btn-primary mt-4 inline-flex" href="/interactive/${encodeURIComponent(questions.interactive_app_id)}" target="_blank" rel="noopener noreferrer">Открыть интерактивное задание</a>
+                ` : ''}
 
                 ${task.student_answers_json?.verification_feedback ? `
                   <p class="mt-3 rounded-xl bg-white/[.04] p-3 text-sm muted">
@@ -193,6 +196,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <form
                   class="task-form mt-4 grid gap-2"
                   data-task-id="${task.task_id}"
+                  ${questions.interactive_app_id ? 'hidden' : ''}
                 >
                   <label
                     class="text-xs font-bold muted"
@@ -259,7 +263,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             </article>
           `)
           .join('')
-      : empty('Родитель пока не добавил награды.');
+      : empty('Учитель пока не добавил награды.');
 
     byId('purchases-list').innerHTML = data.purchases.length
       ? data.purchases
@@ -398,7 +402,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     lockId: 'chat-lock-context',
     exitId: 'chat-exit-context',
     contextStatusId: 'chat-context-status',
-    welcome: 'Привет! Я учебный ИИ-тьютор. Выбери учебник и задай вопрос по его материалу — я помогу разобраться шаг за шагом.'
+    welcome: 'Привет! Я ИИ-тьютор EduAI. Можем разбирать учёбу, повседневные вопросы, вложения и выбранные учебники — просто напиши, чем помочь.'
   });
 
   await Promise.all([
