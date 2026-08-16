@@ -12,13 +12,17 @@ from services.response_formatter import contains_raw_latex, telegram_safe_text
         r"\\[ x^2 + 2x + 1 \\]",
         r"\\text{Ответ}: \\frac{1}{\\frac{2}{3}}",
         r"Система: \\begin{cases}x+y=3\\\\x-y=1\\end{cases}",
+        r"Сумма: \\sum_{k=1}^{n} k",
+        r"Интеграл: \\int_0^1 x^2 \\, dx",
+        r"Тригонометрия: \\sin^2 x + \\cos^2 x = 1",
+        r"Греческие буквы: \\alpha + \\beta = \\gamma",
     ],
 )
 def test_telegram_firewall_never_returns_raw_latex(source):
     rendered = telegram_safe_text(source)
     assert rendered.strip()
     assert not contains_raw_latex(rendered), rendered
-    for command in (r"\\frac", r"\\sqrt", r"\\times", r"\\text", r"\\begin", r"\\end"):
+    for command in (r"\\frac", r"\\sqrt", r"\\times", r"\\text", r"\\begin", r"\\end", r"\\sum", r"\\int", r"\\sin", r"\\alpha"):
         assert command not in rendered
 
 

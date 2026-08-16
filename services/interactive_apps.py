@@ -12,6 +12,7 @@ from config import settings
 from database import db
 from logger_config import logger
 from services.context_resolver import ResolvedContext
+from services.response_formatter import MATH_FORMATTING_RULES
 from services.tutor_policy import (
     BASE_TUTOR_RULES,
     INTERACTIVE_TASK_RULES,
@@ -156,7 +157,7 @@ _CSP = (
 )
 
 _MATH_SOURCE_RE = re.compile(
-    r"(?:\\{1,2}\[|\\{1,2}\(|\$\$|\\{1,2}(?:frac|sqrt|times|cdot|div|text|begin|end|pm|leq?|geq?|neq?|pi|infty|alpha|beta|gamma|delta|theta|lambda|mu|sigma|phi|omega)\b)",
+    r"(?:\\{1,2}\[|\\{1,2}\(|\$\$|\\{1,2}(?:frac|dfrac|tfrac|sqrt|times|cdot|div|text|textrm|mathrm|mathbf|operatorname|begin|end|pm|mp|leq?|geq?|neq?|approx|equiv|sum|prod|int|iint|iiint|lim|sin|cos|tan|log|ln|pi|infty|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|sigma|phi|omega|left|right|overline|vec|hat|bar)(?![A-Za-z]))",
     re.IGNORECASE,
 )
 
@@ -178,15 +179,16 @@ _MATH_RENDERER = r"""
 </style>
 <script data-eduai-interactive-math>
 (() => {
-  const COMMAND = /\\(?:frac|sqrt|times|cdot|div|text|begin|end|pm|leq?|geq?|neq?|pi|infty|alpha|beta|gamma|delta|theta|lambda|mu|sigma|phi|omega)\b/;
+  const COMMAND = /\\(?:frac|dfrac|tfrac|sqrt|times|cdot|div|text|textrm|mathrm|mathbf|operatorname|begin|end|pm|mp|leq?|geq?|neq?|approx|equiv|sum|prod|int|iint|iiint|lim|sin|cos|tan|log|ln|pi|infty|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|sigma|phi|omega|left|right|overline|vec|hat|bar)(?![A-Za-z])/;
   const SKIP = new Set(['SCRIPT','STYLE','TEXTAREA','NOSCRIPT']);
   const symbols = {
-    times:'×', cdot:'·', div:'÷', pm:'±', le:'≤', leq:'≤', ge:'≥', geq:'≥',
-    ne:'≠', neq:'≠', pi:'π', infty:'∞', alpha:'α', beta:'β', gamma:'γ', delta:'δ',
+    times:'×', cdot:'·', div:'÷', pm:'±', mp:'∓', le:'≤', leq:'≤', ge:'≥', geq:'≥',
+    ne:'≠', neq:'≠', approx:'≈', equiv:'≡', sum:'∑', prod:'∏', int:'∫', iint:'∬', iiint:'∭',
+    pi:'π', infty:'∞', alpha:'α', beta:'β', gamma:'γ', delta:'δ', epsilon:'ε',
     theta:'θ', lambda:'λ', mu:'μ', sigma:'σ', phi:'φ', omega:'ω'
   };
   const normalize = value => String(value ?? '')
-    .replace(/\\\\(?=(?:frac|sqrt|times|cdot|div|text|begin|end|pm|leq?|geq?|neq?|pi|infty|alpha|beta|gamma|delta|theta|lambda|mu|sigma|phi|omega)\b)/g, '\\')
+    .replace(/\\\\(?=(?:frac|dfrac|tfrac|sqrt|times|cdot|div|text|textrm|mathrm|mathbf|operatorname|begin|end|pm|mp|leq?|geq?|neq?|approx|equiv|sum|prod|int|iint|iiint|lim|sin|cos|tan|log|ln|pi|infty|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|sigma|phi|omega|left|right|overline|vec|hat|bar)(?![A-Za-z]))/g, '\\')
     .replace(/\\\\(?=[()[\]])/g, '\\');
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const balanced = (source, start) => {
@@ -205,8 +207,9 @@ _MATH_RENDERER = r"""
     source = normalize(source).replace(/\\left|\\right/g, '');
     let out = '';
     for (let i = 0; i < source.length;) {
-      if (source.startsWith('\\frac', i)) {
-        let a = i + 5; while (/\s/.test(source[a] || '')) a += 1;
+      const fracName = source.startsWith('\\dfrac', i) ? '\\dfrac' : source.startsWith('\\tfrac', i) ? '\\tfrac' : source.startsWith('\\frac', i) ? '\\frac' : '';
+      if (fracName) {
+        let a = i + fracName.length; while (/\s/.test(source[a] || '')) a += 1;
         const num = balanced(source, a);
         if (num) {
           let b = num.end; while (/\s/.test(source[b] || '')) b += 1;
@@ -225,10 +228,11 @@ _MATH_RENDERER = r"""
           i = body.end; continue;
         }
       }
-      if (source.startsWith('\\text', i)) {
-        let a = i + 5; while (/\s/.test(source[a] || '')) a += 1;
+      const wrapperMatch = source.slice(i).match(/^\\(?:text|textrm|mathrm|mathbf|operatorname|overline|vec|hat|bar)/);
+      if (wrapperMatch) {
+        let a = i + wrapperMatch[0].length; while (/\s/.test(source[a] || '')) a += 1;
         const body = balanced(source, a);
-        if (body) { out += esc(body.value); i = body.end; continue; }
+        if (body) { out += render(body.value); i = body.end; continue; }
       }
       if (source.startsWith('\\begin{cases}', i)) {
         const end = source.indexOf('\\end{cases}', i + 13);
@@ -249,7 +253,7 @@ _MATH_RENDERER = r"""
         const match = source.slice(i + 1).match(/^([A-Za-z]+)/);
         if (match) {
           const name = match[1];
-          out += esc(symbols[name] ?? name);
+          out += esc(symbols[name] ?? (/^(sin|cos|tan|log|ln|lim)$/.test(name) ? name : ''));
           i += name.length + 1; continue;
         }
         if (source[i + 1] === '\\') { out += '<br>'; i += 2; continue; }
@@ -604,7 +608,8 @@ async def generate_teacher_answer_key(*, title: str, request: str, html_document
         "Analyze the learner-facing interactive assignment below. Return concise Markdown with "
         "answers in question order and short reasoning when useful. This response is private and "
         "must never be embedded into the learner HTML. If a task is open-ended, provide evaluation "
-        "criteria instead of inventing a single exact answer. Respond in the language of the assignment."
+        "criteria instead of inventing a single exact answer. Respond in the language of the assignment.\n\n"
+        + MATH_FORMATTING_RULES
     )
     response = await openai_client.beta.chat.completions.parse(
         model="gpt-4o",
@@ -628,7 +633,8 @@ async def grade_interactive_submission(*, title: str, request: str, html_documen
         "Infer the expected answers from the assignment itself and evaluate the learner response. "
         "Return a numeric score and max_score. Do NOT reveal correct answers or a solution key in feedback; "
         "feedback may only state what concept needs more attention or that the work was completed well. "
-        "For open-ended tasks, grade against reasonable educational criteria. Respond in the assignment language."
+        "For open-ended tasks, grade against reasonable educational criteria. Respond in the assignment language.\n\n"
+        + MATH_FORMATTING_RULES
     )
     response = await openai_client.beta.chat.completions.parse(
         model="gpt-4o",

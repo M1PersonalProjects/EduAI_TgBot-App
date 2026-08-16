@@ -75,9 +75,11 @@
         method: 'POST', body: JSON.stringify(safe)
       });
       resultBox.hidden = false;
-      resultBox.textContent = saved.max_score > 0
+      const resultText = saved.max_score > 0
         ? `Результат сохранён: ${saved.score} из ${saved.max_score} (${saved.percent}%).${saved.feedback ? ` ${saved.feedback}` : ''}`
         : (saved.feedback || 'Результат интерактивного задания сохранён.');
+      resultBox.innerHTML = EduAI.markdown(resultText);
+      EduAI.renderMath?.(resultBox);
     } catch (error) {
       // Owners/Teachers can preview apps without having an assignment; this is expected.
       const session = EduAI.readSession?.();

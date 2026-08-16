@@ -46,3 +46,24 @@ def test_admin_activity_does_not_render_detail_with_plain_escape_only():
 
     # The activity body must be rendered through renderActivityDetail().
     assert "renderActivityDetail(detail)" in js
+
+
+def test_unified_renderer_covers_legacy_and_common_math_commands():
+    js = read("static/js/app.js")
+    assert "EduAI unified rich math rendering" in js
+    assert "EduAI.renderRichContent = renderRichContent" in js
+    assert "EduAI.markdown = renderRichContent" in js
+    assert "sum|prod|int|iint|iiint" in js
+    assert "(?<!\\$)\\$" in js
+
+
+def test_interactive_result_feedback_uses_rich_renderer():
+    js = read("static/js/interactive.js")
+    assert "resultBox.innerHTML = EduAI.markdown(resultText)" in js
+    assert "EduAI.renderMath?.(resultBox)" in js
+
+
+def test_chat_does_not_strip_dollar_math_from_user_prompt():
+    js = read("static/js/chat.js")
+    assert "const text = originalText.trim();" in js
+    assert ".split('$').join('')" not in js

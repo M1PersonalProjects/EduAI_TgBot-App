@@ -122,3 +122,9 @@ def test_stereometry_quality_helpers_detect_interactive_viewer():
     assert _has_real_interaction(html)
     assert _has_theory_section(html)
     assert _has_dimension_or_label_ui(html)
+
+
+def test_interactive_math_detection_covers_sum_integral_and_trig():
+    assert interactive_html_has_math(r"<p>\sum_{k=1}^{n} k</p>")
+    assert interactive_html_has_math(r"<p>\int_0^1 x^2 dx</p>")
+    assert interactive_html_has_math(r"<p>\sin^2 x + \cos^2 x = 1</p>")

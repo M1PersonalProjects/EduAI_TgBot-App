@@ -415,7 +415,7 @@
       let stopThinking = () => {};
       const input = this.$('inputId');
       const originalText = input.value;
-      const text = originalText.trim().split('$').join('');
+      const text = originalText.trim();
       const file = this.$('attachId').files[0];
       const interactiveAction = this.interactiveActionInput()?.value || this.state.interactiveAction || '';
       try {

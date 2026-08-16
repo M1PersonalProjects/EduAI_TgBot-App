@@ -225,3 +225,40 @@ async def answer_plain(
             )
 
     return sent
+
+
+async def send_plain_to_chat(
+    bot,
+    chat_id: int,
+    text: str,
+    reply_markup: Optional[object] = None,
+):
+    """Send generated/user-derived content to an arbitrary Telegram chat safely.
+
+    Use this instead of ``bot.send_message`` whenever the payload may contain
+    AI-generated mathematics. Unlike ``answer_plain`` there is no source
+    ``Message`` object, so formulas use the human-readable Telegram fallback
+    rather than image rendering. The important invariant is the same: raw TeX
+    commands never reach Telegram.
+    """
+    raw_text = str(text or "").strip() or (
+        "Не удалось сформировать текстовый ответ. Попробуйте повторить запрос."
+    )
+    safe_text = telegram_safe_text(raw_text).strip() or (
+        "Не удалось отобразить ответ. Попробуйте повторить запрос."
+    )
+    chunks = split_telegram_text(safe_text) or [safe_text]
+    sent = None
+    for index, chunk in enumerate(chunks):
+        payload = telegram_safe_text(chunk).strip()
+        if not payload:
+            continue
+        kwargs = {
+            "chat_id": chat_id,
+            "text": payload,
+            "parse_mode": None,
+        }
+        if index == len(chunks) - 1 and reply_markup is not None:
+            kwargs["reply_markup"] = reply_markup
+        sent = await bot.send_message(**kwargs)
+    return sent

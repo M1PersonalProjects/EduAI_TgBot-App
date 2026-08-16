@@ -1,4 +1,10 @@
-"""Canonical Markdown+LaTeX formatting helpers for EduAI clients."""
+"""Canonical Markdown+LaTeX formatting helpers for EduAI clients.
+
+The database/API keeps canonical Markdown + LaTeX so WebApp clients can render
+mathematics properly. Telegram is the exception: raw TeX must never be sent to
+users, therefore this module converts formulas to readable Unicode text or a
+rendered image.
+"""
 from __future__ import annotations
 
 import io
@@ -37,41 +43,46 @@ class TelegramPart:
     display: bool = False
 
 
+# Common school/university math commands. Keeping an explicit allow-list avoids
+# treating Windows paths such as C:\\Users\\student as mathematics.
+_MATH_COMMANDS = (
+    "frac", "dfrac", "tfrac", "sqrt", "times", "cdot", "div", "pm", "mp",
+    "le", "leq", "ge", "geq", "ne", "neq", "approx", "equiv", "sim", "simeq",
+    "propto", "in", "notin", "ni", "subset", "subseteq", "supset", "supseteq",
+    "cap", "cup", "setminus", "emptyset", "forall", "exists", "nabla", "partial",
+    "sum", "prod", "int", "iint", "iiint", "oint", "lim", "min", "max",
+    "sin", "cos", "tan", "tg", "cot", "ctg", "log", "ln", "lg", "exp",
+    "pi", "infty", "alpha", "beta", "gamma", "delta", "epsilon", "varepsilon",
+    "zeta", "eta", "theta", "vartheta", "iota", "kappa", "lambda", "mu", "nu",
+    "xi", "rho", "sigma", "tau", "upsilon", "phi", "varphi", "chi", "psi", "omega",
+    "Gamma", "Delta", "Theta", "Lambda", "Xi", "Pi", "Sigma", "Phi", "Psi", "Omega",
+    "quad", "qquad", "Rightarrow", "Leftarrow", "Leftrightarrow", "rightarrow",
+    "leftarrow", "to", "mapsto", "implies", "iff", "text", "textrm", "mathrm",
+    "mathbf", "mathit", "mathsf", "mathtt", "operatorname", "begin", "end", "left",
+    "right", "overline", "underline", "vec", "hat", "bar", "dot", "ddot", "boxed",
+    "ldots", "cdots", "vdots", "ddots",
+)
+_MATH_COMMAND_PATTERN = "|".join(sorted((re.escape(x) for x in _MATH_COMMANDS), key=len, reverse=True))
+
 _DISPLAY_RE = re.compile(r"\\\[(.+?)\\\]|\$\$(.+?)\$\$", re.S)
-_INLINE_RE = re.compile(r"\\\((.+?)\\\)", re.S)
-_DOUBLE_ESCAPED_MATH_RE = re.compile(
-    r"\\\\(?=(?:\[|\]|\(|\)|frac\b|dfrac\b|tfrac\b|sqrt\b|times\b|cdot\b|div\b|pm\b|mp\b|"
-    r"le\b|leq\b|ge\b|geq\b|ne\b|neq\b|approx\b|equiv\b|pi\b|infty\b|quad\b|qquad\b|"
-    r"Rightarrow\b|Leftarrow\b|Leftrightarrow\b|rightarrow\b|leftarrow\b|text\b|mathrm\b|mathbf\b|"
-    r"begin\b|end\b|left\b|right\b))"
-)
-_BARE_LATEX_RE = re.compile(
-    r"\\(?:frac|dfrac|tfrac|sqrt|times|cdot|div|pm|mp|le|leq|ge|geq|ne|neq|approx|equiv|pi|infty|"
-    r"quad|qquad|Rightarrow|Leftarrow|Leftrightarrow|rightarrow|leftarrow|text|mathrm|mathbf|begin|end|left|right)\b"
-)
-_RAW_LATEX_RE = re.compile(
-    r"(?:\\){1,2}(?:frac|dfrac|tfrac|sqrt|times|cdot|div|pm|mp|le|leq|ge|geq|ne|neq|approx|equiv|pi|infty|"
-    r"quad|qquad|Rightarrow|Leftarrow|Leftrightarrow|rightarrow|leftarrow|text|mathrm|mathbf|begin|end|left|right)\b"
-    r"|(?:\\){1,2}[\[\]()]"
-)
+_INLINE_RE = re.compile(r"\\\((.+?)\\\)|(?<!\$)\$([^$\n]{1,2000})\$(?!\$)", re.S)
+_DOUBLE_ESCAPED_MATH_RE = re.compile(rf"\\\\(?=(?:\[|\]|\(|\)|(?:{_MATH_COMMAND_PATTERN})(?![A-Za-z])))")
+_BARE_LATEX_RE = re.compile(rf"\\(?:{_MATH_COMMAND_PATTERN})(?![A-Za-z])")
+_RAW_LATEX_RE = re.compile(rf"(?:\\){{1,2}}(?:{_MATH_COMMAND_PATTERN})(?![A-Za-z])|(?:\\){{1,2}}[\[\]()]|(?:\\){{1,2}}[,;:!]|(?:\\){{1,2}}[A-Za-z]+\*?(?=\s*(?:\{{|_|\^))", re.S)
 
 
 def contains_raw_latex(value: object) -> bool:
-    """Return True when user-facing text still contains raw TeX commands or delimiters.
-
-    Both canonical one-backslash LaTeX and accidentally transport-double-escaped
-    legacy content are detected. Code preservation is handled by telegram_parts().
-    """
+    """Return True when user-facing text still contains recognized TeX."""
     return bool(_RAW_LATEX_RE.search(canonicalize_message(value)))
 
 
 def normalize_latex_transport(value: object) -> str:
-    """Collapse one accidental transport-escape layer for known math tokens only."""
+    """Collapse one accidental transport-escape layer for math tokens only."""
     return _DOUBLE_ESCAPED_MATH_RE.sub(r"\\", canonicalize_message(value))
 
 
 def _replace_nested_frac(text: str) -> str:
-    pattern = re.compile(r"\\frac\{([^{}]*)\}\{([^{}]*)\}")
+    pattern = re.compile(r"\\(?:dfrac|tfrac|frac)\{([^{}]*)\}\{([^{}]*)\}")
     previous = None
     while previous != text:
         previous = text
@@ -79,41 +90,88 @@ def _replace_nested_frac(text: str) -> str:
     return text
 
 
+_SUPERSCRIPT = str.maketrans("0123456789+-=()n", "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿ")
+_SUBSCRIPT = str.maketrans("0123456789+-=()aeoxhklmnpst", "₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐₑₒₓₕₖₗₘₙₚₛₜ")
+
+
+def _simple_scripts(text: str) -> str:
+    def sup(match: re.Match[str]) -> str:
+        value = match.group(1)
+        mapped = value.translate(_SUPERSCRIPT)
+        return mapped if len(mapped) == len(value) else "^" + value
+
+    def sub(match: re.Match[str]) -> str:
+        value = match.group(1)
+        mapped = value.translate(_SUBSCRIPT)
+        return mapped if len(mapped) == len(value) else "_" + value
+
+    text = re.sub(r"\^\{([0-9+\-=()n]+)\}", sup, text)
+    text = re.sub(r"_\{([0-9+\-=()aeoxhklmnpst]+)\}", sub, text)
+    text = re.sub(r"\^([0-9])", lambda m: m.group(1).translate(_SUPERSCRIPT), text)
+    text = re.sub(r"_([0-9])", lambda m: m.group(1).translate(_SUBSCRIPT), text)
+    return text
+
+
 def _latex_fallback(expr: str) -> str:
+    """Convert TeX to readable Unicode/plain text without exposing commands."""
     text = normalize_latex_transport(expr).strip()
     text = text.replace(r"\[", "").replace(r"\]", "").replace(r"\(", "").replace(r"\)", "")
     text = _replace_nested_frac(text)
     text = re.sub(r"\\sqrt\[([^]]+)\]\{([^{}]+)\}", r"root[\1](\2)", text)
     text = re.sub(r"\\sqrt\{([^{}]+)\}", r"√(\1)", text)
-    text = re.sub(r"\\text\{([^{}]*)\}", r"\1", text)
-    text = re.sub(r"\\(?:mathrm|mathbf)\{([^{}]*)\}", r"\1", text)
+
+    # Text/style wrappers keep their content.
+    wrapper = r"(?:text|textrm|mathrm|mathbf|mathit|mathsf|mathtt|operatorname|overline|underline|vec|hat|bar|boxed)"
+    previous = None
+    while previous != text:
+        previous = text
+        text = re.sub(rf"\\{wrapper}\s*\{{([^{{}}]*)\}}", r"\1", text)
+
     replacements = {
         r"\times": "×", r"\cdot": "·", r"\div": ":", r"\pm": "±", r"\mp": "∓",
-        r"\le": "≤", r"\leq": "≤", r"\ge": "≥", r"\geq": "≥",
-        r"\ne": "≠", r"\neq": "≠", r"\approx": "≈", r"\equiv": "≡",
-        r"\Rightarrow": "⇒", r"\Leftarrow": "⇐", r"\Leftrightarrow": "⇔",
-        r"\rightarrow": "→", r"\leftarrow": "←", r"\pi": "π", r"\infty": "∞",
+        r"\le": "≤", r"\leq": "≤", r"\ge": "≥", r"\geq": "≥", r"\ne": "≠", r"\neq": "≠",
+        r"\approx": "≈", r"\equiv": "≡", r"\sim": "∼", r"\simeq": "≃", r"\propto": "∝",
+        r"\in": "∈", r"\notin": "∉", r"\ni": "∋", r"\subset": "⊂", r"\subseteq": "⊆",
+        r"\supset": "⊃", r"\supseteq": "⊇", r"\cap": "∩", r"\cup": "∪", r"\setminus": "∖",
+        r"\emptyset": "∅", r"\forall": "∀", r"\exists": "∃", r"\nabla": "∇", r"\partial": "∂",
+        r"\sum": "∑", r"\prod": "∏", r"\int": "∫", r"\iint": "∬", r"\iiint": "∭", r"\oint": "∮",
+        r"\Rightarrow": "⇒", r"\Leftarrow": "⇐", r"\Leftrightarrow": "⇔", r"\rightarrow": "→",
+        r"\leftarrow": "←", r"\to": "→", r"\mapsto": "↦", r"\implies": "⇒", r"\iff": "⇔",
+        r"\pi": "π", r"\infty": "∞", r"\alpha": "α", r"\beta": "β", r"\gamma": "γ", r"\delta": "δ",
+        r"\epsilon": "ε", r"\varepsilon": "ϵ", r"\zeta": "ζ", r"\eta": "η", r"\theta": "θ",
+        r"\vartheta": "ϑ", r"\iota": "ι", r"\kappa": "κ", r"\lambda": "λ", r"\mu": "μ", r"\nu": "ν",
+        r"\xi": "ξ", r"\rho": "ρ", r"\sigma": "σ", r"\tau": "τ", r"\upsilon": "υ", r"\phi": "φ",
+        r"\varphi": "ϕ", r"\chi": "χ", r"\psi": "ψ", r"\omega": "ω", r"\Gamma": "Γ", r"\Delta": "Δ",
+        r"\Theta": "Θ", r"\Lambda": "Λ", r"\Xi": "Ξ", r"\Pi": "Π", r"\Sigma": "Σ", r"\Phi": "Φ",
+        r"\Psi": "Ψ", r"\Omega": "Ω", r"\ldots": "…", r"\cdots": "⋯", r"\vdots": "⋮", r"\ddots": "⋱",
         r"\qquad": "  ", r"\quad": " ",
     }
-    for source, target in replacements.items():
-        text = text.replace(source, target)
+    # Longest command first (e.g. \iiint before \int).
+    for source in sorted(replacements, key=len, reverse=True):
+        text = text.replace(source, replacements[source])
+
+    # Common function names should remain readable, just without TeX slash.
+    text = re.sub(r"\\(sin|cos|tan|tg|cot|ctg|log|ln|lg|exp|lim|min|max)\b", r"\1", text)
     text = text.replace(r"\\", "\n")
-    text = re.sub(r"\\begin\{cases\}|\\end\{cases\}", "", text)
+    text = re.sub(r"\\begin\{(?:cases|aligned|align\*?|matrix|pmatrix|bmatrix|vmatrix)\}|\\end\{(?:cases|aligned|align\*?|matrix|pmatrix|bmatrix|vmatrix)\}", "", text)
     text = re.sub(r"\\(?:left|right)\b", "", text)
-    # Last-resort safety: a Telegram user must never see a raw TeX command.
+    text = re.sub(r"\\[,;:]", " ", text)
+    text = text.replace(r"\!", "")
+    text = _simple_scripts(text)
+
+    # Absolute last-resort safety. At this point a remaining command is display
+    # noise, not useful text. Preserve the argument braces content below.
     text = re.sub(r"\\[A-Za-z]+\*?", "", text)
     text = text.replace("{", "").replace("}", "")
-    return text.strip()
+    return re.sub(r"[ \t]{2,}", " ", text).strip()
 
 
 def is_complex_formula(expr: str) -> bool:
     value = normalize_latex_transport(expr).strip()
     return bool(
         len(value) > 36
-        or r"\frac" in value
-        or r"\begin{" in value
+        or re.search(r"\\(?:frac|dfrac|tfrac|begin|sum|prod|int|iint|iiint|lim)\b", value)
         or r"\sqrt[" in value
-        or r"\matrix" in value
         or value.count("^") >= 2
     )
 
@@ -124,11 +182,11 @@ def _looks_like_bare_formula(line: str) -> bool:
         return False
     if value.startswith(("http://", "https://")):
         return False
-    return bool(re.search(r"[=+\-*/^_<>]", value) or value.startswith("\\"))
+    return True
 
 
 def telegram_parts(value: object) -> List[TelegramPart]:
-    """Split canonical content while preserving fenced/inline code verbatim."""
+    """Split canonical content while preserving ordinary code/URLs."""
     text = canonicalize_message(value)
     parts: List[TelegramPart] = []
     code_re = re.compile(r"```[\s\S]*?```|`[^`\n]*`")
@@ -136,6 +194,8 @@ def telegram_parts(value: object) -> List[TelegramPart]:
     for match in code_re.finditer(text):
         if match.start() > cursor:
             parts.extend(_math_parts_segment(normalize_latex_transport(text[cursor:match.start()])))
+        # Keep code as text here. telegram_safe_text is still applied at the final
+        # send boundary so TeX accidentally wrapped as code cannot leak raw.
         parts.append(TelegramPart("text", match.group(0)))
         cursor = match.end()
     if cursor < len(text):
@@ -163,7 +223,7 @@ def _inline_parts(text: str) -> List[TelegramPart]:
     for match in _INLINE_RE.finditer(text):
         if match.start() > cursor:
             result.extend(_bare_parts(text[cursor:match.start()]))
-        expr = match.group(1).strip()
+        expr = (match.group(1) or match.group(2) or "").strip()
         if is_complex_formula(expr):
             result.append(TelegramPart("formula", expr, False))
         else:
@@ -176,15 +236,13 @@ def _inline_parts(text: str) -> List[TelegramPart]:
 
 def _bare_parts(text: str) -> List[TelegramPart]:
     result: List[TelegramPart] = []
-    lines = text.splitlines(keepends=True)
-    for line in lines:
+    for line in text.splitlines(keepends=True):
         stripped = line.rstrip("\r\n")
         suffix = line[len(stripped):]
         if _looks_like_bare_formula(stripped):
-            if is_complex_formula(stripped):
-                result.append(TelegramPart("formula", stripped.strip(), True))
-            else:
-                result.append(TelegramPart("text", _latex_fallback(stripped) + suffix))
+            # Bare TeX mixed with prose is converted to readable text. Rendering
+            # the entire prose line as a formula image is both ugly and fragile.
+            result.append(TelegramPart("text", _latex_fallback(stripped) + suffix))
         else:
             result.append(TelegramPart("text", stripped + suffix))
     return result
@@ -194,23 +252,17 @@ def telegram_formula_fallback(expr: str) -> str:
     return _latex_fallback(expr)
 
 
-
 def telegram_safe_text(value: object) -> str:
-    """Final Telegram text firewall: never expose recognized raw TeX commands."""
+    """Final Telegram text firewall: recognized raw TeX never reaches users."""
     work = canonicalize_message(value)
     if contains_raw_latex(work):
-        # Product requirement: no raw LaTeX may reach Telegram, including old
-        # stored messages or TeX accidentally wrapped in code spans. Only known
-        # math tokens are transformed; unrelated programming backslashes remain.
         work = "\n".join(
             _latex_fallback(line) if contains_raw_latex(line) else line
             for line in work.splitlines()
         )
-        # _latex_fallback is the human-readable conversion. This final pass only
-        # removes any still-recognized TeX token; it does not touch ordinary \n,
-        # Windows paths, regex escapes, or programming backslashes.
         work = _RAW_LATEX_RE.sub("", work)
     return work.strip()
+
 
 def render_formula_png(expr: str) -> bytes | None:
     """Best-effort PNG renderer. Returns None when matplotlib/mathtext cannot render."""
@@ -218,6 +270,7 @@ def render_formula_png(expr: str) -> bytes | None:
         import matplotlib
         matplotlib.use("Agg")
         from matplotlib import pyplot as plt
+
         fig = plt.figure(figsize=(0.01, 0.01), dpi=180)
         fig.patch.set_alpha(0)
         source = normalize_latex_transport(expr)

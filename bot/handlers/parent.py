@@ -8,7 +8,7 @@ from openai import AsyncOpenAI
 from config import settings
 from logger_config import logger
 from pydantic import BaseModel
-from bot.messages import answer_plain
+from bot.messages import answer_plain, send_plain_to_chat
 from services.tutor_policy import teacher_task_prompt, teacher_analytics_prompt
 
 router = Router()
@@ -319,14 +319,14 @@ async def callback_approve_and_save(call: CallbackQuery, state: FSMContext):
                 student_id, parent_id, json.dumps(topic_context), json.dumps(questions_json)
             )
 
-        await call.bot.send_message(
-            chat_id=student_id,
-            text="📬 Учитель прислал тебе персональное проверочное задание!\n\n"
-                 f"🏆 Тест: {questions_json['title']}\n"
-                 f"{questions_json['question_text']}\n\n"
-                 "💰 Награда за выполнение: 15 монет | ✨ 50 XP\n"
-                 "Просто начни выполнять квесты через меню — этот тест будет приоритетным!",
-            parse_mode=None,
+        await send_plain_to_chat(
+            call.bot,
+            student_id,
+            "📬 Учитель прислал тебе персональное проверочное задание!\n\n"
+            f"🏆 Тест: {questions_json['title']}\n"
+            f"{questions_json['question_text']}\n\n"
+            "💰 Награда за выполнение: 15 монет | ✨ 50 XP\n"
+            "Просто начни выполнять квесты через меню — этот тест будет приоритетным!",
         )
         
         await call.message.edit_text("🚀 Тест успешно сохранен в базу и доставлен в Telegram-аккаунт вашего Ученика! Как только он даст ответ, система его проверит.", reply_markup=None)

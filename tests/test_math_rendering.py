@@ -45,3 +45,13 @@ def test_code_and_url_are_not_math():
     joined = "".join(part.content for part in parts)
     assert "https://example.com/a/b" in joined
     assert "`x = a / b`" in joined
+
+
+def test_ai_generated_telegram_notifications_use_safe_sender():
+    from pathlib import Path
+    tasks = Path("bot/handlers/tasks.py").read_text(encoding="utf-8")
+    parent = Path("bot/handlers/parent.py").read_text(encoding="utf-8")
+    assert "send_plain_to_chat" in tasks
+    assert "send_plain_to_chat" in parent
+    assert "Разбор ИИ: {verification.explanation}" in tasks
+    assert "questions_json['question_text']" in parent

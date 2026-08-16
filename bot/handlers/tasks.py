@@ -9,7 +9,7 @@ from database import db
 from openai import AsyncOpenAI
 from config import settings
 from logger_config import logger
-from bot.messages import answer_plain
+from bot.messages import answer_plain, send_plain_to_chat
 from services.tutor_policy import student_task_prompt, task_grading_prompt
 
 router = Router()
@@ -260,9 +260,12 @@ async def check_quest_answer(message: Message, state: FSMContext):
             )
             if parent_id:
                 try:
-                    await message.bot.send_message(
-                        chat_id=parent_id,
-                        text=f"📈 *Ваш Ученик успешно выполнил домашнее задание!*\nОтвет Ученика: _'{user_answer}'_\nРазбор ИИ: {verification.explanation}"
+                    await send_plain_to_chat(
+                        message.bot,
+                        parent_id,
+                        "📈 Ваш Ученик успешно выполнил домашнее задание!\n"
+                        f"Ответ Ученика: {user_answer}\n"
+                        f"Разбор ИИ: {verification.explanation}",
                     )
                 except Exception:
                     pass

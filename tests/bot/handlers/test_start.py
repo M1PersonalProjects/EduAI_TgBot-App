@@ -172,7 +172,7 @@ async def test_cmd_start_existing_parent(make_message, mock_db):
 
     assert "➕ Привязать Ученика" in texts
     assert "📊 Мониторинг в чате" in texts
-    assert "📚 Каталог учебников" in texts
+    assert "📚 Учебники" in texts
     assert "🌐 Открыть EduAI" in texts
 
     assert "📊 Панель Родителя (Web App)" not in texts

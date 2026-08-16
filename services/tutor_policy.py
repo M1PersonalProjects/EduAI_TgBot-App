@@ -120,6 +120,7 @@ INTERACTIVE_TASK_RULES = r"""
 CURRENT TASK-SPECIFIC RULES: INTERACTIVE EDUCATIONAL APP GENERATION
 Create one polished, self-contained educational HTML document with inline CSS and JavaScript.
 The result must feel like a finished interactive EduAI mini-application, NOT a worksheet pasted into a white page.
+The finished EduAI learning product must be complete, usable, learner-safe, and visually coherent.
 Use a modern visual system: layered background/gradient, cohesive palette, strong hierarchy, compact readable cards,
 responsive layout, accessible contrast, clear controls, progress/navigation, hover/focus states and subtle animation.
 The app must remain comfortable on desktop and mobile and must never overflow horizontally.
