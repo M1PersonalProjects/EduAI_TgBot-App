@@ -33,6 +33,12 @@ def explicit_attachment_reference(text: str) -> bool:
     return any(marker.replace("ё", "е") in lowered for marker in ATTACHMENT_REFERENCE_MARKERS)
 
 
+def explicit_book_reference(text: str) -> bool:
+    """Return True when the user explicitly refers to a textbook/page/paragraph."""
+    lowered = (text or "").casefold().replace("ё", "е")
+    return any(marker.replace("ё", "е") in lowered for marker in BOOK_REFERENCE_MARKERS)
+
+
 def explicit_mixed_source_request(text: str) -> bool:
     lowered = (text or "").casefold().replace("ё", "е")
     has_attachment = any(

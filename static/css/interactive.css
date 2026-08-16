@@ -30,3 +30,10 @@ body { margin: 0; }
   .interactive-stage { min-height: 70dvh; padding: .25rem; }
   #interactive-frame { min-height: 68dvh; }
 }
+.interactive-answers {
+  margin-top: .75rem;
+  padding: 1rem;
+}
+#interactive-answers-content {
+  overflow-wrap: anywhere;
+}

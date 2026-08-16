@@ -19,7 +19,10 @@ def get_parent_menu() -> ReplyKeyboardMarkup:
             KeyboardButton(text="📊 Мониторинг в чате"),
         ],
         [
-            KeyboardButton(text="📚 Каталог учебников"),
+            KeyboardButton(text="📚 Учебники"),
+            KeyboardButton(text="🤖 ИИ-помощник"),
+        ],
+        [
             KeyboardButton(
                 text="🌐 Открыть EduAI",
                 web_app=WebAppInfo(url=settings.webapp_base_url),
@@ -36,7 +39,10 @@ def get_student_menu() -> ReplyKeyboardMarkup:
     """Compact Telegram menu for students."""
     buttons = [
         [
-            KeyboardButton(text="📚 Каталог учебников"),
+            KeyboardButton(text="📚 Учебники"),
+            KeyboardButton(text="🤖 ИИ-помощник"),
+        ],
+        [
             KeyboardButton(text="🏆 Мой профиль"),
         ],
         [

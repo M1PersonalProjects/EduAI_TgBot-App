@@ -8,7 +8,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/static/css/app.css?v=20260814-tz29-1">
-  <link rel="stylesheet" href="/static/css/interactive.css?v=20260815-tz30-2">
+  <link rel="stylesheet" href="/static/css/interactive.css?v=20260816-v3">
 </head>
 <body data-interactive-app-id="{{ app_id }}">
   <main class="interactive-shell">
@@ -20,6 +20,7 @@
       </div>
       <div class="flex flex-wrap gap-2">
         <button id="interactive-download" class="btn-secondary" type="button">Скачать HTML</button>
+        <button id="interactive-answers" class="btn-secondary" type="button" hidden>Ответы</button>
         <button id="interactive-back" class="btn-primary" type="button">Назад</button>
       </div>
     </header>
@@ -36,8 +37,18 @@
     </section>
 
     <p id="interactive-result" class="interactive-result" hidden></p>
+    <section id="interactive-answers-panel" class="glass interactive-answers" hidden>
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <p class="text-xs font-bold uppercase tracking-[.16em] muted">Только для Учителя</p>
+          <h2 class="text-lg font-extrabold">Ответы и ориентиры проверки</h2>
+        </div>
+        <button id="interactive-answers-close" class="btn-secondary" type="button">Закрыть</button>
+      </div>
+      <div id="interactive-answers-content" class="mt-4 leading-7"></div>
+    </section>
   </main>
   <script src="/static/js/app.js?v=20260814-tz29-1"></script>
-  <script src="/static/js/interactive.js?v=20260815-tz30-2"></script>
+  <script src="/static/js/interactive.js?v=20260816-v3"></script>
 </body>
 </html>

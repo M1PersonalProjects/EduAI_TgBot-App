@@ -73,3 +73,10 @@ def test_start_has_role_specific_telegram_and_webapp_copy():
     assert "В Telegram" in source
     assert "WebApp" in source
     assert "🌐 Открыть EduAI" in source
+
+
+def test_student_and_teacher_menus_separate_books_and_free_ai_helper():
+    for menu in (get_parent_menu(), get_student_menu()):
+        texts = _button_texts(menu)
+        assert "📚 Учебники" in texts
+        assert "🤖 ИИ-помощник" in texts

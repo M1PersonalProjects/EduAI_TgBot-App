@@ -10,7 +10,8 @@
 
     async init() {
       this.bind();
-      await Promise.all([this.loadSessions(), this.loadClasses()]);
+      const preferredChat = new URLSearchParams(window.location.search).get('chat');
+      await Promise.all([this.loadSessions(preferredChat), this.loadClasses()]);
     }
 
     bind() {

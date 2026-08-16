@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from api.security import get_current_user
 from database import db
-from services.interactive_apps import serialize_app
+from services.interactive_apps import contains_embedded_solution_data, generate_teacher_answer_key, grade_interactive_submission, serialize_app
 
 
 router = APIRouter(prefix="/api/v1/interactive", tags=["Interactive assignments"])
@@ -38,7 +38,7 @@ async def _accessible_app(conn, app_id: uuid.UUID, user: Any):
     row = await conn.fetchrow(
         """
         SELECT a.app_id, a.owner_id, a.session_id, a.source_message_id, a.title,
-               a.app_type, a.question_count, a.current_version, a.created_at,
+               a.app_type, a.question_count, a.original_request, a.current_version, a.created_at,
                a.updated_at, v.html_document,
                EXISTS(
                    SELECT 1 FROM interactive_assignments ia
@@ -58,6 +58,11 @@ async def _accessible_app(conn, app_id: uuid.UUID, user: Any):
     )
     if not row:
         raise HTTPException(status_code=404, detail="Интерактивное задание не найдено")
+    if user.get("role") == "student" and contains_embedded_solution_data(row["html_document"]):
+        raise HTTPException(
+            status_code=409,
+            detail="Это задание создано в старом небезопасном формате. Учителю нужно обновить его перед выдачей Ученику.",
+        )
     return row
 
 
@@ -82,10 +87,36 @@ async def teacher_students(user=Depends(get_current_user)):
 async def get_interactive(app_id: str, user=Depends(get_current_user)):
     async with db.pool.acquire() as conn:
         row = await _accessible_app(conn, _uuid(app_id), user)
+        db_role = await conn.fetchval("SELECT role::text FROM users WHERE tg_id=$1", user["tg_id"])
     data = serialize_app(row)
     data["html_document"] = row["html_document"]
-    data["can_assign"] = user["role"] in {"parent", "admin"} and row["owner_id"] == user["tg_id"]
+    # Teacher capability is determined from the canonical users table by tg_id.
+    # Frontend role switching must never be able to hide or grant this permission.
+    is_teacher = db_role in {"parent", "admin"}
+    data["can_assign"] = is_teacher and row["owner_id"] == user["tg_id"]
+    data["can_view_answers"] = is_teacher
     return data
+
+
+@router.get("/{app_id}/answers")
+async def interactive_answers(app_id: str, user=Depends(get_current_user)):
+    parsed = _uuid(app_id)
+    async with db.pool.acquire() as conn:
+        db_user = await conn.fetchrow("SELECT role::text AS role FROM users WHERE tg_id=$1", user["tg_id"])
+        if not db_user or db_user["role"] not in {"parent", "admin"}:
+            raise HTTPException(status_code=403, detail="Ответы доступны только Учителю")
+        row = await _accessible_app(conn, parsed, user)
+    if not row:
+        raise HTTPException(status_code=404, detail="Интерактивное задание не найдено")
+    try:
+        answers = await generate_teacher_answer_key(
+            title=row["title"],
+            request=row["original_request"] or "",
+            html_document=row["html_document"],
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Не удалось сформировать ответы. Попробуйте позже") from exc
+    return {"app_id": str(parsed), "answers_markdown": answers}
 
 
 @router.get("/{app_id}/versions")
@@ -140,12 +171,22 @@ async def assign_interactive(
     created = []
     async with db.pool.acquire() as conn:
         owner = await conn.fetchrow(
-            "SELECT app_id, title, current_version FROM interactive_apps WHERE app_id=$1 AND owner_id=$2",
+            """
+            SELECT a.app_id, a.title, a.current_version, v.html_document
+            FROM interactive_apps a
+            JOIN interactive_app_versions v ON v.app_id=a.app_id AND v.version_no=a.current_version
+            WHERE a.app_id=$1 AND a.owner_id=$2
+            """,
             parsed,
             user["tg_id"],
         )
         if not owner:
             raise HTTPException(status_code=404, detail="Интерактивное задание не найдено")
+        if contains_embedded_solution_data(owner["html_document"]):
+            raise HTTPException(
+                status_code=409,
+                detail="В приложении обнаружен встроенный ключ ответов. Обновите приложение через ИИ перед отправкой Ученику.",
+            )
         students = await conn.fetch(
             """
             SELECT tg_id FROM users
@@ -220,9 +261,11 @@ async def save_result(
     async with db.pool.acquire() as conn:
         assignment = await conn.fetchrow(
             """
-            SELECT ia.assignment_id, ia.task_id, a.current_version
+            SELECT ia.assignment_id, ia.task_id, a.current_version, a.title, a.original_request,
+                   v.html_document
             FROM interactive_assignments ia
             JOIN interactive_apps a ON a.app_id=ia.app_id
+            JOIN interactive_app_versions v ON v.app_id=a.app_id AND v.version_no=a.current_version
             WHERE ia.app_id=$1 AND ia.student_id=$2
             """,
             parsed,
@@ -230,16 +273,27 @@ async def save_result(
         )
         if not assignment:
             raise HTTPException(status_code=404, detail="Это интерактивное задание не назначено Ученику")
-        maximum = max(float(payload.max_score or 0), 0.0)
-        requested_score = max(float(payload.score or 0), 0.0)
-        score = min(requested_score, maximum) if maximum > 0 else 0.0
-        percent = min(100, round((score / maximum) * 100)) if maximum > 0 else (100 if payload.completed else 0)
+        # Never trust a score supplied by learner-side JavaScript. Grade on the server
+        # from the question HTML and submitted answers, where no answer key is exposed.
+        try:
+            grade = await grade_interactive_submission(
+                title=assignment["title"],
+                request=assignment["original_request"] or "",
+                html_document=assignment["html_document"],
+                answers=payload.answers,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="Не удалось проверить интерактивное задание") from exc
+        maximum = max(float(grade.max_score or 0), 0.0)
+        score = min(max(float(grade.score or 0), 0.0), maximum) if maximum > 0 else 0.0
+        percent = min(100, round((score / maximum) * 100)) if maximum > 0 else 0
         progress = {
             "score": score,
             "max_score": maximum,
             "percent": percent,
-            "completed": bool(payload.completed),
+            "completed": bool(grade.completed),
             "answers": payload.answers,
+            "feedback": grade.feedback,
         }
         async with conn.transaction():
             await conn.execute(
@@ -256,7 +310,7 @@ async def save_result(
                 score,
                 maximum,
                 json.dumps(progress, ensure_ascii=False),
-                payload.completed,
+                bool(grade.completed),
             )
             if assignment["task_id"]:
                 attempt = await conn.fetchval(
@@ -278,9 +332,9 @@ async def save_result(
                     user["tg_id"],
                     json.dumps(payload.answers, ensure_ascii=False),
                     attempt,
-                    "Результат интерактивного задания сохранён.",
+                    grade.feedback or "Результат интерактивного задания сохранён.",
                     percent,
-                    "completed" if payload.completed else "needs_revision",
+                    "completed" if grade.completed else "needs_revision",
                 )
                 await conn.execute(
                     """
@@ -293,8 +347,8 @@ async def save_result(
                     """,
                     json.dumps(progress, ensure_ascii=False),
                     percent,
-                    "evaluated" if payload.completed else "in_progress",
+                    "evaluated" if grade.completed else "in_progress",
                     assignment["task_id"],
                     user["tg_id"],
                 )
-    return {"status": "saved", "score": score, "max_score": maximum, "percent": percent, "completed": payload.completed}
+    return {"status": "saved", "score": score, "max_score": maximum, "percent": percent, "completed": bool(grade.completed), "feedback": grade.feedback}

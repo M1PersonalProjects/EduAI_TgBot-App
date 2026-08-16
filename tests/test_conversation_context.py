@@ -62,3 +62,10 @@ def test_webapp_keeps_telegram_chat_visible_and_non_deletable():
     assert "telegramDefault" in source
     assert "message_source" in source
 
+
+
+def test_explicit_book_reference_detects_natural_language_textbook_pointer():
+    from services.conversation_context import explicit_book_reference
+    assert explicit_book_reference("В учебнике Математика 5 класс на странице 42 объясни пример")
+    assert explicit_book_reference("Возьми параграф 7 и объясни правило")
+    assert not explicit_book_reference("Как у тебя дела?")

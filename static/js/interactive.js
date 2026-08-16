@@ -7,6 +7,10 @@
   const resultBox = document.getElementById('interactive-result');
   const downloadButton = document.getElementById('interactive-download');
   const backButton = document.getElementById('interactive-back');
+  const answersButton = document.getElementById('interactive-answers');
+  const answersPanel = document.getElementById('interactive-answers-panel');
+  const answersContent = document.getElementById('interactive-answers-content');
+  const answersClose = document.getElementById('interactive-answers-close');
   let app = null;
 
   async function fetchProtectedBlob(url) {
@@ -28,6 +32,18 @@
       title.innerHTML = EduAI.markdown(app.title || 'Интерактивное задание');
       EduAI.renderMath?.(title);
       version.textContent = `Версия v${app.current_version || 1}${app.question_count ? ` · ${app.question_count} вопросов` : ''}`;
+      if (answersButton) {
+        let canViewAnswers = Boolean(app.can_view_answers);
+        // Defensive fallback: /auth/session reads the canonical users row by tg_id.
+        // This keeps the Teacher button visible even if an older interactive payload was cached.
+        if (!canViewAnswers) {
+          try {
+            const currentUser = await EduAI.api('/api/v1/auth/session');
+            canViewAnswers = currentUser?.role === 'parent' || currentUser?.role === 'admin' || Boolean(currentUser?.is_admin);
+          } catch (_) {}
+        }
+        answersButton.hidden = !canViewAnswers;
+      }
       frame.hidden = true;
       loading.hidden = false;
       loading.textContent = 'Подготавливаем интерактивное задание…';
@@ -59,9 +75,9 @@
         method: 'POST', body: JSON.stringify(safe)
       });
       resultBox.hidden = false;
-      resultBox.textContent = safe.max_score > 0
-        ? `Результат сохранён: ${safe.score} из ${safe.max_score} (${saved.percent}%).`
-        : 'Результат интерактивного задания сохранён.';
+      resultBox.textContent = saved.max_score > 0
+        ? `Результат сохранён: ${saved.score} из ${saved.max_score} (${saved.percent}%).${saved.feedback ? ` ${saved.feedback}` : ''}`
+        : (saved.feedback || 'Результат интерактивного задания сохранён.');
     } catch (error) {
       // Owners/Teachers can preview apps without having an assignment; this is expected.
       const session = EduAI.readSession?.();
@@ -81,9 +97,32 @@
     } catch (error) { EduAI.toast(error.message, 'error'); }
   });
 
+  answersButton?.addEventListener('click', async () => {
+    answersButton.disabled = true;
+    const original = answersButton.textContent;
+    answersButton.textContent = 'Готовим ответы…';
+    try {
+      const data = await EduAI.api(`/api/v1/interactive/${encodeURIComponent(appId)}/answers`);
+      answersContent.innerHTML = EduAI.markdown(data.answers_markdown || 'Ответы не сформированы.');
+      EduAI.renderMath?.(answersContent);
+      answersPanel.hidden = false;
+      answersPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (error) {
+      EduAI.toast(error.message || 'Не удалось получить ответы', 'error');
+    } finally {
+      answersButton.disabled = false;
+      answersButton.textContent = original;
+    }
+  });
+
+  answersClose?.addEventListener('click', () => { answersPanel.hidden = true; });
+
   backButton.addEventListener('click', () => {
-    if (history.length > 1) history.back();
-    else location.href = '/';
+    const session = EduAI.readSession?.();
+    const role = session?.user?.role;
+    const target = role === 'student' ? '/student.html' : '/parent.html';
+    const chatId = app?.session_id ? `?chat=${encodeURIComponent(app.session_id)}` : '';
+    location.href = `${target}${chatId}`;
   });
 
   load();

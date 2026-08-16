@@ -33,6 +33,17 @@ class InteractiveAppTemporaryError(RuntimeError):
     """Temporary upstream failure that should not turn the whole tutor request into HTTP 502."""
 
 
+class InteractiveAnswerKey(BaseModel):
+    answers_markdown: str = Field(..., min_length=1, max_length=20000)
+
+
+class InteractiveGrade(BaseModel):
+    score: float = Field(default=0, ge=0)
+    max_score: float = Field(default=0, ge=0)
+    completed: bool = True
+    feedback: str = Field(default="", max_length=4000)
+
+
 _CREATE_RE = re.compile(
     r"\b(создай|сделай|сгенерируй|подготовь)\b.{0,80}\b"
     r"(интерактивн\w*\s+(?:тест|задани|упражнени|страниц|тренажер|тренажёр)|"
@@ -48,6 +59,94 @@ _NATURAL_EDIT_CONTEXT_RE = re.compile(
     r"сложн|вариант\w*\s+ответ|результат|прогресс|оформлен)\w*\b",
     re.IGNORECASE,
 )
+
+_VISUAL_REQUEST_RE = re.compile(
+    r"\b(стереометр\w*|геометр\w*|3d|фигур\w*|куб\w*|пирамид\w*|призм\w*|"
+    r"цилиндр\w*|конус\w*|сфер\w*|шар\w*|рисунк\w*|картин\w*|изображен\w*|"
+    r"схем\w*|диаграм\w*|график\w*|visual|diagram|figure|illustration|image)\b",
+    re.IGNORECASE,
+)
+
+
+_STEREOMETRY_RE = re.compile(
+    r"\b(стереометр\w*|3d|куб\w*|пирамид\w*|призм\w*|цилиндр\w*|конус\w*|сфер\w*|шар\w*)\b",
+    re.IGNORECASE,
+)
+
+
+
+def _stereometry_fallback_generation(request: str, title: str = "") -> InteractiveGeneration:
+    """Deterministic self-contained fallback when model 3D output misses quality requirements."""
+    safe_title = (title or "Стереометрия: интерактивная лаборатория").replace("<", "").replace(">", "")[:120]
+    html = r"""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#071326;--panel:#102743;--text:#eef7ff;--muted:#acc0d6;--accent:#62e3d2}*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:radial-gradient(circle at 10% 0,#15395f 0,transparent 35%),linear-gradient(145deg,#071326,#0a1830 55%,#0d2142);color:var(--text);min-height:100vh}.wrap{max-width:1160px;margin:auto;padding:20px}.grid{display:grid;grid-template-columns:1.2fr .8fr;gap:18px}.card{background:linear-gradient(180deg,rgba(20,49,83,.96),rgba(8,25,47,.97));border:1px solid rgba(120,195,255,.22);border-radius:22px;padding:20px;box-shadow:0 20px 55px rgba(0,0,0,.25)}.eyebrow{color:var(--accent);font-size:.78rem;letter-spacing:.1em;text-transform:uppercase;font-weight:800}h1{font-size:clamp(2rem,4vw,3.2rem);line-height:1.05;margin:.35rem 0 .8rem}h2{margin:.2rem 0 .7rem}.muted{color:var(--muted);line-height:1.6}.tabs{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}.tab,.btn{border:1px solid rgba(130,195,255,.24);background:#112b4a;color:var(--text);border-radius:999px;padding:9px 13px;font-weight:700;cursor:pointer}.tab.active,.btn.primary{background:linear-gradient(90deg,var(--accent),#78d9ff);color:#062037;border-color:transparent}.viewer{position:relative;background:#07172b;border:1px solid rgba(120,195,255,.18);border-radius:18px;overflow:hidden;touch-action:none}.viewer canvas{display:block;width:100%;height:420px}.hint{position:absolute;left:12px;bottom:12px;padding:8px 10px;background:rgba(3,14,29,.72);border-radius:10px;color:#cde7ff;font-size:.88rem}.controls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.control{padding:12px;border-radius:14px;background:#0b1d35}input[type=range]{width:100%}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.stat{text-align:center;background:#091b32;border-radius:12px;padding:10px}.stat b{display:block;color:#8ceadd;font-size:1.18rem}.note{border-left:3px solid var(--accent);padding:12px 14px;background:rgba(98,227,210,.08);border-radius:10px}.practice{margin-top:18px}.q{padding:13px 0;border-top:1px solid rgba(150,200,255,.12)}textarea{width:100%;margin-top:8px;padding:10px;border-radius:12px;border:1px solid rgba(130,195,255,.24);background:#07182c;color:var(--text)}.actions{display:flex;justify-content:flex-end;margin-top:14px}@media(max-width:840px){.grid{grid-template-columns:1fr}.viewer canvas{height:340px}.controls{grid-template-columns:1fr}}
+</style></head><body><main class="wrap"><section class="grid"><div class="card"><div class="eyebrow">EduAI · 3D-лаборатория</div><h1>Стереометрия: исследуем объёмные фигуры</h1><p class="muted">Поворачивайте модель мышью или пальцем, меняйте размер и сравнивайте фигуры. Ученическая версия не содержит ответов.</p><div class="tabs" id="tabs"></div><div class="viewer"><canvas id="scene" width="900" height="520"></canvas><div class="hint">Перетащите модель, чтобы повернуть</div></div><div class="controls"><div class="control"><b>Размер</b><input id="size" type="range" min="60" max="145" value="100"><span id="sizeValue">100</span></div><div class="control"><b>Масштаб</b><input id="zoom" type="range" min="70" max="145" value="100"></div></div><div class="stats"><div class="stat"><b id="faces">6</b>граней</div><div class="stat"><b id="edges">12</b>рёбер</div><div class="stat"><b id="verts">8</b>вершин</div></div></div><aside class="card"><div class="eyebrow">Теория</div><h2 id="theoryTitle">Куб</h2><p id="theoryText" class="muted"></p><div class="note"><b>Что исследовать</b><p id="legend" class="muted"></p></div><h2>Памятка</h2><p class="muted">Для объёма и площади поверхности важны линейные размеры. Меняйте параметр и наблюдайте модель.</p></aside></section><section class="card practice"><div class="eyebrow">Практика</div><h2>Задания</h2><div id="questions"></div><div class="actions"><button class="btn primary" id="submit">Сохранить ответы</button></div><div id="saved" class="muted"></div></section></main>
+<script>
+const shapes={cube:{name:'Куб',faces:6,edges:12,verts:8,theory:'Куб — прямоугольный параллелепипед, у которого все рёбра равны, а грани являются квадратами.',legend:'Найдите вершины, рёбра и грани. Обратите внимание на скрытые рёбра.'},pyramid:{name:'Пирамида',faces:5,edges:8,verts:5,theory:'Пирамида состоит из основания и боковых треугольных граней, сходящихся в вершине.',legend:'Найдите основание, вершину, боковые рёбра и высоту.'},prism:{name:'Призма',faces:6,edges:12,verts:8,theory:'У призмы два равных параллельных основания, соединённых боковыми гранями.',legend:'Сравните основания и найдите боковые рёбра.'},cylinder:{name:'Цилиндр',faces:3,edges:2,verts:0,theory:'Цилиндр имеет два равных круглых основания и боковую поверхность.',legend:'Найдите радиус основания и высоту.'},cone:{name:'Конус',faces:2,edges:1,verts:1,theory:'Конус имеет круглое основание и одну вершину.',legend:'Найдите вершину, радиус основания и высоту.'},sphere:{name:'Сфера',faces:1,edges:0,verts:0,theory:'Сфера — множество точек, равноудалённых от центра.',legend:'Найдите центр и представьте радиусы в разных направлениях.'}};
+const tabs=document.getElementById('tabs');let current='cube',rx=-.35,ry=.65,drag=false,lx=0,ly=0;Object.entries(shapes).forEach(([k,s])=>{const b=document.createElement('button');b.className='tab'+(k===current?' active':'');b.textContent=s.name;b.onclick=()=>{current=k;document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');sync();draw()};tabs.appendChild(b)});
+const c=document.getElementById('scene'),ctx=c.getContext('2d'),size=document.getElementById('size'),zoom=document.getElementById('zoom');function P(p){let[x,y,z]=p,cy=Math.cos(ry),sy=Math.sin(ry),cx=Math.cos(rx),sx=Math.sin(rx),x1=x*cy-z*sy,z1=x*sy+z*cy,y1=y*cx-z1*sx,z2=y*sx+z1*cx,sc=2*(+zoom.value/100),d=520/(520+z2);return[c.width/2+x1*sc*d,c.height/2+y1*sc*d]}function line(a,b,d=false){a=P(a);b=P(b);ctx.beginPath();ctx.moveTo(...a);ctx.lineTo(...b);ctx.strokeStyle=d?'rgba(120,190,255,.38)':'#62d8ff';ctx.lineWidth=3;ctx.setLineDash(d?[8,7]:[]);ctx.stroke();ctx.setLineDash([])}function label(t,p){p=P(p);ctx.fillStyle='#eaf7ff';ctx.font='bold 17px system-ui';ctx.fillText(t,p[0]+7,p[1]-7)}
+function draw(){ctx.clearRect(0,0,c.width,c.height);const s=+size.value;if(current==='cube'||current==='prism'){const z=current==='prism'?s*.65:s,pts=[[-s,-s,-z],[s,-s,-z],[s,s,-z],[-s,s,-z],[-s,-s,z],[s,-s,z],[s,s,z],[-s,s,z]],E=[[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];E.forEach((e,i)=>line(pts[e[0]],pts[e[1]],i<4));label('a',[0,-s,z])}else if(current==='pyramid'||current==='cone'){const n=current==='cone'?40:4,b=[];for(let i=0;i<n;i++){let a=2*Math.PI*i/n+(current==='pyramid'?Math.PI/4:0);b.push([Math.cos(a)*s,s*.55,Math.sin(a)*s])}for(let i=0;i<n;i++)line(b[i],b[(i+1)%n],i>n/2);for(let i=0;i<n;i++)if(current==='pyramid'||i%5===0)line(b[i],[0,-s,0]);label('h',[0,0,0]);label('r',[s*.5,s*.55,0])}else if(current==='cylinder'){const n=40,t=[],b=[];for(let i=0;i<n;i++){let a=2*Math.PI*i/n;t.push([Math.cos(a)*s,-s*.65,Math.sin(a)*s]);b.push([Math.cos(a)*s,s*.65,Math.sin(a)*s])}for(let i=0;i<n;i++){line(t[i],t[(i+1)%n],i>n/2);line(b[i],b[(i+1)%n],i>n/2)}[0,10,20,30].forEach(i=>line(t[i],b[i],i===20));label('h',[0,0,s]);label('r',[s*.5,s*.65,0])}else{for(let lat=-4;lat<=4;lat++){let r=Math.sqrt(Math.max(0,1-(lat/5)**2))*s,y=lat*s/5,prev=null;for(let i=0;i<=40;i++){let a=2*Math.PI*i/40,p=[Math.cos(a)*r,y,Math.sin(a)*r];if(prev)line(prev,p,i>20);prev=p}}label('r',[s*.55,0,0])}}
+function sync(){const s=shapes[current];theoryTitle.textContent=s.name;theoryText.textContent=s.theory;legend.textContent=s.legend;faces.textContent=s.faces;edges.textContent=s.edges;verts.textContent=s.verts;sizeValue.textContent=size.value}size.oninput=()=>{sync();draw()};zoom.oninput=draw;c.addEventListener('pointerdown',e=>{drag=true;lx=e.clientX;ly=e.clientY;c.setPointerCapture(e.pointerId)});c.addEventListener('pointermove',e=>{if(!drag)return;ry+=(e.clientX-lx)*.012;rx+=(e.clientY-ly)*.012;lx=e.clientX;ly=e.clientY;draw()});c.addEventListener('pointerup',()=>drag=false);c.addEventListener('pointercancel',()=>drag=false);
+const qs=['Опишите основные элементы выбранной фигуры.','Какие размеры нужны, чтобы вычислить её объём?','Как изменится объём, если увеличить линейный размер?','Чем выбранная фигура отличается от другой фигуры на вкладках?','Сформулируйте один собственный вопрос по модели.'];questions.innerHTML=qs.map((q,i)=>`<div class="q"><b>${i+1}. ${q}</b><textarea id="q${i+1}" rows="2" placeholder="Ваш ответ..."></textarea></div>`).join('');submit.onclick=()=>{const answers={};qs.forEach((_,i)=>answers['q'+(i+1)]=document.getElementById('q'+(i+1)).value);if(window.EduAIInteractive)EduAIInteractive.complete({completed:true,answers});saved.textContent='Ответы сохранены для проверки в EduAI.'};sync();draw();
+</script></body></html>"""
+    return InteractiveGeneration(title=safe_title, app_type="interactive_test", question_count=5, html_document=html)
+
+def _has_real_interaction(html: str) -> bool:
+    value = str(html or "")
+    return bool(
+        re.search(
+            r"addEventListener\s*\(\s*(?:\"|\')(?:pointer|mouse|touch|input|change)|onpointer|onmouse|ontouch",
+            value,
+            re.IGNORECASE,
+        )
+    )
+
+
+def _has_theory_section(html: str) -> bool:
+    value = re.sub(r"<[^>]+>", " ", str(html or ""))
+    return bool(
+        re.search(
+            r"\b(теори|объяснен|свойств|формул|определен|памятк|что такое|theory|explanation|properties)\w*",
+            value,
+            re.IGNORECASE,
+        )
+    )
+
+
+def _has_dimension_or_label_ui(html: str) -> bool:
+    value = str(html or "")
+    return bool(
+        re.search(
+            r"(?:type\s*=\s*(?:\"|\')range(?:\"|\')|slider|радиус|высот|ребр|сторон|длин|ширин|размер|radius|height|edge|dimension|label)",
+            value,
+            re.IGNORECASE,
+        )
+    )
+
+
+def _inject_visual_safety_css(html: str) -> str:
+    style = (
+        '<style data-eduai-visual-safety>'
+        'html,body{max-width:100%;overflow-x:hidden}'
+        'svg,canvas{display:block;max-width:100%!important;max-height:min(52vh,520px)!important;height:auto}'
+        'img{max-width:100%;height:auto}'
+        '.eduai-visual,.viewer,.scene,.canvas-wrap,.model-viewer,[class*=viewer],[class*=scene]{max-width:100%;overflow:hidden}'
+        '@media(max-width:640px){svg,canvas{max-height:44vh!important}}'
+        '</style>'
+    )
+    if 'data-eduai-visual-safety' in html:
+        return html
+    if re.search(r"</head\s*>", html, re.IGNORECASE):
+        return re.sub(r"</head\s*>", style + "\n</head>", html, count=1, flags=re.IGNORECASE)
+    return style + html
+
+def _has_embedded_visual(html: str) -> bool:
+    value = str(html or "")
+    return bool(re.search(r"<\s*svg\b|<\s*canvas\b|<\s*img\b[^>]*\bsrc\s*=\s*['\"](?:data:|blob:)", value, re.I))
+
+def _has_broken_img_placeholder(html: str) -> bool:
+    return bool(re.search(r"<\s*img\b(?![^>]*\bsrc\s*=)[^>]*>", str(html or ""), re.I))
 
 _CSP = (
     "default-src 'none'; img-src data: blob:; media-src data: blob:; "
@@ -330,6 +429,18 @@ def sanitize_interactive_html(value: str) -> str:
     return html
 
 
+_EMBEDDED_SOLUTION_RE = re.compile(
+    r"(?:\b(?:const|let|var)\s+(?:correctAnswers?|answerKey|solutionKey)\b|"
+    r"\b(?:correctAnswer|correct_answer|answerKey|solutionKey)\s*[:=])",
+    re.IGNORECASE,
+)
+
+
+def contains_embedded_solution_data(html: str) -> bool:
+    """Detect obvious client-side answer keys that a learner could inspect."""
+    return bool(_EMBEDDED_SOLUTION_RE.search(str(html or "")))
+
+
 def _context_text(
     context: Optional[ResolvedContext],
     attachment_text: str = "",
@@ -401,8 +512,142 @@ async def _generate(
     parsed = response.choices[0].message.parsed
     if not parsed:
         raise RuntimeError("ИИ не вернул интерактивное приложение")
+
+    if contains_embedded_solution_data(parsed.html_document):
+        correction = (
+            user_text
+            + "\n\nSECURITY CORRECTION: The previous draft embedded an answer key in learner-side "
+              "HTML/JavaScript. Regenerate the app with questions and input controls only. "
+              "Do not include correctAnswer, correctAnswers, answerKey, solutionKey or any "
+              "equivalent solution data. Submit learner responses through EduAIInteractive.complete."
+        )
+        retry = await openai_client.beta.chat.completions.parse(
+            model="gpt-4o",
+            temperature=0.2,
+            messages=[
+                {"role": "system", "content": _generation_prompt(role)},
+                {"role": "user", "content": correction},
+            ],
+            response_format=InteractiveGeneration,
+        )
+        parsed = retry.choices[0].message.parsed
+        if not parsed or contains_embedded_solution_data(parsed.html_document):
+            raise ValueError("Интерактивное приложение содержит встроенные ответы и не может быть опубликовано")
+
     parsed.html_document = sanitize_interactive_html(parsed.html_document)
+
+    visual_required = bool(_VISUAL_REQUEST_RE.search(str(request or "")))
+    stereometry_required = bool(_STEREOMETRY_RE.search(str(request or "")))
+    visual_missing = visual_required and not _has_embedded_visual(parsed.html_document)
+    broken_visual = _has_broken_img_placeholder(parsed.html_document)
+    interaction_missing = stereometry_required and not _has_real_interaction(parsed.html_document)
+    theory_missing = stereometry_required and not _has_theory_section(parsed.html_document)
+    dimensions_missing = stereometry_required and not _has_dimension_or_label_ui(parsed.html_document)
+    if visual_missing or broken_visual or interaction_missing or theory_missing or dimensions_missing:
+        best = parsed
+        for attempt in range(2):
+            correction = (
+                user_text
+                + "\n\nQUALITY REPAIR PASS " + str(attempt + 1) + ": The previous draft did not meet the requested interactive visual quality. "
+                  "Regenerate the COMPLETE HTML, not a patch. Do not use remote or relative image URLs. "
+                  "For stereometry create a compact educational 3D lab: theory, a bounded viewer, real pointer/touch rotation, "
+                  "clear element/dimension labels, reset/controls, responsive layout and meaningful practice. "
+                  "Use inline SVG/canvas/CSS only. Do not make one oversized static drawing. "
+                  "The learner HTML must contain no correct answers or solution keys."
+            )
+            try:
+                retry = await openai_client.beta.chat.completions.parse(
+                    model="gpt-4o",
+                    temperature=0.22 if attempt else 0.28,
+                    messages=[
+                        {"role": "system", "content": _generation_prompt(role)},
+                        {"role": "user", "content": correction},
+                    ],
+                    response_format=InteractiveGeneration,
+                )
+            except (APITimeoutError, APIConnectionError) as exc:
+                logger.warning("Interactive quality repair attempt %s failed upstream: %s", attempt + 1, exc)
+                continue
+            repaired = retry.choices[0].message.parsed
+            if not repaired or contains_embedded_solution_data(repaired.html_document):
+                continue
+            repaired.html_document = sanitize_interactive_html(repaired.html_document)
+            best = repaired
+            repaired_ok = (
+                not (visual_required and not _has_embedded_visual(repaired.html_document))
+                and not _has_broken_img_placeholder(repaired.html_document)
+                and not (stereometry_required and not _has_real_interaction(repaired.html_document))
+                and not (stereometry_required and not _has_theory_section(repaired.html_document))
+                and not (stereometry_required and not _has_dimension_or_label_ui(repaired.html_document))
+            )
+            if repaired_ok:
+                parsed = repaired
+                break
+        else:
+            if stereometry_required:
+                logger.warning("Model failed stereometry quality validation; using deterministic interactive fallback")
+                parsed = _stereometry_fallback_generation(request, getattr(best, "title", ""))
+                parsed.html_document = sanitize_interactive_html(parsed.html_document)
+            else:
+                logger.warning("Interactive app missed visual quality heuristics; publishing the safest repaired candidate")
+                parsed = best
+
+    parsed.html_document = _inject_visual_safety_css(parsed.html_document)
     parsed.html_document = inject_interactive_math_renderer(parsed.html_document)
+    return parsed
+
+
+async def generate_teacher_answer_key(*, title: str, request: str, html_document: str) -> str:
+    """Generate an answer key on demand for an authorized Teacher; never store it in learner HTML."""
+    prompt = (
+        "You are generating a private answer key for a Teacher in EduAI. "
+        "Analyze the learner-facing interactive assignment below. Return concise Markdown with "
+        "answers in question order and short reasoning when useful. This response is private and "
+        "must never be embedded into the learner HTML. If a task is open-ended, provide evaluation "
+        "criteria instead of inventing a single exact answer. Respond in the language of the assignment."
+    )
+    response = await openai_client.beta.chat.completions.parse(
+        model="gpt-4o",
+        temperature=0.1,
+        messages=[
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": f"TITLE: {title}\nORIGINAL REQUEST: {request}\n\nLEARNER HTML:\n{html_document[:160000]}"},
+        ],
+        response_format=InteractiveAnswerKey,
+    )
+    parsed = response.choices[0].message.parsed
+    if not parsed:
+        raise RuntimeError("Не удалось сформировать ответы")
+    return parsed.answers_markdown.strip()
+
+
+async def grade_interactive_submission(*, title: str, request: str, html_document: str, answers: Dict[str, Any]) -> InteractiveGrade:
+    """Grade learner answers server-side without exposing a solution key to the browser."""
+    prompt = (
+        "You are the private server-side grader for an EduAI interactive assignment. "
+        "Infer the expected answers from the assignment itself and evaluate the learner response. "
+        "Return a numeric score and max_score. Do NOT reveal correct answers or a solution key in feedback; "
+        "feedback may only state what concept needs more attention or that the work was completed well. "
+        "For open-ended tasks, grade against reasonable educational criteria. Respond in the assignment language."
+    )
+    response = await openai_client.beta.chat.completions.parse(
+        model="gpt-4o",
+        temperature=0.05,
+        messages=[
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": (
+                f"TITLE: {title}\nORIGINAL REQUEST: {request}\n"
+                f"LEARNER HTML:\n{html_document[:150000]}\n\n"
+                f"LEARNER ANSWERS JSON:\n{json.dumps(answers, ensure_ascii=False)[:30000]}"
+            )},
+        ],
+        response_format=InteractiveGrade,
+    )
+    parsed = response.choices[0].message.parsed
+    if not parsed:
+        raise RuntimeError("Не удалось проверить интерактивное задание")
+    if parsed.max_score and parsed.score > parsed.max_score:
+        parsed.score = parsed.max_score
     return parsed
 
 

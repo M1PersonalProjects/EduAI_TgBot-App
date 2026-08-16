@@ -46,7 +46,7 @@ def skip_to_ai_button():
     return [InlineKeyboardButton(text="🤖 Пропустить и спросить ИИ", callback_data="skip_to_question")]
 
 
-@router.message(F.text == "📚 Каталог учебников")
+@router.message(F.text.in_({"📚 Учебники", "📚 Каталог учебников"}))
 async def start_book_filter(message: Message, state: FSMContext):
     await state.clear()
     

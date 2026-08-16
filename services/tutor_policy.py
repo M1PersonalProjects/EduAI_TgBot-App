@@ -118,21 +118,56 @@ CURRENT TASK-SPECIFIC RULES: TEACHER ASSIGNMENT GENERATION
 
 INTERACTIVE_TASK_RULES = r"""
 CURRENT TASK-SPECIFIC RULES: INTERACTIVE EDUCATIONAL APP GENERATION
-Create one self-contained educational HTML document with inline CSS and JavaScript.
-The app must work offline and on mobile. It must render its own questions, answer controls,
-progress, feedback, and final result inside the document, so the exported .html remains
-useful when opened outside EduAI. Do not make core behavior depend on any host bridge.
-Do not use external URLs, remote scripts, remote stylesheets, forms, iframes, popups,
-navigation, network APIs, cookies, localStorage, sessionStorage, IndexedDB, or browser APIs
-that can communicate outside the document. Do not try to access window.parent, window.top,
-opener, or the host EduAI DOM/session. When the learner obtains a result, optionally call
-EduAIInteractive.complete({score, max_score, completed, answers}) only if that helper is
-available; this bridge is for result reporting only. Keep score/max_score numeric.
+Create one polished, self-contained educational HTML document with inline CSS and JavaScript.
+The result must feel like a finished interactive EduAI mini-application, NOT a worksheet pasted into a white page.
+Use a modern visual system: layered background/gradient, cohesive palette, strong hierarchy, compact readable cards,
+responsive layout, accessible contrast, clear controls, progress/navigation, hover/focus states and subtle animation.
+The app must remain comfortable on desktop and mobile and must never overflow horizontally.
+
+PEDAGOGICAL STRUCTURE
+- Include a concise THEORY / EXPLANATION section before or alongside the practice when the request is about a concept.
+- Explain what the learner is looking at and what can be manipulated. Prefer short educational callouts over long walls of text.
+- The learner-facing exercise must contain tasks but must NOT contain correct answers or solution keys.
+- Use meaningful interaction, not decorative animation. Interactive controls should help the learner inspect, compare, change,
+  measure, classify, calculate or answer something.
+
+VISUAL / DIAGRAM / 3D REQUIREMENTS
+- When the request mentions figures, geometry, stereometry, graphs, diagrams, maps, pictures, illustrations, schemes or another
+  visual concept, the app is incomplete unless actual self-contained visuals are present and usable.
+- Never rely on remote or relative images. Use inline SVG, canvas and CSS only.
+- For stereometry / 3D geometry, DO NOT create a single giant static SVG picture. Build an interactive model viewer.
+  The learner must be able to rotate the model by mouse/touch drag (or equivalent controls), reset the view, and inspect
+  clearly labeled dimensions/elements. Provide a compact control panel and a legend.
+- For a cube/prism/pyramid/cylinder/cone/sphere, show recognizable perspective, hidden edges where useful, vertices/edges/faces
+  or radius/height labels as appropriate. If dimensions are part of the topic, let the learner change at least one dimension
+  with a slider/input and update the displayed values/model in real time.
+- A stereometry app should preferably include multiple selectable figures/tabs/cards when the request is broad (for example
+  "3D figures"), rather than one oversized figure.
+- SVG must have an appropriate viewBox and preserveAspectRatio. Canvas/SVG visuals must be constrained inside a dedicated
+  viewer card and should normally stay within about 320-520 CSS px in height on desktop and fit the viewport on mobile.
+- Add pointer/mouse/touch interaction for manipulable visual models. Do not claim that an object can be rotated if the code
+  does not actually implement rotation.
+
+LEARNER-SAFE CONTENT
+- The learner-facing HTML contains QUESTIONS ONLY. Never embed correct answers, answer keys, solutions, teacher notes,
+  hidden solution arrays, correctAnswer/correctAnswers, answerKey, solutionKey, or equivalent data in HTML, CSS,
+  JavaScript, data-* attributes, comments, or visually hidden elements.
+- Do not reveal a correct answer after a click, after submission, in feedback, or in a final results screen. You may
+  acknowledge that an answer was saved/completed, but correctness is evaluated by EduAI outside the learner document.
+- Collect learner responses under stable question ids (q1, q2, ...). On submit call
+  EduAIInteractive.complete({completed: true, answers: {...}}) when available. Do not compute a trusted score client-side.
+- The exported .html must remain useful offline as an exercise even when the EduAI bridge is unavailable.
+
+SECURITY / SELF-CONTAINMENT
+Do not use external URLs, remote scripts, remote stylesheets, forms, iframes, popups, navigation, network APIs, cookies,
+localStorage, sessionStorage, IndexedDB, or browser APIs that can communicate outside the document. Do not access
+window.parent, window.top, opener, or the host EduAI DOM/session. Do not make core interaction depend on a host bridge.
+
 MATH OUTPUT
-- Use canonical LaTeX for mathematical expressions, preferably \(...\) inline and \[...\] for display math.
-- Never intentionally show LaTeX command text such as \frac, \sqrt, \times or \text to the learner.
-- EduAI injects a trusted offline math renderer after generation. Do not load KaTeX, MathJax,
-  fonts, scripts, or styles from external URLs yourself.
+- Use canonical LaTeX for mathematical expressions, preferably \\(...\\) inline and \\[...\\] for display math.
+- Never intentionally show LaTeX command text such as \\frac, \\sqrt, \\times or \\text to the learner.
+- EduAI injects a trusted offline math renderer after generation. Do not load KaTeX, MathJax, fonts, scripts or styles
+  from external URLs yourself.
 """
 
 
@@ -352,6 +387,8 @@ TASK_GRADING_RULES = r"""
 CURRENT TASK-SPECIFIC RULES: EDUCATIONAL ANSWER CHECKING
 Compare the Student answer with the supplied reference answer and task meaning.
 Accept mathematically or semantically equivalent answers when appropriate.
+Do not reveal, quote, or reconstruct the private reference answer in Student feedback.
+For an incorrect attempt, give a useful hint about the mistake or next step without exposing the solution.
 Return constructive Russian feedback and the structured fields required by the caller.
 """
 

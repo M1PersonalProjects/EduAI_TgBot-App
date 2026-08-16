@@ -348,6 +348,25 @@ def task_attachment_dto(row: Any) -> dict[str, Any]:
     }
 
 
+SENSITIVE_STUDENT_TASK_KEYS = {
+    "reference_answer", "correct_answer", "answer_key", "answerKey",
+    "solution", "solutions", "teacher_answer", "ai_instructions",
+}
+
+
+def student_safe_task_payload(value: Any) -> Any:
+    """Recursively remove private answer/Teacher-only fields from Student API payloads."""
+    if isinstance(value, dict):
+        return {
+            key: student_safe_task_payload(item)
+            for key, item in value.items()
+            if key not in SENSITIVE_STUDENT_TASK_KEYS
+        }
+    if isinstance(value, list):
+        return [student_safe_task_payload(item) for item in value]
+    return value
+
+
 def student_task_attachment_dto(row: Any) -> dict[str, Any]:
     """Public attachment DTO. Never expose AI-context metadata to students."""
     return {
@@ -456,7 +475,7 @@ async def student_dashboard(user=Depends(require_roles("student"))):
     for item in tasks:
         row = dict(item)
         row["topic_context"] = parse_json(row["topic_context"])
-        row["questions_json"] = parse_json(row["questions_json"])
+        row["questions_json"] = student_safe_task_payload(parse_json(row["questions_json"]))
         row["student_answers_json"] = parse_json(row["student_answers_json"])
         row["attachments"] = attachments_by_task.get(
             row["task_id"],

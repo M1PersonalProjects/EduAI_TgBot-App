@@ -44,6 +44,22 @@ async def exit_book_callback(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer("✅ Контекст учебника очищен. Задавайте любой вопрос.")
 
 
+@router.message(F.text == "🤖 ИИ-помощник")
+async def enter_general_ai_helper(message: Message, state: FSMContext):
+    """Open free tutor mode without forcing textbook filters."""
+    try:
+        session = await ensure_telegram_session(message.from_user.id)
+        await exit_book_mode(message.from_user.id, str(session["session_id"]))
+    except LookupError:
+        pass
+    await state.clear()
+    await message.answer(
+        "🤖 ИИ-помощник готов. Задайте вопрос или пришлите фото/документ. "
+        "Если в сообщении вы явно укажете учебник, страницу или параграф, "
+        "ИИ сначала постарается использовать этот материал EduAI, а при нехватке данных — дополнительные источники."
+    )
+
+
 @router.message(Command("new_chat"))
 async def new_bot_chat(message: Message):
     session = await ensure_telegram_session(message.from_user.id)

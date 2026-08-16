@@ -40,6 +40,7 @@ from services.conversation_context import (
     context_activated_at,
     ensure_telegram_session_row,
     explicit_attachment_reference,
+    explicit_book_reference,
     explicit_mixed_source_request,
     filter_history_since_activation,
     normalize_mode,
@@ -467,6 +468,11 @@ async def respond(
             locked_context = context
         elif locked_context:
             context = locked_context
+        elif explicit_book_reference(clean_text):
+            # Free AI-helper mode still honors an explicit natural-language textbook
+            # reference (e.g. "in textbook X, page 42"). This context applies to
+            # the current request without silently locking future messages.
+            context = await resolve_context(conn, clean_text, None)
         else:
             context = None
 
@@ -732,6 +738,30 @@ async def respond(
             "interactive_error": True,
             "retryable": True,
         }
+    except ValueError as exc:
+        # Validation failures in generated interactive content are user-facing generation
+        # failures, not a backend outage. Keep the chat alive instead of surfacing HTTP 502.
+        logger.warning("Interactive app validation rejected generated content: %s", exc)
+        reply = canonicalize_message(
+            "Не удалось подготовить интерактивное приложение в нужном качестве. "
+            "Попробуйте повторить запрос или уточнить, какие элементы должны быть интерактивными."
+        )
+        ai_message_id = await _save_guard_refusal(
+            user_id=user_id,
+            session_id=session["session_id"],
+            refusal_message=reply,
+            message_source=message_source,
+        )
+        return {
+            "message_id": ai_message_id,
+            "session_id": str(session["session_id"]),
+            "sender": "ai",
+            "message_text": reply,
+            "context": context.to_dict() if context else None,
+            "book_mode": bool(locked_context),
+            "interactive_generation_failed": True,
+        }
+
     if interactive_app:
         reply = canonicalize_message(interactive_card_text(interactive_app))
         if locked_context:

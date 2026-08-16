@@ -31,3 +31,19 @@ def test_manual_task_has_distinct_fields():
     fields = ParentTaskRequest.model_fields
     assert "parent_comment" in fields
     assert "ai_instructions" in fields
+
+
+def test_student_payload_strips_private_answer_keys_recursively():
+    from api.routers.platform import student_safe_task_payload
+    value = {
+        "title": "Тест",
+        "reference_answer": "42",
+        "questions": [
+            {"question_text": "Сколько?", "correct_answer": "42"},
+            {"question_text": "Почему?", "hint": "Подумай"},
+        ],
+    }
+    safe = student_safe_task_payload(value)
+    assert "reference_answer" not in safe
+    assert "correct_answer" not in safe["questions"][0]
+    assert safe["questions"][1]["hint"] == "Подумай"
