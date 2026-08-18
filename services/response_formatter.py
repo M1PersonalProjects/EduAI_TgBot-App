@@ -6,6 +6,8 @@
 """
 from __future__ import annotations
 
+import matplotlib
+import matplotlib.pyplot as plt
 import io
 import re
 from dataclasses import dataclass
@@ -251,24 +253,31 @@ def telegram_safe_text(value: object) -> str:
 
 
 def render_formula_png(expr: str) -> bytes | None:
-    """Рендерер PNG, работающий по принципу «сделаем всё возможное». Возвращает None, если matplotlib/mathtext не может выполнить рендеринг."""
+    """Рендерер PNG, работающий по принципу «сделаем всё возможное». 
+    Возвращает None, если matplotlib/mathtext не может выполнить рендеринг.
+    """
     try:
-        import matplotlib
         matplotlib.use("Agg")
-        from matplotlib import pyplot as plt
 
         fig = plt.figure(figsize=(0.01, 0.01), dpi=180)
         fig.patch.set_alpha(0)
+        
         source = normalize_latex_transport(expr)
         text = fig.text(0.02, 0.5, f"${source.strip()}$", fontsize=18, va="center")
+        
         fig.canvas.draw()
-        bbox = text.get_window_extent(renderer=fig.canvas.get_renderer()).expanded(1.08, 1.35)
+        renderer = fig.canvas.get_renderer()
+        
+        bbox = text.get_window_extent(renderer=renderer).expanded(1.08, 1.35)
         width, height = bbox.width / fig.dpi, bbox.height / fig.dpi
+        
         fig.set_size_inches(max(width, 0.4), max(height, 0.35))
         text.set_position((0.02, 0.5))
+        
         buffer = io.BytesIO()
         fig.savefig(buffer, format="png", transparent=True, bbox_inches="tight", pad_inches=0.08)
         plt.close(fig)
+        
         return buffer.getvalue()
     except Exception:
         return None
