@@ -273,8 +273,6 @@ async def save_result(
         )
         if not assignment:
             raise HTTPException(status_code=404, detail="Это интерактивное задание не назначено Ученику")
-        # Never trust a score supplied by learner-side JavaScript. Grade on the server
-        # from the question HTML and submitted answers, where no answer key is exposed.
         try:
             grade = await grade_interactive_submission(
                 title=assignment["title"],

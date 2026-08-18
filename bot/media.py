@@ -45,8 +45,6 @@ async def _store_for_chat(data: bytes, filename: str, mime_type: str, owner_id: 
     except AttachmentError:
         raise
     except Exception:
-        # Storage is important in production, but a storage/mock failure must not
-        # make an otherwise readable Telegram attachment unusable.
         return None
 
 

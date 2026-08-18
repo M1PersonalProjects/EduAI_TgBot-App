@@ -102,7 +102,6 @@ class GenerateParentTaskRequest(BaseModel):
         default="",
         max_length=4000,
     )
-    # Backward-compatible input only. New clients must use ai_instructions.
     instructions: Optional[str] = Field(
         default=None,
         max_length=4000,

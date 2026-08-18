@@ -1,9 +1,8 @@
-"""Canonical Markdown+LaTeX formatting helpers for EduAI clients.
+"""Канонические помощники для форматирования Markdown+LaTeX для клиентов EduAI.
 
-The database/API keeps canonical Markdown + LaTeX so WebApp clients can render
-mathematics properly. Telegram is the exception: raw TeX must never be sent to
-users, therefore this module converts formulas to readable Unicode text or a
-rendered image.
+База данных и API поддерживают канонический формат Markdown + LaTeX, чтобы клиенты WebApp могли корректно отображать математические формулы.  Исключение составляет Telegram: необработанный TeX ни в коем случае не должен отправляться пользователям.
+Поэтому этот модуль преобразует формулы в читаемый текст в кодировке Unicode или в
+отрендеренное изображение.
 """
 from __future__ import annotations
 
@@ -12,9 +11,6 @@ import re
 from dataclasses import dataclass
 from typing import List, Literal
 
-# IMPORTANT: this is a raw Python string, therefore LaTeX commands below use
-# ONE backslash. Writing ``\\frac`` here would literally instruct the model to
-# emit two backslashes and would leak transport escaping into the UI.
 MATH_FORMATTING_RULES = r"""
 MATHEMATICAL OUTPUT RULES
 - Keep educational responses in Markdown with valid canonical LaTeX for mathematical notation.
@@ -32,7 +28,7 @@ MATHEMATICAL OUTPUT RULES
 
 
 def canonicalize_message(value: object) -> str:
-    """Normalize transport whitespace without destroying Markdown or LaTeX."""
+    """Нормализовать пробелы в переносах, не нарушая Markdown или LaTeX."""
     return str(value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
 
 
@@ -43,8 +39,6 @@ class TelegramPart:
     display: bool = False
 
 
-# Common school/university math commands. Keeping an explicit allow-list avoids
-# treating Windows paths such as C:\\Users\\student as mathematics.
 _MATH_COMMANDS = (
     "frac", "dfrac", "tfrac", "sqrt", "times", "cdot", "div", "pm", "mp",
     "le", "leq", "ge", "geq", "ne", "neq", "approx", "equiv", "sim", "simeq",
@@ -146,11 +140,9 @@ def _latex_fallback(expr: str) -> str:
         r"\Psi": "Ψ", r"\Omega": "Ω", r"\ldots": "…", r"\cdots": "⋯", r"\vdots": "⋮", r"\ddots": "⋱",
         r"\qquad": "  ", r"\quad": " ",
     }
-    # Longest command first (e.g. \iiint before \int).
     for source in sorted(replacements, key=len, reverse=True):
         text = text.replace(source, replacements[source])
 
-    # Common function names should remain readable, just without TeX slash.
     text = re.sub(r"\\(sin|cos|tan|tg|cot|ctg|log|ln|lg|exp|lim|min|max)\b", r"\1", text)
     text = text.replace(r"\\", "\n")
     text = re.sub(r"\\begin\{(?:cases|aligned|align\*?|matrix|pmatrix|bmatrix|vmatrix)\}|\\end\{(?:cases|aligned|align\*?|matrix|pmatrix|bmatrix|vmatrix)\}", "", text)
@@ -159,8 +151,6 @@ def _latex_fallback(expr: str) -> str:
     text = text.replace(r"\!", "")
     text = _simple_scripts(text)
 
-    # Absolute last-resort safety. At this point a remaining command is display
-    # noise, not useful text. Preserve the argument braces content below.
     text = re.sub(r"\\[A-Za-z]+\*?", "", text)
     text = text.replace("{", "").replace("}", "")
     return re.sub(r"[ \t]{2,}", " ", text).strip()
@@ -194,8 +184,6 @@ def telegram_parts(value: object) -> List[TelegramPart]:
     for match in code_re.finditer(text):
         if match.start() > cursor:
             parts.extend(_math_parts_segment(normalize_latex_transport(text[cursor:match.start()])))
-        # Keep code as text here. telegram_safe_text is still applied at the final
-        # send boundary so TeX accidentally wrapped as code cannot leak raw.
         parts.append(TelegramPart("text", match.group(0)))
         cursor = match.end()
     if cursor < len(text):
@@ -240,8 +228,6 @@ def _bare_parts(text: str) -> List[TelegramPart]:
         stripped = line.rstrip("\r\n")
         suffix = line[len(stripped):]
         if _looks_like_bare_formula(stripped):
-            # Bare TeX mixed with prose is converted to readable text. Rendering
-            # the entire prose line as a formula image is both ugly and fragile.
             result.append(TelegramPart("text", _latex_fallback(stripped) + suffix))
         else:
             result.append(TelegramPart("text", stripped + suffix))
@@ -253,7 +239,7 @@ def telegram_formula_fallback(expr: str) -> str:
 
 
 def telegram_safe_text(value: object) -> str:
-    """Final Telegram text firewall: recognized raw TeX never reaches users."""
+    """Финальный текстовый файрвол Telegram: распознанный необработанный TeX никогда не доходит до пользователей."""
     work = canonicalize_message(value)
     if contains_raw_latex(work):
         work = "\n".join(
@@ -265,7 +251,7 @@ def telegram_safe_text(value: object) -> str:
 
 
 def render_formula_png(expr: str) -> bytes | None:
-    """Best-effort PNG renderer. Returns None when matplotlib/mathtext cannot render."""
+    """Рендерер PNG, работающий по принципу «сделаем всё возможное». Возвращает None, если matplotlib/mathtext не может выполнить рендеринг."""
     try:
         import matplotlib
         matplotlib.use("Agg")

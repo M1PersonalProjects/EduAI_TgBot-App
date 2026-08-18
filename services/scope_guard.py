@@ -23,7 +23,6 @@ class ScopeGuardResult:
     refusal_message: Optional[str] = None
 
 
-# Kept for import compatibility. They are intentionally not an allowlist anymore.
 EDUCATIONAL_PATTERNS: tuple[re.Pattern[str], ...] = ()
 OUT_OF_SCOPE_PATTERNS: tuple[re.Pattern[str], ...] = ()
 
@@ -86,8 +85,6 @@ def _quick_check(
 ) -> ScopeGuardResult:
     combined = f"{message_text or ''}\n{attachment_text or ''}".strip()
 
-    # Empty visible text is not a refusal condition. A photo/document may contain
-    # the complete request and the multimodal tutor must inspect it first.
     if not combined:
         return ScopeGuardResult(True, "No text to classify; allow attachment analysis.")
 

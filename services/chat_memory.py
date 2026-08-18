@@ -113,15 +113,13 @@ def attachment_score(row: Dict[str, Any], query: str, *, newest_rank: int = 0) -
 
 
 def _json_safe_value(value: Any) -> Any:
-    """Return a JSON-safe representation for persisted session memory.
+    """Возвращает JSON-безопасное представление для сохраняемой памяти сеанса.
 
-    Database values are already primitive, but AsyncMock-based tests can expose
-    awaitables or mock objects through unstubbed calls. Those values are not
-    factual session state and must never be persisted.
+    Значения базы данных уже являются примитивными, но тесты на основе AsyncMock могут отображать
+    ожидаемые или фиктивные объекты с помощью незаполненных вызовов. Эти значения не
+    являются фактическим состоянием сеанса и никогда не должны сохраняться.
     """
     if inspect.isawaitable(value):
-        # A coroutine created by an unstubbed AsyncMock must not leak and cause
-        # RuntimeWarning: coroutine was never awaited.
         close = getattr(value, "close", None)
         if callable(close):
             close()

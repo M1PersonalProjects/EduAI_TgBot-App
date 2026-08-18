@@ -156,8 +156,6 @@ async def send_message(
     stored_attachment_id = None
     if attachment is not None:
         try:
-            # Store once in the existing attachment infrastructure. The stored
-            # original can later be reopened by the same chat session.
             stored = await save_upload(upload=attachment, owner_id=user["tg_id"])
             stored_attachment_id = stored.attachment_id
             stored_row = await get_attachment(stored.attachment_id)

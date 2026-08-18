@@ -65,9 +65,7 @@ async def answer_plain(
             "Попробуйте повторить или немного переформулировать вопрос."
         )
 
-    # ---------------------------------------------------------
     # Ordinary text
-    # ---------------------------------------------------------
 
     if not contains_raw_latex(raw_text):
         chunks = [
@@ -104,9 +102,7 @@ async def answer_plain(
 
         return sent
 
-    # ---------------------------------------------------------
     # Markdown / LaTeX-aware response
-    # ---------------------------------------------------------
 
     parts = telegram_parts(raw_text)
 
@@ -152,9 +148,7 @@ async def answer_plain(
                     ("text", content, "")
                 )
 
-    # ---------------------------------------------------------
     # Split large text parts
-    # ---------------------------------------------------------
 
     expanded = []
 
@@ -174,9 +168,7 @@ async def answer_plain(
                 (kind, payload, extra)
             )
 
-    # ---------------------------------------------------------
     # Absolute last-resort fallback
-    # ---------------------------------------------------------
 
     if not expanded:
         expanded = [
@@ -214,7 +206,6 @@ async def answer_plain(
         else:
             safe_payload = telegram_safe_text(payload).strip()
 
-            # Telegram API must never receive blank text.
             if not safe_payload:
                 continue
 

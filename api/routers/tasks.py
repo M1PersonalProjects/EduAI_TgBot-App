@@ -36,11 +36,11 @@ class GenerateTaskRequest(BaseModel):
 
 @router.get("/generate/{tg_id}", response_model=TaskGenerationResponse)
 async def generate_task_legacy(tg_id: int):
-    """Backward-compatible quest generation used by the Telegram client/tests.
+    """Генерация квестов с обратной совместимостью, используемая клиентом/тестами Telegram. 
 
-    This endpoint intentionally remains GET because existing clients use it. New
-    parent-directed generation with an explicit book/topic uses the POST endpoint
-    below and the whole-book context resolver.
+    Эта конечная точка намеренно оставлена с методом GET, поскольку её используют существующие клиенты. Новое
+    при родительском управлении с явным указанием книги/темы используется конечная точка POST,
+    описанная ниже, и контекстный преобразователь для всей книги.
     """
     async with db.pool.acquire() as conn:
         student = await conn.fetchrow(

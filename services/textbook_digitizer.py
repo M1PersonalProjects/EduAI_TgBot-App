@@ -30,11 +30,6 @@ async def digitize_pdf_path(
     progress_callback: Optional[ProgressCallback] = None,
     reset_pages: bool = True,
 ) -> dict:
-    """Digitize one PDF using the existing page-by-page EduAI pipeline.
-
-    This is the single reusable implementation for both the legacy single upload
-    endpoint and the persistent background queue.
-    """
     callback = progress_callback or _noop_progress
     doc = None
     try:

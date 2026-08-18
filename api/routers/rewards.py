@@ -128,8 +128,7 @@ async def purchase_reward(payload: StudentRewardPurchase):
                     detail="Награда не найдена"
                 )
             
-            # Условное UPDATE одновременно проверяет баланс и блокирует гонку
-            # между двумя параллельными покупками.
+
             new_balance = await conn.fetchval(
                 """
                 UPDATE gamification
@@ -145,7 +144,6 @@ async def purchase_reward(payload: StudentRewardPurchase):
                     detail="Недостаточно монет для покупки"
                 )
             
-            # Записываем операцию (опционально)
             await conn.execute(
                 """
                 INSERT INTO reward_purchases (student_id, reward_id, cost_coins)

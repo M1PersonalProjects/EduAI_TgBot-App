@@ -331,9 +331,6 @@ def should_use_external_sources(
     if _is_casual_conversation(q):
         return False
 
-    # Book Mode is primary, not a hard boundary. If the active excerpt is tiny or
-    # lexically unrelated to a specific educational query, a supplemental search
-    # can improve the answer. Generic conversational words are ignored.
     if context is not None:
         material = _text(context.content)
         if len(material) < 700:
@@ -359,9 +356,6 @@ def should_use_external_sources(
     if database_context and len(database_context.strip()) >= 350:
         return False
 
-    # If an educational/fact-learning query has no useful local source, a web
-    # supplement is appropriate. Ordinary conversation still stays fast and does
-    # not trigger search just because the database returned nothing.
     educational_cues = (
         "задач", "задани", "учеб", "домаш", "урок", "экзам", "теорем",
         "формул", "математ", "физик", "хими", "биолог", "истори", "литератур",
