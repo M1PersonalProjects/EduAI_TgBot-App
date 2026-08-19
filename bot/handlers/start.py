@@ -3,6 +3,7 @@ from config import settings
 
 from aiogram import Router, F
 from aiogram.filters import CommandStart, CommandObject, Command
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from database import db
 from bot.keyboards import (
@@ -68,7 +69,9 @@ NEW_USER_START_TEXT = (
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, command: CommandObject):
+async def cmd_start(message: Message, command: CommandObject, state: FSMContext = None):
+    if state is not None:
+        await state.clear()
     user_id = message.from_user.id
     username = message.from_user.username
     args = command.args
@@ -254,14 +257,18 @@ async def toggle_admin_role_logic(user_id: int, message_or_call) -> None:
 
 
 @router.message(Command("toggle"))
-async def cmd_toggle_role(message: Message):
+async def cmd_toggle_role(message: Message, state: FSMContext = None):
+    if state is not None:
+        await state.clear()
     if message.from_user.id in settings.admin_ids:
         await toggle_admin_role_logic(message.from_user.id, message)
 
 
 # Переключатель по инлайн-кнопке для админа
 @router.callback_query(F.data == "admin_toggle_role")
-async def callback_toggle_role(callback: CallbackQuery):
+async def callback_toggle_role(callback: CallbackQuery, state: FSMContext = None):
+    if state is not None:
+        await state.clear()
     if callback.from_user.id in settings.admin_ids:
         await toggle_admin_role_logic(callback.from_user.id, callback)
     await callback.answer()

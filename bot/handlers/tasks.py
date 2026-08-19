@@ -73,6 +73,8 @@ async def start_quest(message: Message, state: FSMContext):
             try:
                 parent_comment_value = parent_task["parent_comment"]
             except (KeyError, TypeError):
+                # Backward compatibility: old DB rows/test fixtures may not expose
+                # the newly public parent_comment field yet. Treat it as empty.
                 parent_comment_value = None
             parent_comment = (parent_comment_value or "").strip()
             parent_comment_block = (

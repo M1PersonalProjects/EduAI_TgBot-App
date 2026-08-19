@@ -24,7 +24,9 @@ class BookFilterStates(StatesGroup):
 
 
 @router.message(F.text == "🏆 Мой профиль")
-async def show_real_student_profile(message: Message):
+async def show_real_student_profile(message: Message, state: FSMContext = None):
+    if state is not None:
+        await state.clear()
     user_id = message.from_user.id
     async with db.pool.acquire() as conn:
         user = await conn.fetchrow("SELECT role FROM users WHERE tg_id = $1", user_id)
@@ -226,7 +228,7 @@ async def handle_skip_callback(call: CallbackQuery, state: FSMContext):
 
 async def enter_ai_question_mode(target_message: Message, state: FSMContext):
     data = await state.get_data()
-    summary = "🤖 Режим ИИ-Помощника EduAI\n\n"
+    summary = "📚 Book Mode EduAI\n\n"
     if data.get("chosen_grade"):
         summary += f"📍 Контекст: {data.get('chosen_grade')} класс, {data.get('chosen_subject')}"
         if data.get('chosen_book_label'):
@@ -249,7 +251,7 @@ async def exit_selected_book(message: Message, state: FSMContext):
     except LookupError:
         pass
     await state.clear()
-    await message.answer("✅ Book Mode выключен. Теперь работает общий ИИ-тьютор.")
+    await message.answer("✅ Book Mode выключен. Для свободного чата нажмите «🤖 ИИ-помощник».")
 
 
 @router.message(BookFilterStates.waiting_for_ai_question)

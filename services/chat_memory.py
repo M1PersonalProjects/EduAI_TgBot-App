@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from services.attachment_storage import get_attachment, load_attachment_for_ai
 
-SHORT_TERM_MESSAGES = 24
+SHORT_TERM_MESSAGES = 10
 MAX_HISTORY_CHARS = 36000
 MAX_OLD_MESSAGE_CHARS = 12000
 MAX_ATTACHMENT_TEXT_CHARS = 18000
@@ -113,13 +113,15 @@ def attachment_score(row: Dict[str, Any], query: str, *, newest_rank: int = 0) -
 
 
 def _json_safe_value(value: Any) -> Any:
-    """Возвращает JSON-безопасное представление для сохраняемой памяти сеанса.
+    """Return a JSON-safe representation for persisted session memory.
 
-    Значения базы данных уже являются примитивными, но тесты на основе AsyncMock могут отображать
-    ожидаемые или фиктивные объекты с помощью незаполненных вызовов. Эти значения не
-    являются фактическим состоянием сеанса и никогда не должны сохраняться.
+    Database values are already primitive, but AsyncMock-based tests can expose
+    awaitables or mock objects through unstubbed calls. Those values are not
+    factual session state and must never be persisted.
     """
     if inspect.isawaitable(value):
+        # A coroutine created by an unstubbed AsyncMock must not leak and cause
+        # RuntimeWarning: coroutine was never awaited.
         close = getattr(value, "close", None)
         if callable(close):
             close()
@@ -293,7 +295,15 @@ async def persist_session_state(conn, user_id: int, session_id, state: Dict[str,
 
 
 async def load_context_messages(conn, user_id: int, session_id, current_query: str) -> List[Dict[str, Any]]:
-    recent_rows = await conn.fetch(
+    """Return exactly the short-term window for the current chat session.
+
+    Long-lived attachment memory is handled independently through
+    ``session_attachments``. Session state/summary may preserve factual pointers,
+    but older chat rows are not silently re-injected into the LLM short-term
+    history. The current user message is already stored before this function is
+    called, so it is naturally part of the last 10 rows.
+    """
+    rows = await conn.fetch(
         """
         SELECT message_id, sender, message_text, created_at
         FROM chat_messages
@@ -305,86 +315,24 @@ async def load_context_messages(conn, user_id: int, session_id, current_query: s
         session_id,
         SHORT_TERM_MESSAGES,
     )
-    recent = [dict(row) for row in reversed(recent_rows)]
-    recent_ids = {row["message_id"] for row in recent}
-
-    state, _ = await load_session_state(conn, user_id, session_id)
-    pinned_ids = []
-    active = state.get("active_task_set_message_id")
-    candidates = list(state.get("pinned_message_ids") or [])
-    if active:
-        candidates.append(active)
-    for candidate in candidates:
-        try:
-            candidate_id = int(candidate)
-        except (TypeError, ValueError):
-            continue
-        if candidate_id not in recent_ids and candidate_id not in pinned_ids:
-            pinned_ids.append(candidate_id)
-
-    old: List[Dict[str, Any]] = []
-    if pinned_ids:
-        rows = await conn.fetch(
-            """
-            SELECT message_id, sender, message_text, created_at
-            FROM chat_messages
-            WHERE user_id=$1 AND session_id=$2 AND message_id=ANY($3::int[])
-            ORDER BY created_at ASC, message_id ASC
-            """,
-            user_id,
-            session_id,
-            pinned_ids,
-        )
-        old.extend(dict(row) for row in rows)
-
-    tokens = query_tokens(current_query)
-    if (has_context_reference(current_query) or tokens) and recent:
-        patterns = [f"%{token}%" for token in tokens[:8]]
-        if patterns:
-            rows = await conn.fetch(
-                """
-                SELECT message_id, sender, message_text, created_at
-                FROM chat_messages
-                WHERE user_id=$1 AND session_id=$2
-                  AND message_id <> ALL($3::int[])
-                  AND lower(replace(message_text, 'ё', 'е')) ILIKE ANY($4::text[])
-                ORDER BY created_at DESC, message_id DESC
-                LIMIT 6
-                """,
-                user_id,
-                session_id,
-                list(recent_ids) or [0],
-                patterns,
-            )
-            old.extend(dict(row) for row in reversed(rows))
-
-    dedup: Dict[int, Dict[str, Any]] = {}
-    for item in old + recent:
-        dedup[item["message_id"]] = item
-    ordered = sorted(dedup.values(), key=lambda item: (item.get("created_at"), item["message_id"]))
-
-    budget = MAX_HISTORY_CHARS
-    result: List[Dict[str, Any]] = []
-    for item in reversed(ordered):
-        text = str(item.get("message_text") or "")
-        limit = MAX_OLD_MESSAGE_CHARS if item["message_id"] not in recent_ids else 9000
-        text = text[:limit]
-        if not text:
-            continue
-        if len(text) > budget and result:
-            continue
-        copied = dict(item)
-        copied["message_text"] = text[:budget]
-        result.append(copied)
-        budget -= len(copied["message_text"])
-        if budget <= 0:
-            break
-    return list(reversed(result))
+    return [dict(row) for row in reversed(rows)]
 
 
-async def session_attachments(conn, user_id: int, session_id, limit: int = 50) -> List[Dict[str, Any]]:
-    rows = await conn.fetch(
-        """
+async def session_attachments(
+    conn,
+    user_id: int,
+    session_id,
+    limit: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Load every still-linked attachment for one chat session.
+
+    The relationship is session-scoped through ``chat_message_attachments`` and
+    ``chat_messages``. We intentionally do not impose a default LIMIT: old files
+    must remain discoverable even after a long conversation. Duplicate links to
+    the same attachment are collapsed in Python while preserving newest-first
+    order.
+    """
+    query = """
         SELECT a.attachment_id, a.owner_id, a.original_name, a.storage_path,
                a.mime_type, a.extension, a.size_bytes, a.extracted_text,
                a.processing_status, a.created_at, cma.message_id, cm.created_at AS message_created_at
@@ -392,35 +340,104 @@ async def session_attachments(conn, user_id: int, session_id, limit: int = 50) -
         JOIN chat_messages cm ON cm.message_id=cma.message_id
         JOIN attachments a ON a.attachment_id=cma.attachment_id
         WHERE cm.user_id=$1 AND cm.session_id=$2 AND a.owner_id=$1
-        ORDER BY cm.created_at DESC, cma.sort_order ASC
-        LIMIT $3
-        """,
-        user_id,
-        session_id,
-        limit,
+        ORDER BY cm.created_at DESC, cma.sort_order ASC, a.attachment_id DESC
+    """
+    rows = await conn.fetch(query, user_id, session_id)
+    result: List[Dict[str, Any]] = []
+    seen = set()
+    for row in rows:
+        item = dict(row)
+        attachment_id = int(item["attachment_id"])
+        if attachment_id in seen:
+            continue
+        seen.add(attachment_id)
+        result.append(item)
+        if limit is not None and len(result) >= max(0, int(limit)):
+            break
+    return result
+
+
+def _attachment_type_matches(row: Dict[str, Any], query: str) -> bool:
+    lowered = (query or "").casefold().replace("ё", "е")
+    name = str(row.get("original_name") or "").casefold()
+    mime = str(row.get("mime_type") or "").casefold()
+    ext = str(row.get("extension") or "").casefold().lstrip(".")
+    if "pdf" in lowered:
+        return mime == "application/pdf" or name.endswith(".pdf") or ext == "pdf"
+    if any(token in lowered for token in ("фото", "фотограф", "картин", "изображ", "скрин")):
+        return mime.startswith("image/")
+    if any(token in lowered for token in ("docx", "word")):
+        return ext in {"doc", "docx"} or "word" in mime
+    if any(token in lowered for token in ("таблиц", "xlsx", "excel")):
+        return ext in {"xls", "xlsx", "csv"} or "spreadsheet" in mime or "excel" in mime
+    return True
+
+
+def _prefer_oldest_attachment(query: str) -> bool:
+    lowered = (query or "").casefold().replace("ё", "е")
+    return any(marker in lowered for marker in (
+        "в начале", "самом начале", "первый файл", "первый pdf",
+        "первый документ", "давно", "раньше присыл", "старый файл",
+    ))
+
+
+async def select_relevant_attachments(
+    conn,
+    user_id: int,
+    session_id,
+    query: str,
+    *,
+    available_rows: Optional[Sequence[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    rows = list(available_rows) if available_rows is not None else await session_attachments(
+        conn, user_id, session_id
     )
-    return [dict(row) for row in rows]
-
-
-async def select_relevant_attachments(conn, user_id: int, session_id, query: str) -> List[Dict[str, Any]]:
-    rows = await session_attachments(conn, user_id, session_id)
     if not rows:
         return []
+
     state, _ = await load_session_state(conn, user_id, session_id)
-    active_ids = set(int(x) for x in state.get("referenced_attachment_ids") or [])
+    active_ids = set(int(x) for x in state.get("referenced_attachment_ids") or [] if str(x).isdigit())
     scored = []
     for rank, row in enumerate(rows):
         score = attachment_score(row, query, newest_rank=rank)
-        if row["attachment_id"] in active_ids:
+        if int(row["attachment_id"]) in active_ids:
             score += 15
+        if not _attachment_type_matches(row, query):
+            score -= 20
         scored.append((score, rank, row))
     scored.sort(key=lambda item: (-item[0], item[1]))
 
     reference = has_context_reference(query)
     selected = [row for score, _, row in scored if score >= (6 if reference else 10)][:MAX_RELEVANT_ATTACHMENTS]
-    if not selected and reference:
-        selected = [rows[0]]
+
+    if reference and not selected:
+        matching = [row for row in rows if _attachment_type_matches(row, query)]
+        if matching:
+            selected = [matching[-1] if _prefer_oldest_attachment(query) else matching[0]]
+
+    # Natural references such as "Вернёмся к PDF, который я присылал в начале"
+    # should honor the temporal clue even when recency scoring favored another file.
+    if reference and _prefer_oldest_attachment(query):
+        matching = [row for row in rows if _attachment_type_matches(row, query)]
+        if matching:
+            oldest = matching[-1]
+            selected = [oldest] + [
+                row for row in selected if int(row["attachment_id"]) != int(oldest["attachment_id"])
+            ]
+            selected = selected[:MAX_RELEVANT_ATTACHMENTS]
     return selected
+
+
+def attachment_inventory(rows: Sequence[Dict[str, Any]]) -> str:
+    """Metadata-only inventory for reference resolution; never sends file binaries."""
+    items = []
+    for row in rows:
+        name = str(row.get("original_name") or f"attachment-{row.get('attachment_id')}").strip()
+        mime = str(row.get("mime_type") or row.get("extension") or "file").strip()
+        items.append(f"- attachment_id={row.get('attachment_id')}: {name} ({mime})")
+    if not items:
+        return ""
+    return "Files attached to this chat (metadata only):\n" + "\n".join(items)
 
 
 async def build_attachment_context(selected: Sequence[Dict[str, Any]], query: str = "") -> Tuple[str, List[str]]:

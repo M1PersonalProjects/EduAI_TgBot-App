@@ -1,5 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.fsm.context import FSMContext
 from database import db
 from bot.keyboards import get_parent_menu, get_student_menu
 from bot.messages import answer_plain
@@ -10,7 +11,9 @@ router = Router()
 
 @router.message(F.text == "➕ Привязать Ученика")
 @router.message(F.text == "➕ Привязать ребенка")
-async def generate_child_link(message: Message):
+async def generate_child_link(message: Message, state: FSMContext = None):
+    if state is not None:
+        await state.clear()
     user_id = message.from_user.id
 
     async with db.pool.acquire() as conn:
@@ -44,7 +47,9 @@ async def generate_child_link(message: Message):
 
 
 @router.message(F.text == "📊 Мониторинг в чате")
-async def show_parent_monitoring(message: Message):
+async def show_parent_monitoring(message: Message, state: FSMContext = None):
+    if state is not None:
+        await state.clear()
     user_id = message.from_user.id
 
     async with db.pool.acquire() as conn:

@@ -77,7 +77,7 @@ _STEREOMETRY_RE = re.compile(
 
 
 def _stereometry_fallback_generation(request: str, title: str = "") -> InteractiveGeneration:
-    """Детерминированный автономный резервный вариант на случай, если 3D-модель не соответствует требованиям к качеству."""
+    """Deterministic self-contained fallback when model 3D output misses quality requirements."""
     safe_title = (title or "Стереометрия: интерактивная лаборатория").replace("<", "").replace(">", "")[:120]
     html = r"""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
@@ -312,6 +312,9 @@ _MATH_RENDERER = r"""
 def interactive_html_has_math(value: str) -> bool:
     """Return True when generated HTML or its inline JS contains TeX math."""
     html = str(value or "")
+    # Interactive apps commonly keep question text in inline JavaScript arrays and
+    # only insert it into the DOM after a click. Detect those strings too so the
+    # trusted renderer is present before any dynamic question becomes visible.
     return bool(_MATH_SOURCE_RE.search(html) or "$$" in html or _INLINE_DOLLAR_MATH_RE.search(html))
 
 
@@ -393,6 +396,8 @@ def sanitize_interactive_html(value: str) -> str:
     html = re.sub(r"<\s*script\b[^>]*\bsrc\s*=\s*[^>]*>.*?<\s*/\s*script\s*>", "", html, flags=re.I | re.S)
     html = _strip_external_attributes(html)
 
+    # The model is not allowed to reach the host application directly. The only
+    # host bridge is injected below by trusted EduAI code.
     dangerous_tokens = [
         r"window\.parent", r"window\.top", r"window\.opener", r"document\.cookie",
         r"localStorage", r"sessionStorage", r"indexedDB", r"XMLHttpRequest",
@@ -402,6 +407,9 @@ def sanitize_interactive_html(value: str) -> str:
     for token in dangerous_tokens:
         html = re.sub(token, "/* blocked by EduAI */", html, flags=re.I)
 
+    # Scrub literal navigation/network targets even when they occur inside inline
+    # JavaScript strings. CSP is still the enforcement boundary, this removes an
+    # unnecessary second chance for a generated app to reference a remote target.
     html = re.sub(r"https?://[^\s'\"<>]+", "#", html, flags=re.I)
     html = re.sub(
         r"(?P<q>['\"])//[A-Za-z0-9._~-]+[^'\"]*(?P=q)",
@@ -594,7 +602,7 @@ async def _generate(
 
 
 async def generate_teacher_answer_key(*, title: str, request: str, html_document: str) -> str:
-    """Создавайте ключ к ответам по запросу авторизованного преподавателя; никогда не сохраняйте его в HTML-коде учащегося."""
+    """Generate an answer key on demand for an authorized Teacher; never store it in learner HTML."""
     prompt = (
         "You are generating a private answer key for a Teacher in EduAI. "
         "Analyze the learner-facing interactive assignment below. Return concise Markdown with "

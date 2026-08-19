@@ -1,6 +1,7 @@
 from aiogram import F, Router
-from aiogram.filters import Command, StateFilter
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from bot.media import parse_telegram_attachment
@@ -13,6 +14,12 @@ from services.tutor import ensure_telegram_session, exit_book_mode, respond
 
 
 router = Router()
+
+
+class AIChatStates(StatesGroup):
+    """Постоянный режим свободного чата для Telegram."""
+
+    active = State()
 
 
 def exit_book_keyboard() -> InlineKeyboardMarkup:
@@ -29,7 +36,10 @@ async def exit_book_command(message: Message, state: FSMContext):
     except LookupError:
         pass
     await state.clear()
-    await message.answer("✅ Book Mode выключен. Теперь можно задавать общие вопросы.")
+    await message.answer(
+        "✅ Book Mode выключен. Чтобы снова открыть свободный чат, "
+        "нажмите «🤖 ИИ-помощник»."
+    )
 
 
 @router.callback_query(F.data == "exit_book_mode")
@@ -41,22 +51,25 @@ async def exit_book_callback(callback: CallbackQuery, state: FSMContext):
         pass
     await state.clear()
     await callback.answer("Book Mode выключен")
-    await callback.message.answer("✅ Контекст учебника очищен. Задавайте любой вопрос.")
+    await callback.message.answer(
+        "✅ Контекст учебника очищен. Для свободного чата нажмите «🤖 ИИ-помощник»."
+    )
 
 
 @router.message(F.text == "🤖 ИИ-помощник")
 async def enter_general_ai_helper(message: Message, state: FSMContext):
-    """Open free tutor mode without forcing textbook filters."""
+    """Enable persistent free tutor mode until another workflow replaces it."""
     try:
         session = await ensure_telegram_session(message.from_user.id)
         await exit_book_mode(message.from_user.id, str(session["session_id"]))
     except LookupError:
         pass
     await state.clear()
+    await state.set_state(AIChatStates.active)
     await message.answer(
-        "🤖 ИИ-помощник готов. Задайте вопрос или пришлите фото/документ. "
-        "Если в сообщении вы явно укажете учебник, страницу или параграф, "
-        "ИИ сначала постарается использовать этот материал EduAI, а при нехватке данных — дополнительные источники."
+        "🤖 ИИ-помощник включён. Теперь просто пишите вопросы или присылайте "
+        "фото/документы — повторно нажимать кнопку не нужно. Режим останется "
+        "активным, пока вы явно не выберете другой раздел."
     )
 
 
@@ -69,14 +82,15 @@ async def new_bot_chat(message: Message):
     )
 
 
-@router.message(StateFilter(None), F.text | F.photo | F.document)
-async def quick_ai_chat_fallback(message: Message):
+async def _handle_ai_message(message: Message):
     user_text = (message.text or message.caption or "").strip()
     if user_text.startswith("/"):
         return
 
     async with db.pool.acquire() as conn:
-        user = await conn.fetchrow("SELECT role FROM users WHERE tg_id = $1", message.from_user.id)
+        user = await conn.fetchrow(
+            "SELECT role FROM users WHERE tg_id = $1", message.from_user.id
+        )
     if not user:
         await message.answer(
             "Сначала зарегистрируйтесь: отправьте /start и выберите свою роль."
@@ -129,3 +143,9 @@ async def quick_ai_chat_fallback(message: Message):
             await message.answer(
                 "❌ Не удалось связаться с ИИ-тьютором. Попробуйте позже."
             )
+
+
+@router.message(AIChatStates.active, F.text | F.photo | F.document)
+async def quick_ai_chat_fallback(message: Message):
+    """Persistent AI mode: every ordinary message/file is sent to TutorService."""
+    await _handle_ai_message(message)
