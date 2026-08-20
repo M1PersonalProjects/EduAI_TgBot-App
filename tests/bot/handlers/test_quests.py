@@ -100,3 +100,47 @@ async def test_ai_tutor_multimodal_photo(make_message, mock_db, mock_fsm_context
         reply_markup=None,
         parse_mode=None,
     )
+
+
+@pytest.mark.asyncio
+async def test_book_filter_replaces_skip_ai_with_quest_test_button(
+    make_message, mock_db, mock_fsm_context
+):
+    user_id = 780
+    state = mock_fsm_context(user_id, user_id)
+    message = make_message(text="📚 Учебники", user_id=user_id)
+    mock_db.mock_conn.fetchrow.return_value = {"role": "student"}
+
+    await start_book_filter(message, state)
+
+    markup = message.answer.await_args.kwargs["reply_markup"]
+    labels = [button.text for row in markup.inline_keyboard for button in row]
+    callbacks = [button.callback_data for row in markup.inline_keyboard for button in row]
+    assert "🧩 Создать квест-тест" in labels
+    assert "🤖 Пропустить и спросить ИИ" not in labels
+    assert "create_quest_test" in callbacks
+
+
+@pytest.mark.asyncio
+async def test_selected_topic_stops_before_ai_and_offers_quest_action(
+    make_message, mock_fsm_context
+):
+    user_id = 781
+    state = mock_fsm_context(user_id, user_id)
+    await state.set_data({
+        "chosen_grade": 7,
+        "chosen_subject": "Математика",
+        "chosen_book_id": 10,
+        "chosen_book_label": "Учебник 7 класса",
+    })
+    await state.set_state(BookFilterStates.choosing_topic)
+    message = make_message(text="Обыкновенные дроби", user_id=user_id)
+
+    from bot.handlers.quests import handle_topic_text
+    await handle_topic_text(message, state)
+
+    assert await state.get_state() == BookFilterStates.context_ready.state
+    markup = message.answer.await_args.kwargs["reply_markup"]
+    labels = [button.text for row in markup.inline_keyboard for button in row]
+    assert "🧩 Создать квест-тест" in labels
+    assert "🤖 Задать вопрос ИИ" in labels

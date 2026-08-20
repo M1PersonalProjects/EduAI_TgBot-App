@@ -8,6 +8,8 @@ from openai import AsyncOpenAI
 from config import settings
 from database import db
 from services.context_resolver import ResolvedContext, load_locked_context, resolve_context
+from services.educational_context import build_educational_context, render_sources, search_eduai_materials
+from services.task_generation import find_requested_task_count
 from services.file_parser import ParsedAttachment
 from services.scope_guard import validate_request_scope
 
@@ -19,6 +21,8 @@ from services.interactive_apps import (
     set_source_message as set_interactive_source_message,
 )
 from services.response_formatter import canonicalize_message
+from services.gamification import award_tutor_study_session_if_eligible
+from logger_config import logger
 from services.chat_memory import (
     attachment_inventory,
     build_attachment_context,
@@ -322,42 +326,9 @@ def _query_tokens(value: str) -> List[str]:
 
 
 async def search_book_database(conn, query: str, limit: int = 6) -> str:
-    """Ищет учебный материал по всем book/page без фиксации Book Mode."""
-    tokens = _query_tokens(query)
-    if not tokens:
-        return ""
-    patterns = [f"%{token}%" for token in tokens]
-    rows = await conn.fetch(
-        """
-        SELECT b.book_title, b.book_program, b.book_class, b.book_author,
-               p.page_number, p.page_title, p.page_paragraph,
-               COALESCE(NULLIF(p.page_markdown, ''), p.page_text) AS content
-        FROM page p
-        JOIN book b ON b.book_id = p.book_id
-        WHERE lower(replace(COALESCE(p.page_title, ''), 'ё', 'е')) ILIKE ANY($1::text[])
-           OR lower(replace(COALESCE(p.page_text, ''), 'ё', 'е')) ILIKE ANY($1::text[])
-           OR lower(replace(COALESCE(p.page_markdown, ''), 'ё', 'е')) ILIKE ANY($1::text[])
-           OR lower(replace(COALESCE(b.book_title, ''), 'ё', 'е')) ILIKE ANY($1::text[])
-           OR lower(replace(COALESCE(b.book_program, ''), 'ё', 'е')) ILIKE ANY($1::text[])
-        ORDER BY
-            (CASE WHEN lower(replace(COALESCE(p.page_title, ''), 'ё', 'е')) ILIKE ANY($1::text[]) THEN 0 ELSE 1 END),
-            b.book_class NULLS LAST, p.page_number
-        LIMIT $2
-        """,
-        patterns,
-        limit,
-    )
-    blocks = []
-    for row in rows:
-        content = clean_ai_text(row["content"] or "")[:3500]
-        if not content:
-            continue
-        blocks.append(
-            f"Источник БД: {row['book_title']} ({row['book_program']}, {row['book_class']} класс), "
-            f"стр. {row['page_number'] or '—'}, тема: {row['page_title'] or row['page_paragraph'] or 'не указана'}\n"
-            f"{content}"
-        )
-    return "\n\n".join(blocks)[:16000]
+    """Compatibility adapter over the shared educational-context search engine."""
+    sources = await search_eduai_materials(conn, query, limit=limit, max_chars=16000)
+    return render_sources(sources, max_chars=16000)
 
 
 async def search_web_for_education(query: str) -> str:
@@ -680,16 +651,32 @@ async def respond(
     session_memory = summary or build_memory_summary(memory_state, [])
     database_context = ""
     web_context = ""
-    if context is None and should_search_eduai_materials(clean_text, attachment_text=attachment_text):
+    educational_bundle = None
+    if context is not None or should_search_eduai_materials(clean_text, attachment_text=attachment_text):
         async with db.pool.acquire() as conn:
-            database_context = await search_book_database(conn, clean_text)
-    if should_use_external_sources(
+            educational_bundle = await build_educational_context(
+                conn,
+                clean_text,
+                selected_context=context,
+                attachment_text=attachment_text,
+                allow_context_resolution=False,
+            )
+        database_context = educational_bundle.database_context
+    requested_learning_items = find_requested_task_count(clean_text)
+    needs_count_fallback = bool(
+        requested_learning_items
+        and requested_learning_items > 8
+        and len(database_context) < requested_learning_items * 250
+    )
+    if needs_count_fallback or should_use_external_sources(
         clean_text,
         context,
         database_context=database_context,
         attachment_text=attachment_text,
     ):
         web_context = await search_web_for_education(clean_text)
+        if educational_bundle is not None:
+            educational_bundle.web_context = web_context
 
     try:
         scope_result = await validate_request_scope(
@@ -873,6 +860,7 @@ async def respond(
     if locked_context:
         reply += book_mode_footer(locked_context)
 
+    study_session_reward = None
     async with db.pool.acquire() as conn:
         ai_message_id = await conn.fetchval(
             """
@@ -898,6 +886,14 @@ async def respond(
                 session["session_id"],
                 user_id,
             )
+        if role == "student":
+            try:
+                async with conn.transaction():
+                    study_session_reward = await award_tutor_study_session_if_eligible(
+                        conn, user_id=user_id, session_id=session["session_id"]
+                    )
+            except Exception as exc:
+                logger.warning("Tutor study-session reward skipped for user %s: %s", user_id, exc)
 
     return {
         "message_id": ai_message_id,
@@ -907,5 +903,15 @@ async def respond(
         "context": context.to_dict() if context else None,
         "book_mode": bool(locked_context),
         "used_attachment_ids": selected_ids,
+        "study_session_reward": (
+            {
+                "xp": study_session_reward.xp,
+                "coins": study_session_reward.coins,
+                "streak_days": study_session_reward.streak_days,
+                "achievements": list(study_session_reward.achievements),
+                "completed_goals": list(study_session_reward.completed_goals),
+            }
+            if study_session_reward else None
+        ),
         "knowledge_source": "book+web" if locked_context and web_context else ("book_mode" if locked_context else ("database+web" if database_context and web_context else ("database" if database_context else ("web" if web_context else "model")))),
     }

@@ -7,9 +7,11 @@ from database import db
 from openai import AsyncOpenAI
 from config import settings
 from logger_config import logger
-from pydantic import BaseModel
 from bot.messages import answer_plain, send_plain_to_chat
 from services.tutor_policy import teacher_task_prompt, teacher_analytics_prompt
+from services.educational_context import build_educational_context, selected_context_from_page
+from services.task_generation import GeneratedTaskSet, extract_requested_task_count, generate_exact_task_set, task_set_payload
+from services.tutor import search_web_for_education
 
 router = Router()
 openai_client = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
@@ -21,10 +23,8 @@ class ParentStates(StatesGroup):
     editing_test = State()
 
 # Схема для Structured Outputs от OpenAI при генерации теста Учителя
-class ParentTestGeneration(BaseModel):
-    title: str
-    description: str
-    correct_answer: str
+class ParentTestGeneration(GeneratedTaskSet):
+    """Backward-compatible structured model name for Telegram Teacher generation."""
 
 
 # 1. ИИ-АНАЛИТИКА УСПЕВАЕМОСТИ ДЛЯ УЧИТЕЛЯ
@@ -77,8 +77,8 @@ async def process_parent_analytics_query(message: Message, state: FSMContext):
             history = await conn.fetch(
                 """
                 SELECT topic_context, questions_json, student_answers_json, score, status 
-                FROM tasks_history 
-                WHERE student_id = $1
+                FROM tasks_history
+                WHERE student_id = $1 AND assignment_source = 'teacher'
                 ORDER BY created_at DESC LIMIT 20
                 """,
                 child["tg_id"]
@@ -90,7 +90,7 @@ async def process_parent_analytics_query(message: Message, state: FSMContext):
             quest = json.loads(row["questions_json"]) if isinstance(row["questions_json"], str) else row["questions_json"]
             ans = json.loads(row["student_answers_json"]) if row["student_answers_json"] and isinstance(row["student_answers_json"], str) else row["student_answers_json"]
             
-            status_str = "Выполнено успешно" if row["status"] == "completed" else "В процессе / Ошибка"
+            status_str = "Выполнено успешно" if row["status"] in {"completed", "evaluated"} else "В процессе / Ошибка"
             ans_feedback = ans.get("verification_feedback", "Нет ответа") if ans else "Нет ответа"
             
             history_summary.append(
@@ -167,63 +167,75 @@ async def process_custom_test_generation(message: Message, state: FSMContext):
     async with db.pool.acquire() as conn:
         page = await conn.fetchrow(
             """
-            SELECT p.page_id, p.page_markdown, p.page_title, b.book_title, b.book_program,
-                   (SELECT tg_id FROM users WHERE parent_id = $1 AND role = 'student' LIMIT 1) as student_id
+            SELECT p.page_id, p.page_markdown, p.page_title, p.page_number,
+                   b.book_id, b.book_title, b.book_program, b.book_class, b.book_author,
+                   (SELECT tg_id FROM users WHERE parent_id = $1 AND role = 'student' LIMIT 1) AS student_id
             FROM page p
             JOIN book b ON p.book_id = b.book_id
             WHERE p.page_markdown ILIKE $2 OR p.page_title ILIKE $2
-            ORDER BY RANDOM()
+            ORDER BY p.page_id DESC
             LIMIT 1
             """,
-            parent_id, f"%{topic_query}%"
+            parent_id,
+            f"%{topic_query}%",
         )
-        
-        if not page:
-            page = await conn.fetchrow(
-                """
-                SELECT p.page_id, p.page_markdown, p.page_title, b.book_title, b.book_program,
-                       (SELECT tg_id FROM users WHERE parent_id = $1 AND role = 'student' LIMIT 1) as student_id
-                FROM page p
-                JOIN book b ON p.book_id = b.book_id
-                ORDER BY RANDOM()
-                LIMIT 1
-                """,
-                parent_id
+        student_id = page.get("student_id") if page and hasattr(page, "get") else None
+        if student_id is None:
+            student_id = await conn.fetchval(
+                "SELECT tg_id FROM users WHERE parent_id = $1 AND role = 'student' LIMIT 1",
+                parent_id,
             )
 
-    if not page or not page["student_id"]:
-        await status_msg.edit_text("❌ Не удалось найти учебные материалы или аккаунт Ученика.")
+    if not student_id:
+        await status_msg.edit_text("❌ Не удалось найти аккаунт Ученика.")
         await state.clear()
         return
 
     try:
-        response = await openai_client.beta.chat.completions.parse(
-            model="gpt-4o",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        teacher_task_prompt()                    )
-                },
-                {
-                    "role": "user",
-                    "content": f"Requested Topic: {topic_query}\nTextbook Ref: {page['book_title']}\nContent context:\n{page['page_markdown']}"
-                }
-            ],
-            response_format=ParentTestGeneration
+        requested_count = extract_requested_task_count(topic_query, default=1)
+        async with db.pool.acquire() as conn:
+            primary = (
+                selected_context_from_page(page, source="telegram_teacher_task_generation")
+                if page else None
+            )
+            bundle = await build_educational_context(
+                conn,
+                topic_query,
+                selected_context=primary,
+                allow_context_resolution=primary is None,
+                allow_web=True,
+                web_search=search_web_for_education,
+                requested_items=requested_count,
+            )
+            primary = bundle.primary
+        ai_test = await generate_exact_task_set(
+            openai_client,
+            system_prompt=teacher_task_prompt(),
+            user_content=(
+                f"Requested Topic: {topic_query}\n"
+                f"Textbook Ref: {primary.book_title if primary else 'not selected'}\n"
+                f"PRIMARY TEXTBOOK CONTEXT:\n{primary.content if primary else 'none'}\n\n"
+                f"RANKED EDUAI SUPPLEMENTS:\n{bundle.database_context or 'none'}\n\n"
+                f"WEB FALLBACK:\n{bundle.web_context or 'none'}"
+            ),
+            requested_count=requested_count,
         )
+        payload_json = task_set_payload(ai_test)
 
-        ai_test = response.choices[0].message.parsed
-        
         # Временно сохраняем параметры генерации в контекст FSM для модерации
         await state.update_data(
             generated_title=ai_test.title,
             generated_description=ai_test.description,
             generated_answer=ai_test.correct_answer,
-            student_id=page["student_id"],
-            page_id=page["page_id"],
-            book_title=page["book_title"],
-            book_program=page["book_program"],
+            generated_items=payload_json.get("items", []),
+            requested_count=requested_count,
+            source_trace=bundle.source_trace,
+            student_id=student_id,
+            book_id=primary.book_id if primary else None,
+            book_class=primary.book_class if primary else None,
+            page_id=primary.page_id if primary else None,
+            book_title=primary.book_title if primary else None,
+            book_program=primary.book_program if primary else None,
             topic_query=topic_query
         )
 
@@ -295,28 +307,49 @@ async def callback_approve_and_save(call: CallbackQuery, state: FSMContext):
     
     student_id = data.get("student_id")
     
+    generated_items = data.get("generated_items") or []
+    requested_count = int(data.get("requested_count") or max(1, len(generated_items)))
     topic_context = {
+        "source": "telegram_teacher_task_generation",
+        "book_id": data.get("book_id"),
+        "book_class": data.get("book_class"),
         "page_id": data.get("page_id"),
         "book_title": data.get("book_title"),
+        "book_program": data.get("book_program"),
         "page_title": f"Домашнее задание: {data.get('topic_query')}",
-        "subject": data.get("book_program")
+        "topic": data.get("topic_query"),
+        "subject": data.get("book_program"),
+        "requested_count": requested_count,
+        "generated_count": len(generated_items) or 1,
+        "source_trace": data.get("source_trace") or [],
     }
-    
+
+    task_title = data.get("generated_title") or f"Квест: {data.get('topic_query') or 'задание'}"
     questions_json = {
-        "title": data.get("generated_title"),
+        "title": task_title,
         "question_text": data.get("generated_description"),
-        "reference_answer": data.get("generated_answer")
+        "reference_answer": data.get("generated_answer"),
+        "question_count": len(generated_items) or 1,
+        "items": generated_items,
     }
 
     try:
         async with db.pool.acquire() as conn:
             task_id = await conn.fetchval(
                 """
-                INSERT INTO tasks_history (student_id, parent_id, topic_context, questions_json, score, status)
-                VALUES ($1, $2, $3, $4, 0, 'created'::task_status)
+                INSERT INTO tasks_history (
+                    student_id, parent_id, assignment_source, title, subject, topic, topic_context, questions_json, score, status
+                )
+                VALUES ($1, $2, 'teacher', $3, $4, $5, $6, $7, 0, 'created'::task_status)
                 RETURNING task_id
                 """,
-                student_id, parent_id, json.dumps(topic_context), json.dumps(questions_json)
+                student_id,
+                parent_id,
+                task_title,
+                data.get("book_program") or "Обучение",
+                data.get("topic_query") or data.get("page_title") or "Задание",
+                json.dumps(topic_context, ensure_ascii=False),
+                json.dumps(questions_json, ensure_ascii=False),
             )
 
         await send_plain_to_chat(
@@ -325,7 +358,7 @@ async def callback_approve_and_save(call: CallbackQuery, state: FSMContext):
             "📬 Учитель прислал тебе персональное проверочное задание!\n\n"
             f"🏆 Тест: {questions_json['title']}\n"
             f"{questions_json['question_text']}\n\n"
-            "💰 Награда за выполнение: 15 монет | ✨ 50 XP\n"
+            "✨ Награда будет рассчитана по качеству, сложности и прогрессу.\n"
             "Просто начни выполнять квесты через меню — этот тест будет приоритетным!",
         )
         

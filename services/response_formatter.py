@@ -166,6 +166,33 @@ def _latex_fallback(expr: str) -> str:
     return re.sub(r"[ \t]{2,}", " ", text).strip()
 
 
+def _latex_fallback_preserve_whitespace(value: str) -> str:
+    text = str(value or "")
+    leading = re.match(r"^[ \t]*", text).group(0)
+    trailing = re.search(r"[ \t]*$", text).group(0)
+    end = len(text) - len(trailing) if trailing else len(text)
+    core = text[len(leading):end]
+    return leading + _latex_fallback(core) + trailing
+
+
+
+_WINDOWS_PATH_RE = re.compile(r"(?<![A-Za-z0-9_])(?:[A-Za-z]:)?(?:\\[A-Za-z0-9_. -]+){2,}")
+
+
+def _latex_fallback_preserving_paths(value: str) -> str:
+    """Run the TeX fallback while keeping Windows/UNC-style paths intact."""
+    paths: List[str] = []
+
+    def protect(match: re.Match[str]) -> str:
+        paths.append(match.group(0))
+        return f"\x00PATH{len(paths) - 1}\x00"
+
+    protected = _WINDOWS_PATH_RE.sub(protect, value)
+    converted = _latex_fallback_preserve_whitespace(protected)
+    for index, path in enumerate(paths):
+        converted = converted.replace(f"\x00PATH{index}\x00", path)
+    return converted
+
 def is_complex_formula(expr: str) -> bool:
     value = normalize_latex_transport(expr).strip()
     return bool(
@@ -242,7 +269,7 @@ def _bare_parts(text: str) -> List[TelegramPart]:
         if _looks_like_bare_formula(stripped):
             # Bare TeX mixed with prose is converted to readable text. Rendering
             # the entire prose line as a formula image is both ugly and fragile.
-            result.append(TelegramPart("text", _latex_fallback(stripped) + suffix))
+            result.append(TelegramPart("text", _latex_fallback_preserving_paths(stripped) + suffix))
         else:
             result.append(TelegramPart("text", stripped + suffix))
     return result
@@ -252,16 +279,90 @@ def telegram_formula_fallback(expr: str) -> str:
     return _latex_fallback(expr)
 
 
-def telegram_safe_text(value: object) -> str:
-    """Final Telegram text firewall: recognized raw TeX never reaches users."""
-    work = canonicalize_message(value)
+def _strip_telegram_markdown(segment: str) -> str:
+    """Remove Markdown control markers without touching ordinary punctuation."""
+    text = segment
+    # Headings are structural markers only when they start a line.
+    text = re.sub(r"(?m)^[ \t]{0,3}#{1,6}[ \t]+", "", text)
+    # Markdown bullets become readable Unicode bullets; arithmetic '*' elsewhere stays intact.
+    text = re.sub(r"(?m)^[ \t]*[*+-][ \t]+", "• ", text)
+    # Strong/emphasis markers are removed only when they form a balanced Markdown pair.
+    text = re.sub(r"\*\*([^*\n]+?)\*\*", r"\1", text)
+    text = re.sub(r"__([^_\n]+?)__", r"\1", text)
+    text = re.sub(r"(?<!\*)\*([^*\n]+?)\*(?!\*)", r"\1", text)
+    # A spaced arithmetic slash is a school-division sign, not a URL/path separator.
+    text = re.sub(r"(?<=\d)[ \t]+/[ \t]+(?=\d)", " : ", text)
+    return text
+
+
+def _format_telegram_prose(segment: str) -> str:
+    """Format one non-code segment, protecting URLs from text transformations."""
+    urls: List[str] = []
+
+    def protect_url(match: re.Match[str]) -> str:
+        urls.append(match.group(0))
+        return f"\x00URL{len(urls) - 1}\x00"
+
+    work = re.sub(r"https?://[^\s<>()]+", protect_url, segment)
+    # Convert explicit math delimiters before the residual-TeX firewall.
+    converted: List[str] = []
+    work = _DOUBLE_ESCAPED_MATH_RE.sub(r"\\", work)
+    for part in _math_parts_segment(work):
+        if part.kind == "formula":
+            converted.append(_latex_fallback(part.content))
+        else:
+            converted.append(part.content)
+    work = "".join(converted)
     if contains_raw_latex(work):
         work = "\n".join(
-            _latex_fallback(line) if contains_raw_latex(line) else line
+            _latex_fallback_preserving_paths(line) if contains_raw_latex(line) else line
             for line in work.splitlines()
         )
-        work = _RAW_LATEX_RE.sub("", work)
-    return work.strip()
+    work = _strip_telegram_markdown(work)
+    for index, url in enumerate(urls):
+        work = work.replace(f"\x00URL{index}\x00", url)
+    return work
+
+
+def format_for_telegram(value: object) -> str:
+    """Convert canonical Markdown+LaTeX into safe readable Telegram plain text.
+
+    Code blocks/spans and URLs are isolated before prose formatting so broad replacements
+    never corrupt API routes, filesystem paths, regular expressions, or source code.
+    """
+    text = canonicalize_message(value)
+    code_re = re.compile(r"```[\s\S]*?```|`[^`\n]*`")
+    parts: List[str] = []
+    cursor = 0
+    for match in code_re.finditer(text):
+        if match.start() > cursor:
+            parts.append(_format_telegram_prose(text[cursor:match.start()]))
+        code = match.group(0)
+        # Keep code byte-for-byte except for recognized raw TeX, which is never allowed
+        # to leak to Telegram in the current product contract.
+        if contains_raw_latex(code):
+            code = _latex_fallback(code)
+        parts.append(code)
+        cursor = match.end()
+    if cursor < len(text):
+        parts.append(_format_telegram_prose(text[cursor:]))
+    result = "".join(parts)
+
+    # Final validation pass for known technical markers. This is deliberately scoped:
+    # ordinary '#', '*', '/', and '\\' remain valid when they are not markup/TeX.
+    if contains_raw_latex(result):
+        result = "\n".join(
+            _latex_fallback_preserving_paths(line) if contains_raw_latex(line) else line
+            for line in result.splitlines()
+        )
+    result = re.sub(r"(?m)^[ \t]{0,3}#{1,6}[ \t]+", "", result)
+    result = result.replace("**", "")
+    return result.strip()
+
+
+def telegram_safe_text(value: object) -> str:
+    """Backward-compatible alias for the single Telegram formatter."""
+    return format_for_telegram(value)
 
 
 def render_formula_png(expr: str) -> bytes | None:

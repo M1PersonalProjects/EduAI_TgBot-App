@@ -2,6 +2,7 @@ import pytest
 import sys
 import json
 from unittest.mock import AsyncMock, MagicMock, ANY
+from types import SimpleNamespace
 from pydantic import BaseModel
 from api.routers.tasks import openai_client, OpenAITaskGeneration, OpenAITaskVerification
 
@@ -63,13 +64,27 @@ async def test_check_quest_answer_correct(make_message, mock_db, mock_fsm_contex
     mock_parse.return_value.choices[0].message.parsed = fake_verification
     monkeypatch.setattr(openai_client.beta.chat.completions, "parse", mock_parse)
     
-    mock_db.mock_conn.fetchrow.return_value = {"balance_coins": 10, "xp_total": 20}
-    
+    mock_db.mock_conn.fetchrow.return_value = {
+        "parent_id": 999,
+        "assignment_source": "teacher",
+        "subject": "Математика",
+        "topic": "Сложение",
+        "topic_context": '{"topic":"Сложение"}',
+    }
+    mock_db.mock_conn.fetchval.side_effect = [1, 100]
+    fake_reward = SimpleNamespace(
+        xp=65, coins=15, balance_coins=25, xp_total=85,
+        repetition_multiplier=1.0, achievements=(), completed_goals=(),
+    )
+    monkeypatch.setattr("bot.handlers.tasks.award_learning_result", AsyncMock(return_value=fake_reward))
+
     await check_quest_answer(message, state)
-    
+
     assert mock_db.mock_conn.execute.call_count == 2
     assert await state.get_state() is None
-    assert "Начислено: +15 монет и +50 XP." in message.answer.call_args[0][0]
+    final_text = message.answer.call_args[0][0]
+    assert "+65 XP" in final_text
+    assert "+15 монет" in final_text
     message.bot.send_message.assert_called_once_with(chat_id=999, text=ANY, parse_mode=None)
 
 
@@ -142,8 +157,13 @@ async def test_submit_task_answer_correct(api_client, mock_db, monkeypatch):
     mock_db.mock_conn.fetchrow.side_effect = [
         {
             "task_id": 777,
+            "parent_id": None,
+            "assignment_source": "tutor_practice",
+            "subject": "Математика",
+            "topic": "Площадь квадрата",
             "questions_json": '{"question_text": "Сторона 5. Площадь?", "reference_answer": "25"}',
-            "topic_context": '{"subject": "Математика"}'
+            "topic_context": '{"subject": "Математика", "topic": "Площадь квадрата"}',
+            "student_answers_json": None
         }, 
         {"balance_coins": 100, "xp_total": 500} 
     ]
@@ -159,13 +179,19 @@ async def test_submit_task_answer_correct(api_client, mock_db, monkeypatch):
     mock_openai_client.beta.chat.completions.parse = AsyncMock(return_value=mock_parse_response)
     
     monkeypatch.setattr("api.routers.tasks.openai_client", mock_openai_client)
-    
+    fake_reward = SimpleNamespace(
+        xp=42, coins=5, balance_coins=105, xp_total=542,
+        repetition_multiplier=1.0, achievements=(), completed_goals=(),
+    )
+    monkeypatch.setattr("api.routers.tasks.award_learning_result", AsyncMock(return_value=fake_reward))
+    mock_db.mock_conn.fetchval.return_value = 777
+
     response = await api_client.post("/api/tasks/submit", json=payload)
-    
+
     assert response.status_code == 200
     json_data = response.json()
     assert json_data["success"] is True
-    assert json_data["new_balance_coins"] == 115
+    assert json_data["new_balance_coins"] == 105
     assert "Ты верно возвёл 5 в квадрат!" in json_data["message"]
 
 
@@ -181,8 +207,13 @@ async def test_submit_task_answer_incorrect(api_client, mock_db, monkeypatch):
     mock_db.mock_conn.fetchrow.side_effect = [
         {
             "task_id": 777,
+            "parent_id": None,
+            "assignment_source": "tutor_practice",
+            "subject": "Математика",
+            "topic": "Площадь квадрата",
             "questions_json": '{"question_text": "Сторона 5. Площадь?", "reference_answer": "25"}',
-            "topic_context": '{"subject": "Математика"}'
+            "topic_context": '{"subject": "Математика", "topic": "Площадь квадрата"}',
+            "student_answers_json": None
         },
         {"balance_coins": 100, "xp_total": 500}
     ]
@@ -206,3 +237,64 @@ async def test_submit_task_answer_incorrect(api_client, mock_db, monkeypatch):
     assert json_data["success"] is False
     assert json_data["new_balance_coins"] == 100
     assert "Ошибка в вычислениях" in json_data["message"]
+
+
+@pytest.mark.asyncio
+async def test_start_quest_without_teacher_task_opens_quest_builder(
+    make_message, mock_db, mock_fsm_context
+):
+    user_id = 556
+    message = make_message(text="/quest", user_id=user_id)
+    state = mock_fsm_context(user_id, user_id)
+    mock_db.mock_conn.fetchrow.side_effect = [
+        {"parent_id": 999},
+        None,
+    ]
+
+    await start_quest(message, state)
+
+    texts = [call.args[0] for call in message.answer.await_args_list]
+    assert any("Создай квест-тест" in text for text in texts)
+    final_markup = message.answer.await_args_list[-1].kwargs["reply_markup"]
+    labels = [button.text for row in final_markup.inline_keyboard for button in row]
+    assert "📚 Выбрать учебник / тему" in labels
+    assert "✍️ Создать по запросу" in labels
+
+
+@pytest.mark.asyncio
+async def test_multi_question_quest_advances_without_paying_early(
+    make_message, mock_db, mock_fsm_context, monkeypatch
+):
+    user_id = 557
+    message = make_message(text="4", user_id=user_id)
+    state = mock_fsm_context(user_id, user_id)
+    await state.set_data({
+        "active_task_id": 101,
+        "question_text": "2+2=?",
+        "correct_answer": "4",
+        "parent_id": None,
+        "quest_items": [
+            {"id": "q1", "question_text": "2+2=?", "reference_answer": "4"},
+            {"id": "q2", "question_text": "3+3=?", "reference_answer": "6"},
+        ],
+        "quest_index": 0,
+        "quest_answers": [],
+    })
+    await state.set_state(QuestStates.waiting_for_answer)
+
+    mock_parse = AsyncMock()
+    mock_parse.return_value.choices[0].message.parsed = MockTaskVer(
+        is_correct=True, explanation="Верно"
+    )
+    monkeypatch.setattr(openai_client.beta.chat.completions, "parse", mock_parse)
+    mock_db.mock_conn.fetchrow.return_value = {"topic_context": '{"topic":"арифметика"}'}
+
+    await check_quest_answer(message, state)
+
+    data = await state.get_data()
+    assert data["quest_index"] == 1
+    assert data["question_text"] == "3+3=?"
+    assert data["correct_answer"] == "6"
+    assert await state.get_state() == QuestStates.waiting_for_answer.state
+    # Only progress is persisted; rewards are paid after the final question.
+    assert mock_db.mock_conn.execute.call_count == 1

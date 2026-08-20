@@ -839,3 +839,81 @@ svg {
 @media (min-width: 1280px) {
   .tutor-chat-layout .chat-sidebar-main-toggle { display: none; }
 }
+
+/* === 2026-08-19 MOBILE CONTENT-HEIGHT FIX START ===
+   Mobile pages follow real content height. Only desktop tutor layout owns the
+   viewport; drawers/modals stay fixed overlays and therefore never add page height. */
+:root { --eduai-viewport-height: 100dvh; }
+
+.modal-panel {
+  max-height: calc(var(--eduai-viewport-height, 100dvh) - 2rem);
+}
+
+@media (max-width: 1023px) {
+  html,
+  body,
+  .app-shell,
+  .main-area,
+  .min-h-screen {
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  body {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .app-shell,
+  .main-area,
+  .page-section,
+  body[data-active-section="tutor"] .app-shell,
+  body[data-active-section="assistant"] .app-shell,
+  body[data-active-section="tutor"] .main-area,
+  body[data-active-section="assistant"] .main-area {
+    overflow: visible;
+  }
+
+  /* Fixed drawers are viewport overlays. Closed drawers cannot contribute to
+     document height, and their own content scrolls only inside the drawer. */
+  .sidebar,
+  .chat-thread-sidebar {
+    max-height: calc(var(--eduai-viewport-height, 100dvh) - 1rem) !important;
+  }
+
+  .modal-panel,
+  [class*="max-h-[92vh]"] {
+    max-height: calc(var(--eduai-viewport-height, 100dvh) - 1.2rem) !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  /* One vertical scroller on mobile/tablet layouts: the page. The chat log grows with its
+     messages instead of creating a second nested vertical scroll container. */
+  body[data-active-section="tutor"] .chat-center-card,
+  body[data-active-section="assistant"] .chat-center-card,
+  body[data-active-section="tutor"] .chat-log-wrap,
+  body[data-active-section="assistant"] .chat-log-wrap,
+  body[data-active-section="tutor"] .chat-log,
+  body[data-active-section="assistant"] .chat-log {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow-y: visible !important;
+    overscroll-behavior: auto !important;
+  }
+
+  #chat-form,
+  #parent-chat-form {
+    position: relative;
+    min-height: 0;
+  }
+
+  .chat-composer-input {
+    max-height: 8rem;
+  }
+}
+
+/* Locking background scroll is scoped only to an actually open modal. */
+body.eduai-modal-open { overflow: hidden !important; }
+/* === 2026-08-19 MOBILE CONTENT-HEIGHT FIX END === */

@@ -1,5 +1,4 @@
 import json
-import asyncio
 from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.filters import Command
@@ -10,7 +9,9 @@ from openai import AsyncOpenAI
 from config import settings
 from logger_config import logger
 from bot.messages import answer_plain, send_plain_to_chat
-from services.tutor_policy import student_task_prompt, task_grading_prompt
+from services.tutor_policy import task_grading_prompt
+from services.educational_context import build_context_from_metadata
+from services.gamification import TEACHER, award_learning_result, infer_difficulty, normalize_assignment_source
 
 router = Router()
 
@@ -50,9 +51,10 @@ async def start_quest(message: Message, state: FSMContext):
         parent_task = await conn.fetchrow(
             """
             SELECT task_id, topic_context, questions_json, student_answers_json,
-                   parent_id, parent_comment
+                   parent_id, parent_comment, assignment_source, subject, topic
             FROM tasks_history
-            WHERE student_id = $1 AND parent_id IS NOT NULL AND status = 'created'::task_status
+            WHERE student_id = $1 AND assignment_source = 'teacher'
+              AND status IN ('created'::task_status, 'in_progress'::task_status)
             ORDER BY created_at ASC
             LIMIT 1
             """,
@@ -83,206 +85,280 @@ async def start_quest(message: Message, state: FSMContext):
             )
             async with db.pool.acquire() as conn:
                 await conn.execute("UPDATE tasks_history SET status = 'in_progress'::task_status WHERE task_id = $1", parent_task["task_id"])
+            quest_items = quest.get("items") or []
+            first_item = quest_items[0] if quest_items else {}
+            active_question = first_item.get("question_text") or quest.get("question_text") or ""
+            active_answer = first_item.get("reference_answer") or quest.get("reference_answer") or ""
             await state.update_data(
                 active_task_id=parent_task["task_id"],
-                question_text=quest.get("question_text"),
-                correct_answer=quest.get("reference_answer"),
-                parent_id=parent_task["parent_id"]
+                question_text=active_question,
+                correct_answer=active_answer,
+                parent_id=parent_task["parent_id"],
+                assignment_source="teacher",
+                quest_subject=parent_task.get("subject") if hasattr(parent_task, "get") else None,
+                quest_topic=parent_task.get("topic") if hasattr(parent_task, "get") else None,
+                quest_title=quest.get("title") or "Задание от Учителя",
+                quest_items=quest_items,
+                quest_index=0,
+                quest_answers=[],
             )
             await state.set_state(QuestStates.waiting_for_answer)
 
             await status_msg.delete()
+            progress = f"❓ Вопрос 1 из {len(quest_items)}\n\n" if quest_items else ""
             await answer_plain(
                 message,
                 f"👨‍👩‍👦 Персональное задание от Учителя!\n"
                 f"🏆 Квест: {quest.get('title')}\n\n"
-                f"{quest.get('question_text')}"
+                f"{progress}{active_question}"
                 f"{parent_comment_block}"
                 f"{history_feedback}\n\n"
-                "💰 Награда: 15 монет | ✨ 50 XP\n\n"
+                "✨ Награда зависит от качества, сложности и прогресса.\n\n"
                 "Напиши ответ в чат (или введи /cancel для отмены)."
             )
             return
         except Exception as e:
             logger.error(f"Ошибка парсинга задания Учителя: {e}")
-    async with db.pool.acquire() as conn:
-        page = await conn.fetchrow(
-            """
-            SELECT p.page_id, p.page_markdown, p.page_title, b.book_title, b.book_program
-            FROM page p
-            JOIN book b ON p.book_id = b.book_id
-            ORDER BY RANDOM()
-            LIMIT 1
-            """
-        )
+    await status_msg.delete()
+    from bot.handlers.quests import quest_entry_keyboard
 
-    if not page:
-        await status_msg.edit_text("❌ База знаний пуста. Попроси администратора загрузить учебники!")
-        return
-    try:
-        from api.routers.tasks import OpenAITaskGeneration
-
-        response = await openai_client.beta.chat.completions.parse(
-            model="gpt-4o",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        student_task_prompt()                    )
-                },
-                {
-                    "role": "user",
-                    "content": f"Textbook: {page['book_title']} ({page['book_program']})\nPage Content Context:\n{page['page_markdown']}"
-                }
-            ],
-            response_format=OpenAITaskGeneration
-        )
-
-        ai_task = response.choices[0].message.parsed
-
-        topic_context = {
-            "page_id": page["page_id"],
-            "book_title": page["book_title"],
-            "page_title": page["page_title"],
-            "subject": page["book_program"]
-        }
-
-        questions_json = {
-            "title": ai_task.title,
-            "question_text": ai_task.description,
-            "reference_answer": ai_task.correct_answer
-        }
-        async with db.pool.acquire() as conn:
-            task_id = await conn.fetchval(
-                """
-                INSERT INTO tasks_history (student_id, parent_id, topic_context, questions_json, score, status)
-                VALUES ($1, $2, $3, $4, $5, 'in_progress'::task_status)
-                RETURNING task_id
-                """,
-                user_id, student["parent_id"], json.dumps(topic_context), json.dumps(questions_json), 0
-            )
-        await state.update_data(
-            active_task_id=task_id,
-            question_text=ai_task.description,
-            correct_answer=ai_task.correct_answer,
-            parent_id=None
-        )
-        await state.set_state(QuestStates.waiting_for_answer)
-
-        await status_msg.delete()
-        await answer_plain(
-            message,
-            f"🏆 Квест: {ai_task.title}\n\n"
-            f"{ai_task.description}\n\n"
-            "💰 Награда: 10 монет | ✨ 30 XP\n\n"
-            "Напиши ответ в чат (или введи /cancel для отмены)."
-        )
-    except Exception as e:
-        logger.error(f"Ошибка генерации квеста в боте: {e}")
-        await status_msg.edit_text("❌ Произошла ошибка при создании задания ИИ. Попробуй еще раз: /quest")
+    await message.answer(
+        "🧩 Создай квест-тест под свою тему.\n\n"
+        "Можно выбрать учебник, страницу или тему из базы EduAI, "
+        "либо сразу описать запрос текстом — минимум класс, предмет и тема.",
+        reply_markup=quest_entry_keyboard(),
+    )
 
 
-@router.message(QuestStates.waiting_for_answer)
+@router.message(QuestStates.waiting_for_answer, F.text)
 async def check_quest_answer(message: Message, state: FSMContext):
-    user_answer = message.text.strip()
+    user_answer = (message.text or "").strip()
     user_id = message.from_user.id
-
     data = await state.get_data()
     task_id = data.get("active_task_id")
-    question_text = data.get("question_text")
-    correct_answer = data.get("correct_answer")
-    parent_id = data.get("parent_id")
+    question_text = data.get("question_text") or ""
+    correct_answer = data.get("correct_answer") or ""
+    quest_items = data.get("quest_items") or []
+    quest_index = int(data.get("quest_index") or 0)
+    quest_answers = list(data.get("quest_answers") or [])
 
-    status_msg = await message.answer("🔍 *Учитель проверяет твой ответ...* ⏳", parse_mode="Markdown")
+    status_msg = await message.answer("🔍 ИИ проверяет твой ответ…")
     try:
         from api.routers.tasks import OpenAITaskVerification
 
+        async with db.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT parent_id, assignment_source, subject, topic, topic_context
+                FROM tasks_history WHERE task_id=$1 AND student_id=$2
+                """,
+                task_id, user_id,
+            )
+            if not row:
+                await status_msg.edit_text("⚠️ Активное задание не найдено.")
+                await state.clear()
+                return
+            source = normalize_assignment_source(row.get("assignment_source"), row.get("parent_id"))
+            parent_id = row.get("parent_id") if source == TEACHER else None
+            raw_topic_context = row.get("topic_context") if hasattr(row, "get") else row["topic_context"]
+            topic_context = (
+                json.loads(raw_topic_context)
+                if isinstance(raw_topic_context, str)
+                else (raw_topic_context or {})
+            )
+            grading_context = await build_context_from_metadata(
+                conn,
+                str(topic_context.get("topic") or row.get("topic") or question_text or "answer checking"),
+                topic_context,
+            )
+
         response = await openai_client.beta.chat.completions.parse(
             model="gpt-4o",
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        task_grading_prompt()                    )
-                },
+                {"role": "system", "content": task_grading_prompt()},
                 {
                     "role": "user",
-                    "content": f"Task Question: {question_text}\nReference Answer: {correct_answer}\nStudent's Answer: {user_answer}"
-                }
+                    "content": (
+                        f"Assignment source: {source}.\n"
+                        f"Task Question: {question_text}\n"
+                        f"Reference Answer: {correct_answer}\n"
+                        f"Student's Answer: {user_answer}\n\n"
+                        f"PRIMARY EDUCATIONAL CONTEXT:\n"
+                        f"{grading_context.primary.content if grading_context.primary else 'none'}\n\n"
+                        f"RANKED EDUAI SUPPLEMENTS:\n{grading_context.database_context or 'none'}"
+                    ),
+                },
             ],
-            response_format=OpenAITaskVerification
+            response_format=OpenAITaskVerification,
         )
         verification = response.choices[0].message.parsed
         await status_msg.delete()
+
+        attempt = {
+            "item_id": (
+                quest_items[quest_index].get("id")
+                if quest_items and quest_index < len(quest_items)
+                else f"q{quest_index + 1}"
+            ),
+            "question_text": question_text,
+            "provided_answer": user_answer,
+            "verification_feedback": verification.explanation,
+            "is_correct": verification.is_correct,
+        }
+        quest_answers.append(attempt)
         student_answers_json = {
             "provided_answer": user_answer,
             "verification_feedback": verification.explanation,
-            "is_correct": verification.is_correct
+            "is_correct": verification.is_correct,
+            "current_index": quest_index,
+            "answers": quest_answers,
         }
 
-        coins_reward = 15 if parent_id else 10
-        xp_reward = 50 if parent_id else 30
         if verification.is_correct:
+            next_index = quest_index + 1
+            if quest_items and next_index < len(quest_items):
+                next_item = quest_items[next_index]
+                student_answers_json["current_index"] = next_index
+                async with db.pool.acquire() as conn:
+                    await conn.execute(
+                        "UPDATE tasks_history SET student_answers_json=$1::jsonb, updated_at=CURRENT_TIMESTAMP WHERE task_id=$2",
+                        json.dumps(student_answers_json, ensure_ascii=False), task_id,
+                    )
+                await state.update_data(
+                    quest_index=next_index,
+                    quest_answers=quest_answers,
+                    question_text=next_item.get("question_text") or "",
+                    correct_answer=next_item.get("reference_answer") or "",
+                )
+                await answer_plain(
+                    message,
+                    f"✅ Верно! {verification.explanation}\n\n"
+                    f"❓ Вопрос {next_index + 1} из {len(quest_items)}\n\n"
+                    f"{next_item.get('question_text', '')}\n\n"
+                    "Напиши следующий ответ (или /cancel для отмены).",
+                )
+                return
+
+            question_count = max(1, len(quest_items) or 1)
+            total_attempts = max(question_count, len(quest_answers))
+            quality = min(1.0, question_count / total_attempts)
+            corrected_mistakes = sum(1 for item in quest_answers if not bool(item.get("is_correct")))
+            corrected_after_hint = corrected_mistakes > 0
+            reward_attempt = 1 if total_attempts == question_count else 2
+            difficulty = str(topic_context.get("difficulty") or infer_difficulty(question_text, topic_context.get("request")))
+            final_status = "evaluated" if source == TEACHER else "completed"
+            student_answers_json["completed_items"] = question_count
+            student_answers_json["quality_score"] = quality
+
             async with db.pool.acquire() as conn:
                 async with conn.transaction():
-                    current_stats = await conn.fetchrow(
-                        "SELECT balance_coins, xp_total FROM gamification WHERE user_id = $1",
-                        user_id
-                    )
-
-                    coins = current_stats["balance_coins"] if current_stats else 0
-                    xp = current_stats["xp_total"] if current_stats else 0
-
-                    new_coins = coins + coins_reward
-                    new_xp = xp + xp_reward
-                    await conn.execute(
+                    attempt_number = int(await conn.fetchval(
+                        "SELECT COALESCE(MAX(attempt_number),0)+1 FROM task_submissions WHERE task_id=$1 AND student_id=$2",
+                        task_id, user_id,
+                    ) or 1)
+                    update_result = await conn.execute(
                         """
                         UPDATE tasks_history
-                        SET student_answers_json = $1, score = $2, status = 'completed'::task_status
-                        WHERE task_id = $3
+                        SET student_answers_json=$1::jsonb, score=$2, status=$3::task_status,
+                            completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
+                        WHERE task_id=$4 AND student_id=$5 AND status IN ('created','in_progress')
                         """,
-                        json.dumps(student_answers_json), xp_reward, task_id
+                        json.dumps(student_answers_json, ensure_ascii=False),
+                        round(quality * 100), final_status, task_id, user_id,
                     )
-
+                    if str(update_result).strip().upper() == "UPDATE 0":
+                        await answer_plain(message, "Этот квест уже был завершён; повторная награда не начислена.")
+                        await state.clear()
+                        return
                     await conn.execute(
                         """
-                        INSERT INTO gamification (user_id, balance_coins, xp_total, streak_days)
-                        VALUES ($1, $2, $3, 1)
-                        ON CONFLICT (user_id) DO UPDATE SET balance_coins = $2, xp_total = $3
+                        INSERT INTO task_submissions (
+                            task_id, student_id, answer_text, attempt_number, ai_feedback, score, status, reviewed_at
+                        ) VALUES ($1,$2,$3,$4,$5,$6,$7,CURRENT_TIMESTAMP)
                         """,
-                        user_id, new_coins, new_xp
+                        task_id, user_id, user_answer, attempt_number, verification.explanation,
+                        100, "completed",
                     )
+                    reward = await award_learning_result(
+                        conn,
+                        user_id=user_id,
+                        task_id=task_id,
+                        assignment_source=source,
+                        subject=str(row.get("subject") or topic_context.get("subject") or ""),
+                        topic=str(row.get("topic") or topic_context.get("topic") or ""),
+                        is_correct=True,
+                        completed=True,
+                        quality_score=quality,
+                        attempt_number=reward_attempt,
+                        question_count=question_count,
+                        difficulty=difficulty,
+                        corrected_after_hint=corrected_after_hint,
+                        corrected_mistakes=corrected_mistakes,
+                    )
+
+            reward_line = f"✨ +{reward.xp} XP"
+            if reward.coins:
+                reward_line += f" · 💰 +{reward.coins} монет"
+            if reward.repetition_multiplier < 1:
+                reward_line += " · повтор: сниженный XP"
+            completion = f"\n🏁 Квест-тест завершён: {question_count} из {question_count} вопросов."
+            motivation_lines = []
+            if reward.achievements:
+                motivation_lines.append("🏅 Новое достижение: " + ", ".join(reward.achievements))
+            if reward.completed_goals:
+                motivation_lines.append("🎯 Выполнена цель: " + ", ".join(reward.completed_goals))
+            motivation_note = ("\n" + "\n".join(motivation_lines)) if motivation_lines else ""
             await answer_plain(
                 message,
-                f"🎉 Верно! {verification.explanation}\n\n"
-                f"💰 Начислено: +{coins_reward} монет и +{xp_reward} XP.\n"
-                "Проверить баланс можно в меню «🏆 Мой профиль»."
+                f"🎉 Верно! {verification.explanation}{completion}\n\n"
+                f"{reward_line}{motivation_note}\n"
+                "Награда зависит от качества, прогресса и повторяемости темы.",
             )
-            if parent_id:
+            # Only explicit Teacher assignments are reported to the Teacher.
+            if source == TEACHER and parent_id:
                 try:
                     await send_plain_to_chat(
                         message.bot,
                         parent_id,
-                        "📈 Ваш Ученик успешно выполнил домашнее задание!\n"
-                        f"Ответ Ученика: {user_answer}\n"
+                        "📈 Ваш Ученик завершил назначенное вами задание.\n"
+                        f"Результат: {round(quality * 100)}%\n"
+                        f"Последний ответ: {user_answer}\n"
                         f"Разбор ИИ: {verification.explanation}",
                     )
                 except Exception:
                     pass
-
             await state.clear()
-        else:
-            async with db.pool.acquire() as conn:
-                await conn.execute(
-                    "UPDATE tasks_history SET student_answers_json = $1 WHERE task_id = $2",
-                    json.dumps(student_answers_json), task_id
-                )
-            await answer_plain(
-                message,
-                f"❌ Не совсем так...\n{verification.explanation}\n\n"
-                "Попробуй ещё раз! Или введи /cancel, чтобы прервать квест."
-            )
+            return
 
-    except Exception as e:
-        logger.error(f"Ошибка верификации ответа в боте: {e}")
-        await status_msg.edit_text("⚠️ Ошибка проверки. Попробуй отправить ответ еще раз.")
+        await state.update_data(quest_answers=quest_answers)
+        async with db.pool.acquire() as conn:
+            attempt_number = int(await conn.fetchval(
+                "SELECT COALESCE(MAX(attempt_number),0)+1 FROM task_submissions WHERE task_id=$1 AND student_id=$2",
+                task_id, user_id,
+            ) or 1)
+            await conn.execute(
+                """
+                INSERT INTO task_submissions (
+                    task_id, student_id, answer_text, attempt_number, ai_feedback, score, status, reviewed_at
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,CURRENT_TIMESTAMP)
+                """,
+                task_id, user_id, user_answer, attempt_number, verification.explanation,
+                0, "needs_revision",
+            )
+            await conn.execute(
+                "UPDATE tasks_history SET student_answers_json=$1::jsonb, updated_at=CURRENT_TIMESTAMP WHERE task_id=$2",
+                json.dumps(student_answers_json, ensure_ascii=False), task_id,
+            )
+        progress = f"\nВопрос {quest_index + 1} из {len(quest_items)} остаётся активным." if quest_items else ""
+        await answer_plain(
+            message,
+            f"❌ Не совсем так…\n{verification.explanation}{progress}\n\n"
+            "Попробуй ещё раз! Исправление ошибки учитывается как полезный прогресс.",
+        )
+
+    except Exception as exc:
+        logger.exception("Ошибка верификации ответа в боте: %s", exc)
+        try:
+            await status_msg.edit_text("⚠️ Ошибка проверки. Попробуй отправить ответ ещё раз.")
+        except Exception:
+            pass

@@ -123,6 +123,12 @@ async def _handle_ai_message(message: Message):
             result.get("message_text") or "",
             reply_markup=exit_book_keyboard() if result.get("book_mode") else None,
         )
+        session_reward = result.get("study_session_reward") or {}
+        if session_reward.get("xp"):
+            reward_text = f"📚 Полная учебная сессия: +{session_reward['xp']} XP"
+            if session_reward.get("coins"):
+                reward_text += f" · +{session_reward['coins']} монет"
+            await message.answer(reward_text)
         await indicator.stop()
     except AttachmentError as exc:
         await indicator.stop(delete=False)

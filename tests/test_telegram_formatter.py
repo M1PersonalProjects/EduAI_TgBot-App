@@ -1,6 +1,6 @@
 import pytest
 
-from services.response_formatter import contains_raw_latex, telegram_safe_text
+from services.response_formatter import contains_raw_latex, format_for_telegram, telegram_safe_text
 
 
 @pytest.mark.parametrize(
@@ -39,3 +39,21 @@ def test_raw_latex_inside_code_span_is_still_blocked_for_telegram():
 def test_programming_backslashes_are_not_removed_when_there_is_no_tex():
     source = r"C:\\Users\\student\\project and regex \\d+"
     assert telegram_safe_text(source) == source
+
+
+def test_telegram_formatter_removes_markdown_controls_but_keeps_urls_and_code():
+    source = "# Заголовок\n**Важно**: 12 / 3. https://example.com/a/b?q=x*y `a / b * c`"
+    rendered = format_for_telegram(source)
+    assert rendered.startswith("Заголовок\nВажно")
+    assert "12 : 3" in rendered
+    assert "https://example.com/a/b?q=x*y" in rendered
+    assert "`a / b * c`" in rendered
+    assert "**" not in rendered
+
+
+def test_telegram_formatter_preserves_windows_path_next_to_latex():
+    source = r"Путь C:\Users\student\project\main.py и корень \sqrt{9}"
+    rendered = format_for_telegram(source)
+    assert r"C:\Users\student\project\main.py" in rendered
+    assert "√(9)" in rendered
+    assert not contains_raw_latex(rendered)

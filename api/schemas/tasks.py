@@ -5,8 +5,8 @@ class TaskGenerationResponse(BaseModel):
     task_id: int = Field(..., description="ID созданной задачи из tasks_history")
     title: str = Field(..., description="Заголовок квеста на русском языке")
     description: str = Field(..., description="Текст математической задачи без знаков $")
-    reward_coins: int = Field(..., description="Количество монет за успешное решение")
-    reward_xp: int = Field(..., description="Количество опыта за успешное решение")
+    reward_coins: int = Field(..., description="Гарантированный бонус монет до проверки; фактическая награда рассчитывается динамически")
+    reward_xp: int = Field(..., description="Гарантированный XP до проверки; фактическая награда рассчитывается динамически")
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -270,7 +270,7 @@ async def ensure_attachment_access(
                 JOIN tasks_history th ON th.task_id = ta.task_id
                 WHERE ta.attachment_id = $1
                   AND (
-                      th.parent_id = $2
+                      (th.parent_id = $2 AND th.assignment_source = 'teacher')
                       OR (
                           th.student_id = $2
                           AND ta.visible_to_student = true
@@ -287,7 +287,7 @@ async def ensure_attachment_access(
                 WHERE tsa.attachment_id = $1
                   AND (
                       ts.student_id = $2
-                      OR th.parent_id = $2
+                      OR (th.parent_id = $2 AND th.assignment_source = 'teacher')
                   )
             )
             """,

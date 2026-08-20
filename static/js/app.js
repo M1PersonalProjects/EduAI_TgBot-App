@@ -257,8 +257,16 @@
 
   function formatDate(value) { if (!value) return '—'; return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)); }
   function setBusy(button, busy, label = 'Подождите…') { if (!button) return; if (busy) { button.dataset.label = button.innerHTML; button.disabled = true; button.textContent = label; } else { button.disabled = false; if (button.dataset.label) button.innerHTML = button.dataset.label; } }
-  function openModal(id) { document.getElementById(id)?.classList.add('open'); }
-  function closeModal(id) { document.getElementById(id)?.classList.remove('open'); }
+  function openModal(id) {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.classList.add('open');
+    document.body.classList.add('eduai-modal-open');
+  }
+  function closeModal(id) {
+    document.getElementById(id)?.classList.remove('open');
+    if (!document.querySelector('.modal-backdrop.open')) document.body.classList.remove('eduai-modal-open');
+  }
   function logout() { clearSession(); location.replace('/auth.html'); }
 
   function startThinking(label = 'ИИ обрабатывает запрос') {
@@ -286,7 +294,7 @@
       close();
     }));
     document.querySelectorAll('[data-close-modal]').forEach(button => button.addEventListener('click', () => closeModal(button.dataset.closeModal)));
-    document.querySelectorAll('.modal-backdrop').forEach(modal => modal.addEventListener('click', event => { if (event.target === modal) modal.classList.remove('open'); }));
+    document.querySelectorAll('.modal-backdrop').forEach(modal => modal.addEventListener('click', event => { if (event.target === modal) { modal.classList.remove('open'); if (!document.querySelector('.modal-backdrop.open')) document.body.classList.remove('eduai-modal-open'); } }));
     document.querySelectorAll('[data-logout]').forEach(button => button.addEventListener('click', logout));
     const initialSection = document.querySelector('.page-section.active')?.id;
     if (initialSection) document.body.dataset.activeSection = initialSection;
@@ -295,8 +303,19 @@
 
   function syncViewportHeight() {
     const tg = window.Telegram?.WebApp;
-    const height = Number(tg?.viewportStableHeight || tg?.viewportHeight || window.visualViewport?.height || window.innerHeight || 0);
-    if (height > 0) document.documentElement.style.setProperty('--eduai-viewport-height', `${Math.round(height)}px`);
+    // visualViewport/current Telegram viewport shrink with the mobile keyboard.
+    // viewportStableHeight is deliberately last because using it first creates
+    // phantom page height while the keyboard is open.
+    const height = Number(
+      window.visualViewport?.height ||
+      tg?.viewportHeight ||
+      window.innerHeight ||
+      tg?.viewportStableHeight ||
+      0
+    );
+    if (height > 0) {
+      document.documentElement.style.setProperty('--eduai-viewport-height', `${Math.round(height)}px`);
+    }
   }
   syncViewportHeight();
   window.addEventListener('resize', syncViewportHeight, { passive: true });

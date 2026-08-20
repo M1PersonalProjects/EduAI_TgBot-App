@@ -132,6 +132,69 @@ document.addEventListener('DOMContentLoaded', async () => {
     `;
   }
 
+  function renderTaskCards(tasks) {
+    return tasks.length
+      ? tasks.map(task => {
+          const questions = task.questions_json || {};
+          const context = task.topic_context || {};
+          const title = task.title || questions.title || `Задание №${task.task_id}`;
+          const subject = task.subject || context.subject || 'Задание';
+          const teacherTask = task.assignment_source === 'teacher';
+          return `
+            <article class="glass card" data-task-card="${task.task_id}">
+              <div class="flex items-center justify-between gap-2">
+                <span class="badge">${teacherTask ? 'От Учителя' : 'Личная ИИ-практика'}</span>
+                <span class="text-xs muted">${EduAI.escapeHtml(subject)}</span>
+              </div>
+              <h3 class="mt-4 text-lg font-extrabold">${EduAI.escapeHtml(title)}</h3>
+              ${task.topic ? `<p class="mt-1 text-xs muted">Тема: ${EduAI.escapeHtml(task.topic)}</p>` : ''}
+              <div class="mt-2 text-sm leading-6 text-slate-300">${EduAI.markdown(questions.question_text || '')}</div>
+              ${teacherTask && task.parent_comment ? `
+                <div class="mt-3 rounded-xl bg-violet-300/10 p-3 text-sm">
+                  <p class="text-xs font-bold text-violet-200">Комментарий Учителя</p>
+                  <p class="mt-1 text-slate-300">${EduAI.escapeHtml(task.parent_comment)}</p>
+                </div>` : ''}
+              ${renderTaskAttachments(task)}
+              ${questions.interactive_app_id ? `<a class="btn-primary mt-4 inline-flex" href="/interactive/${encodeURIComponent(questions.interactive_app_id)}" target="_blank" rel="noopener noreferrer">Открыть интерактивное задание</a>` : ''}
+              ${task.student_answers_json?.verification_feedback ? `<p class="mt-3 rounded-xl bg-white/[.04] p-3 text-sm muted">${EduAI.markdown(task.student_answers_json.verification_feedback)}</p>` : ''}
+              <form class="task-form mt-4 grid gap-2" data-task-id="${task.task_id}" ${questions.interactive_app_id ? 'hidden' : ''}>
+                <label class="text-xs font-bold muted" for="answer-${task.task_id}">Ваш ответ</label>
+                <div class="flex flex-col sm:flex-row gap-2">
+                  <input id="answer-${task.task_id}" class="input flex-1" maxlength="4000" required placeholder="Введите ответ">
+                  <button class="btn-primary shrink-0" type="submit">Проверить</button>
+                </div>
+              </form>
+            </article>`;
+        }).join('')
+      : empty('Активных заданий этого типа пока нет.');
+  }
+
+  function renderMotivation(motivation) {
+    const goals = motivation?.goals || [];
+    const achievements = motivation?.achievements || [];
+    const goalsNode = byId('goals-list');
+    const achievementsNode = byId('achievements-list');
+    if (goalsNode) {
+      goalsNode.innerHTML = goals.length ? goals.map(goal => {
+        const target = Math.max(1, Number(goal.target_value || 1));
+        const progress = Math.min(target, Number(goal.progress_value || 0));
+        const percent = Math.round((progress / target) * 100);
+        const reward = [goal.reward_xp ? `+${goal.reward_xp} XP` : '', goal.reward_coins ? `+${goal.reward_coins} монет` : ''].filter(Boolean).join(' · ');
+        return `<article class="glass card">
+          <div class="flex items-center justify-between gap-3"><span class="badge">${goal.period_type === 'daily' ? 'Сегодня' : 'Неделя'}</span><span class="text-xs muted">${reward}</span></div>
+          <h3 class="mt-3 font-extrabold">${EduAI.escapeHtml(goal.title)}</h3>
+          <div class="mt-3 h-2 overflow-hidden rounded-full bg-white/10"><div class="h-full rounded-full bg-emerald-300" style="width:${percent}%"></div></div>
+          <p class="mt-2 text-xs muted">${progress} / ${target}${goal.completed_at ? ' · выполнено' : ''}</p>
+        </article>`;
+      }).join('') : empty('Цели появятся после первой полезной учебной активности.');
+    }
+    if (achievementsNode) {
+      achievementsNode.innerHTML = achievements.length ? achievements.map(item => `
+        <article class="glass card"><span class="text-2xl">🏅</span><h3 class="mt-2 font-extrabold">${EduAI.escapeHtml(item.title)}</h3><p class="mt-1 text-sm muted">${EduAI.escapeHtml(item.description || '')}</p></article>
+      `).join('') : empty('Первое достижение уже близко — завершите полезную учебную сессию.');
+    }
+  }
+
   function renderDashboard(data) {
     state.dashboard = data;
 
@@ -139,90 +202,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     byId('xp').textContent = data.profile.xp_total.toLocaleString('ru-RU');
     byId('streak').textContent = `${data.profile.streak_days}`;
     byId('task-count-badge').textContent = data.tasks.length;
+    if (byId('practice-count-badge')) byId('practice-count-badge').textContent = (data.practice_tasks || []).length;
+    if (byId('streak-saves')) byId('streak-saves').textContent = `${data.profile.streak_saves || 0}`;
 
-    byId('tasks-list').innerHTML = data.tasks.length
-      ? data.tasks
-          .map(task => {
-            const questions = task.questions_json || {};
-            const context = task.topic_context || {};
-            const title = task.title || questions.title || `Задание №${task.task_id}`;
-            const subject = task.subject || context.subject || 'Задание';
-
-            return `
-              <article class="glass card" data-task-card="${task.task_id}">
-                <div class="flex items-center justify-between gap-2">
-                  <span class="badge">
-                    ${task.parent_id ? 'От Учителя' : 'ИИ-практика'}
-                  </span>
-                  <span class="text-xs muted">
-                    ${EduAI.escapeHtml(subject)}
-                  </span>
-                </div>
-
-                <h3 class="mt-4 text-lg font-extrabold">
-                  ${EduAI.escapeHtml(title)}
-                </h3>
-
-                ${task.topic ? `
-                  <p class="mt-1 text-xs muted">
-                    Тема: ${EduAI.escapeHtml(task.topic)}
-                  </p>
-                ` : ''}
-
-                <div class="mt-2 text-sm leading-6 text-slate-300">
-                  ${EduAI.markdown(questions.question_text || '')}
-                </div>
-
-                ${task.parent_comment ? `
-                  <div class="mt-3 rounded-xl bg-violet-300/10 p-3 text-sm">
-                    <p class="text-xs font-bold text-violet-200">Комментарий Учителя</p>
-                    <p class="mt-1 text-slate-300">
-                      ${EduAI.escapeHtml(task.parent_comment)}
-                    </p>
-                  </div>
-                ` : ''}
-
-                ${renderTaskAttachments(task)}
-                ${questions.interactive_app_id ? `
-                  <a class="btn-primary mt-4 inline-flex" href="/interactive/${encodeURIComponent(questions.interactive_app_id)}" target="_blank" rel="noopener noreferrer">Открыть интерактивное задание</a>
-                ` : ''}
-
-                ${task.student_answers_json?.verification_feedback ? `
-                  <p class="mt-3 rounded-xl bg-white/[.04] p-3 text-sm muted">
-                    ${EduAI.markdown(task.student_answers_json.verification_feedback)}
-                  </p>
-                ` : ''}
-
-                <form
-                  class="task-form mt-4 grid gap-2"
-                  data-task-id="${task.task_id}"
-                  ${questions.interactive_app_id ? 'hidden' : ''}
-                >
-                  <label
-                    class="text-xs font-bold muted"
-                    for="answer-${task.task_id}"
-                  >
-                    Ваш ответ
-                  </label>
-
-                  <div class="flex flex-col sm:flex-row gap-2">
-                    <input
-                      id="answer-${task.task_id}"
-                      class="input flex-1"
-                      maxlength="4000"
-                      required
-                      placeholder="Введите ответ"
-                    >
-                    <button class="btn-primary shrink-0" type="submit">
-                      Проверить
-                    </button>
-                  </div>
-                </form>
-              </article>
-            `;
-          })
-          .join('')
-      : empty('Активных заданий пока нет. Можно посвятить время тьютору.');
+    byId('tasks-list').innerHTML = renderTaskCards(data.tasks || []);
+    if (byId('practice-list')) byId('practice-list').innerHTML = renderTaskCards(data.practice_tasks || []);
+    renderMotivation(data.motivation || {});
 
     byId('rewards-list').innerHTML = data.rewards.length
       ? data.rewards
@@ -291,7 +276,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  byId('tasks-list').addEventListener('submit', async event => {
+  document.addEventListener('submit', async event => {
     const form = event.target.closest('.task-form');
     if (!form) return;
 
@@ -316,12 +301,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       );
 
+      const rewardBits = [];
+      if (result.earned_xp) rewardBits.push(`+${result.earned_xp} XP`);
+      if (result.earned_coins) rewardBits.push(`+${result.earned_coins} монет`);
       EduAI.toast(
-        result.success
-          ? `Верно! +${result.earned_coins} монет и +${result.earned_xp} XP`
-          : result.message,
+        result.success ? `Верно! ${rewardBits.join(' · ') || 'Прогресс сохранён'}` : result.message,
         result.success ? 'success' : 'error'
       );
+      if (result.success && result.achievements?.length) {
+        EduAI.toast(`🏅 Новое достижение: ${result.achievements.join(', ')}`, 'success');
+      }
+      if (result.success && result.completed_goals?.length) {
+        EduAI.toast(`🎯 Цель выполнена: ${result.completed_goals.join(', ')}`, 'success');
+      }
 
       await loadDashboard();
     } catch (error) {
@@ -331,7 +323,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  byId('tasks-list').addEventListener('click', async event => {
+  document.addEventListener('click', async event => {
     const previewButton = event.target.closest('.task-file-preview');
     const downloadButton = event.target.closest('.task-file-download');
 

@@ -445,6 +445,12 @@
         );
         const result = await EduAI.api('/api/v1/tutor/messages', { method: 'POST', body: form });
         this.append('ai', result.message_text, [], null, result.interactive_app || null);
+        if (result.study_session_reward?.xp) {
+          const reward = result.study_session_reward;
+          const bits = [`+${reward.xp} XP`];
+          if (reward.coins) bits.push(`+${reward.coins} монет`);
+          EduAI.toast(`📚 Полная учебная сессия: ${bits.join(' · ')}`, 'success');
+        }
         if (!result.interactive_error) {
           input.value = '';
           this.resizeComposer();

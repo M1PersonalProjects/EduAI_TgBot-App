@@ -128,3 +128,126 @@ def test_interactive_math_detection_covers_sum_integral_and_trig():
     assert interactive_html_has_math(r"<p>\sum_{k=1}^{n} k</p>")
     assert interactive_html_has_math(r"<p>\int_0^1 x^2 dx</p>")
     assert interactive_html_has_math(r"<p>\sin^2 x + \cos^2 x = 1</p>")
+
+
+def test_universal_shell_is_used_for_generated_specs():
+    from services.interactive_apps import InteractiveAppSpec, InteractiveSection, _render_spec
+    spec = InteractiveAppSpec(
+        title="Дроби",
+        app_type="trainer",
+        question_count=2,
+        sections=[
+            InteractiveSection(id="theory", label="Теория", html="<h2>Теория</h2><p>Доли целого</p>"),
+            InteractiveSection(id="practice", label="Практика", html="<button id='go'>Начать</button>"),
+        ],
+        interaction_js="document.getElementById('go').addEventListener('click', () => {});",
+    )
+    rendered = _render_spec(spec).html_document
+    assert 'data-eduai-shell="1"' in rendered
+    assert rendered.count("data-eduai-panel=") == 2
+    assert "@media" in rendered
+    assert "Content-Security-Policy" in rendered
+
+
+def test_create_detection_supports_full_interactive_apps_and_games():
+    from services.interactive_apps import detect_create_request
+    assert detect_create_request("Создай интерактивное приложение по стереометрии")
+    assert detect_create_request("Сделай интерактивную игру по английским словам")
+    assert detect_create_request("Create interactive simulation for fractions")
+
+
+def test_flat_rotated_canvas_is_rejected_for_hexagonal_prism():
+    from services.interactive_apps import InteractiveAppSpec, InteractiveSection, _render_spec, interactive_quality_issues
+
+    spec = InteractiveAppSpec(
+        title="Hexagonal Prism Exploration",
+        app_type="interactive_model",
+        question_count=0,
+        sections=[
+            InteractiveSection(
+                id="theory",
+                label="Theory",
+                html="<h2>Theory</h2><p>Properties of a hexagonal prism.</p>",
+            ),
+            InteractiveSection(
+                id="model",
+                label="3D Model",
+                html=(
+                    "<p>Rotate the model and adjust its dimensions.</p>"
+                    "<canvas id='hexPrismCanvas' width='400' height='400'></canvas>"
+                    "<button id='reset'>Reset</button>"
+                ),
+            ),
+        ],
+        interaction_js="""
+const canvas = document.getElementById('hexPrismCanvas');
+const ctx = canvas.getContext('2d');
+let angle = 0;
+function drawHexPrism() {
+  ctx.save();
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate(angle);
+  for (let i = 0; i < 6; i++) {
+    const x = 50 * Math.cos((Math.PI / 3) * i);
+    const y = 50 * Math.sin((Math.PI / 3) * i);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x, y + 100);
+  }
+  ctx.restore();
+}
+canvas.addEventListener('mousemove', event => {
+  angle = (event.offsetX / canvas.width) * 2 * Math.PI;
+  drawHexPrism();
+});
+""",
+    )
+    html = _render_spec(spec).html_document
+    issues = interactive_quality_issues(
+        "Построить шестигранную призму для будущего исследования свойств веществ олово-сурьма",
+        html,
+    )
+    assert any("flat 2D" in issue for issue in issues)
+    assert any("drag start/move/end" in issue for issue in issues)
+    assert any("adjustable dimension inputs" in issue for issue in issues)
+    assert any("hexagonal prism geometry" in issue for issue in issues)
+
+
+def test_trusted_hexagonal_prism_fallback_is_true_3d_and_passes_quality():
+    from services.interactive_apps import (
+        _has_3d_projection_logic,
+        _has_adjustable_dimension_controls,
+        _has_drag_rotation_controls,
+        _has_hexagonal_prism_geometry,
+        _inject_visual_safety_css,
+        _stereometry_fallback_generation,
+        inject_interactive_math_renderer,
+        interactive_quality_issues,
+        sanitize_interactive_html,
+    )
+
+    request = "Построить шестигранную призму для будущего исследования свойств веществ олово-сурьма"
+    generated = _stereometry_fallback_generation(request)
+    html = sanitize_interactive_html(generated.html_document)
+    html = _inject_visual_safety_css(html)
+    html = inject_interactive_math_renderer(html)
+
+    assert _has_3d_projection_logic(html)
+    assert _has_drag_rotation_controls(html)
+    assert _has_adjustable_dimension_controls(html)
+    assert _has_hexagonal_prism_geometry(html)
+    assert "12" in html and "18" in html and "8" in html
+    assert "олово–сурьма" in html
+    assert interactive_quality_issues(request, html) == []
+
+
+def test_interactive_prompt_rejects_fake_2d_3d_and_requires_exact_hex_prism_geometry():
+    from services.tutor_policy import INTERACTIVE_TASK_RULES
+
+    prompt = INTERACTIVE_TASK_RULES.lower()
+    assert "flat 2d drawing" in prompt
+    assert "ctx.rotate()" in prompt
+    assert "12 vertices" in prompt
+    assert "18 edges" in prompt
+    assert "8 faces" in prompt
+    assert "pointerdown" in prompt
+    assert "pointerup/cancel" in prompt

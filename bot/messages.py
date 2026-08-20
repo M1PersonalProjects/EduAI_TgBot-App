@@ -2,7 +2,7 @@ from typing import List, Optional
 
 from aiogram.types import BufferedInputFile
 
-from services.response_formatter import telegram_safe_text
+from services.response_formatter import format_for_telegram
 
 # Telegram text messages are physically limited by the platform. Keep a little
 # headroom below the documented 4096-character ceiling so entity/counting edge
@@ -46,7 +46,7 @@ def split_telegram_text(text: str, limit: int = TELEGRAM_TEXT_LIMIT) -> List[str
 
 def _safe_telegram_payload(text: str) -> str:
     raw = str(text or "").strip() or EMPTY_ANSWER_FALLBACK
-    return telegram_safe_text(raw).strip() or EMPTY_ANSWER_FALLBACK
+    return format_for_telegram(raw).strip() or EMPTY_ANSWER_FALLBACK
 
 
 def _text_document(text: str) -> BufferedInputFile:
@@ -59,7 +59,7 @@ async def answer_plain(message, text: str, reply_markup: Optional[object] = None
     Short answers are one text message. If the safe Telegram representation is
     too long, the full answer is sent once as a UTF-8 text document instead of
     being fragmented into multiple sequential messages. Raw LaTeX is removed at
-    this final boundary by ``telegram_safe_text``.
+    this final boundary by ``format_for_telegram``.
     """
     safe_text = _safe_telegram_payload(text)
     if len(safe_text) <= TELEGRAM_TEXT_LIMIT:

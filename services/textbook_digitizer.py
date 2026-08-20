@@ -13,6 +13,7 @@ from config import settings
 from database import db
 from logger_config import logger
 from services.tutor import clean_ai_text
+from services.prompts import TEXTBOOK_DIGITIZATION_RULES
 
 ProgressCallback = Callable[[str, int, int], Awaitable[None]]
 
@@ -67,17 +68,7 @@ async def digitize_pdf_path(
                     messages=[
                         {
                             "role": "system",
-                            "content": (
-                                "You are an expert textbook digitalizer and OCR post-processor. "
-                                "Extract the textbook page and strictly format it into the requested JSON schema.\n\n"
-                                "CRITICAL RULES FOR CONTENT PROCESSING:\n"
-                                "1. page_paragraph: extract the main section title, paragraph number, or sub-topic; max 100 characters.\n"
-                                "2. raw_text: clean plain-text extraction of the whole page.\n"
-                                "3. html_content: valid semantic HTML; recreate tables with table/tr/td.\n"
-                                "4. markdown_content: the page formatted in Markdown.\n\n"
-                                "MATHEMATICS:\n"
-                                "Do not expose malformed technical markup. Preserve readable school mathematics consistently."
-                            ),
+                            "content": TEXTBOOK_DIGITIZATION_RULES,
                         },
                         {
                             "role": "user",

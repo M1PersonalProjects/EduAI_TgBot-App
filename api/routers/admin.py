@@ -8,6 +8,7 @@ from openai import AsyncOpenAI
 from logger_config import logger
 from api.schemas.admin import BookCreateRequest, BookAdminResponse, PageUpdateRequest, OpenAIPageResponse
 from services.tutor import clean_ai_text
+from services.prompts import TEXTBOOK_DIGITIZATION_RULES
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Space"])
 
@@ -57,17 +58,7 @@ async def upload_pdf_and_process(book_id: int, file: UploadFile = File(...)):
                         messages=[
                             {
                                 "role": "system",
-                                "content": (
-                                    "You are an expert textbook digitalizer and OCR post-processor. Your task is to extract content from the textbook page and strictly format it into the requested JSON schema.\n\n"
-                                    "CRITICAL RULES FOR CONTENT PROCESSING:\n"
-                                    "1. 'page_paragraph': Extract the main section title, paragraph number, or sub-topic name visible on this page. Do not exceed 100 characters. If no clear topic is found, use the closest previous header or leave a general conceptual keyword in Russian.\n"
-                                    "2. 'raw_text': Provide clean, plain text extraction of the entire page content.\n"
-                                    "3. 'html_content': Structure the text using valid semantic HTML tags (e.g., <p>, <ul>, <li>, <h3>). If there are tables on the page, recreate them strictly using <table>, <tr>, <td> tags.\n"
-                                    "4. 'markdown_content': Provide the textbook page formatted in Markdown.\n\n"
-                                    "⚠️ EXTREMELY STRICT RULES FOR MATHEMATICS & FORMULAS (NO LATEX):\n"
-                                    "- Absolutely DO NOT use any LaTeX syntax (e.g., $, $$, \\(, \\], \\begin{...}, \\frac{...}, \\sqrt{...}).\n"
-                                    "- Convert all equations, fractions, degrees, and geometric notations into clean text that is easy to read."
-                                )
+                                "content": TEXTBOOK_DIGITIZATION_RULES,
                             },
                             {
                                 "role": "user",
