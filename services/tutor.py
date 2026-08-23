@@ -3,9 +3,7 @@ import re
 import uuid
 from typing import Any, Dict, List, Optional
 
-from openai import AsyncOpenAI
 
-from config import settings
 from database import db
 from services.context_resolver import ResolvedContext, load_locked_context, resolve_context
 from services.educational_context import build_educational_context, render_sources, search_eduai_materials
@@ -23,6 +21,7 @@ from services.interactive_apps import (
 from services.response_formatter import canonicalize_message
 from services.gamification import award_tutor_study_session_if_eligible
 from logger_config import logger
+from services.ai import create_chat_completion, openai_client
 from services.chat_memory import (
     attachment_inventory,
     build_attachment_context,
@@ -51,7 +50,6 @@ from services.conversation_context import (
 )
 
 
-openai_client = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
 
 
 def _session_uuid(session_id: str) -> uuid.UUID:
@@ -850,8 +848,8 @@ async def respond(
         ]
 
     response = await asyncio.wait_for(
-        openai_client.chat.completions.create(
-            model="gpt-4o", messages=messages, temperature=0.35,
+        create_chat_completion(openai_client,
+            messages=messages, temperature=0.35,
             max_tokens=1100 if message_source == "telegram" else 2000
         ),
         timeout=120,

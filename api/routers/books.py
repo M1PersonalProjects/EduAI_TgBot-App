@@ -7,6 +7,9 @@ router = APIRouter(prefix="/api/books", tags=["Books"])
 
 @router.get("/list", response_model=List[BookResponse])
 async def get_books_list(class_level: Optional[int] = None, program: Optional[str] = None):
+    """
+    Получение списка книг с возможностью фильтрации по классу и программе.
+    """
     async with db.pool.acquire() as conn:
         query = """
             SELECT book_id, book_class AS class_level, book_title AS title, book_author AS author, book_program
@@ -41,6 +44,9 @@ async def get_books_list(class_level: Optional[int] = None, program: Optional[st
 
 @router.get("/filters")
 async def get_available_filters():
+    """
+    Получение доступных фильтров для книг: классы и программы.
+    """
     async with db.pool.acquire() as conn:
         class_rows = await conn.fetch("SELECT DISTINCT book_class FROM book ORDER BY book_class")
         program_rows = await conn.fetch("SELECT DISTINCT book_program FROM book ORDER BY book_program")

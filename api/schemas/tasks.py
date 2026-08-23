@@ -1,5 +1,4 @@
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional
 
 class TaskGenerationResponse(BaseModel):
     task_id: int = Field(..., description="ID созданной задачи из tasks_history")
@@ -23,3 +22,9 @@ class SubmitAnswerResponse(BaseModel):
     new_xp_total: int = Field(..., description="Обновленный общий опыт ученика")
 
     model_config = ConfigDict(from_attributes=True)
+
+class OpenAITaskVerification(BaseModel):
+    """Структурированный результат проверки ответа ученика."""
+
+    is_correct: bool = Field(..., description="True если ответ верен, иначе False")
+    explanation: str = Field(..., description="Доброжелательное объяснение для Ученика на русском языке")

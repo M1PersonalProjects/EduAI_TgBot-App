@@ -31,6 +31,9 @@ async def upload_attachments(
     files: List[UploadFile] = File(...),
     user=Depends(get_current_user),
 ):
+    """
+    Загрузка файлов в хранилище ИИ-тьютора (ограничение 10 файлов за раз).
+    """
     if not files:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -60,6 +63,10 @@ async def list_my_attachments(
     limit: int = 50,
     user=Depends(get_current_user),
 ):
+    """
+    Получение списка загруженных пользователем файлов с ограничением по количеству.
+    Лимит максимум 100, нужно для пагинации в будущем.
+    """
     limit = min(max(limit, 1), 100)
 
     async with db.pool.acquire() as conn:
@@ -99,6 +106,10 @@ async def download_attachment(
     attachment_id: int,
     user=Depends(get_current_user),
 ):
+    """
+    Загрузка файла из хранилища ИИ-тьютора.
+    Для того, чтобы пользователь смог выгрузить ранее загруженный файл.
+    """
     attachment = await ensure_attachment_access(
         attachment_id,
         user,
@@ -124,6 +135,10 @@ async def preview_attachment(
     attachment_id: int,
     user=Depends(get_current_user),
 ):
+    """
+    Предпросмотр файла из хранилища ИИ-тьютора.
+    Для того, чтобы пользователь смог просмотреть ранее загруженный файл.
+    """
     attachment = await ensure_attachment_access(
         attachment_id,
         user,
@@ -169,6 +184,9 @@ async def remove_attachment(
     attachment_id: int,
     user=Depends(get_current_user),
 ):
+    """
+    Удаление файла из хранилища ИИ-тьютора.
+    """
     await delete_attachment(
         attachment_id=attachment_id,
         owner_id=user["tg_id"],

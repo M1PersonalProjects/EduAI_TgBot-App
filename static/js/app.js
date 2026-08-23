@@ -286,18 +286,23 @@
     const close = () => { sidebar?.classList.remove('open'); backdrop?.classList.remove('open'); };
     document.querySelector('.menu-toggle')?.addEventListener('click', () => { sidebar?.classList.toggle('open'); backdrop?.classList.toggle('open'); });
     backdrop?.addEventListener('click', close);
-    document.querySelectorAll('[data-section]').forEach(link => link.addEventListener('click', () => {
-      const id = link.dataset.section;
+    const sectionStorageKey = `eduai.ui.section:${location.pathname}`;
+    const activateSection = id => {
+      if (!id || !document.getElementById(id)) return;
       document.body.dataset.activeSection = id;
-      document.querySelectorAll('[data-section]').forEach(item => item.classList.toggle('active', item === link));
+      document.querySelectorAll('[data-section]').forEach(item => item.classList.toggle('active', item.dataset.section === id));
       document.querySelectorAll('.page-section').forEach(section => section.classList.toggle('active', section.id === id));
+      try { localStorage.setItem(sectionStorageKey, id); } catch (_) {}
       close();
-    }));
+    };
+    document.querySelectorAll('[data-section]').forEach(link => link.addEventListener('click', () => activateSection(link.dataset.section)));
     document.querySelectorAll('[data-close-modal]').forEach(button => button.addEventListener('click', () => closeModal(button.dataset.closeModal)));
     document.querySelectorAll('.modal-backdrop').forEach(modal => modal.addEventListener('click', event => { if (event.target === modal) { modal.classList.remove('open'); if (!document.querySelector('.modal-backdrop.open')) document.body.classList.remove('eduai-modal-open'); } }));
     document.querySelectorAll('[data-logout]').forEach(button => button.addEventListener('click', logout));
     const initialSection = document.querySelector('.page-section.active')?.id;
-    if (initialSection) document.body.dataset.activeSection = initialSection;
+    let savedSection = null;
+    try { savedSection = localStorage.getItem(sectionStorageKey); } catch (_) {}
+    activateSection(savedSection && document.getElementById(savedSection) ? savedSection : initialSection);
   }
 
 
@@ -469,3 +474,319 @@
   EduAI.MATH_RENDERER_VERSION = '20260816-unified-2';
 })();
 /* === /EduAI unified rich math rendering === */
+
+/* === EDUAI IOS-INSPIRED ADAPTIVE UI START === */
+(function () {
+  const THEME_KEY = 'eduai.ui.theme';
+  const LAYOUT_PREFIX = 'eduai.ui.layout:';
+  const currentPath = location.pathname || '/';
+  const mediaDark = window.matchMedia?.('(prefers-color-scheme: dark)');
+
+  function safeGet(key, fallback = null) {
+    try { return localStorage.getItem(key) ?? fallback; } catch (_) { return fallback; }
+  }
+
+  function safeSet(key, value) {
+    try { localStorage.setItem(key, value); } catch (_) {}
+  }
+
+  function currentThemePreference() {
+    const value = safeGet(THEME_KEY, 'system');
+    return ['light', 'dark', 'system'].includes(value) ? value : 'system';
+  }
+
+  function resolveTheme(preference = currentThemePreference()) {
+    if (preference === 'system') return mediaDark?.matches ? 'dark' : 'light';
+    return preference;
+  }
+
+  function applyTheme(preference = currentThemePreference()) {
+    const resolved = resolveTheme(preference);
+    document.documentElement.dataset.theme = resolved;
+    document.documentElement.dataset.themePreference = preference;
+    document.documentElement.style.colorScheme = resolved;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', resolved === 'dark' ? '#101114' : '#f5f5f7');
+    document.querySelectorAll('[data-theme-choice]').forEach(button => {
+      const active = button.dataset.themeChoice === preference;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  function setTheme(preference) {
+    if (!['light', 'dark', 'system'].includes(preference)) return;
+    safeSet(THEME_KEY, preference);
+    applyTheme(preference);
+  }
+
+  function navLabel(link) {
+    const clone = link.cloneNode(true);
+    clone.querySelectorAll('.badge').forEach(item => item.remove());
+    return clone.textContent.replace(/\s+/g, ' ').trim();
+  }
+
+  function navIcon(link) {
+    return link.querySelector('span')?.textContent?.trim() || '•';
+  }
+
+  function createQuickNavigation() {
+    const sourceLinks = [...document.querySelectorAll('.sidebar nav [data-section]')];
+    const topbar = document.querySelector('.topbar');
+    if (!sourceLinks.length || !topbar || topbar.querySelector('.desktop-quick-nav')) return;
+    const nav = document.createElement('nav');
+    nav.className = 'desktop-quick-nav';
+    nav.setAttribute('aria-label', 'Быстрая навигация');
+    sourceLinks.slice(0, 5).forEach(source => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `quick-nav-link${source.classList.contains('active') ? ' active' : ''}`;
+      button.dataset.section = source.dataset.section;
+      button.innerHTML = `<span aria-hidden="true">${navIcon(source)}</span><span>${navLabel(source)}</span>`;
+      nav.append(button);
+    });
+    topbar.insertBefore(nav, topbar.lastElementChild);
+  }
+
+  function createMobileNavigation() {
+    const sourceLinks = [...document.querySelectorAll('.sidebar nav [data-section]')];
+    if (!sourceLinks.length || document.querySelector('.mobile-bottom-nav')) return;
+    const nav = document.createElement('nav');
+    nav.className = 'mobile-bottom-nav glass-strong';
+    nav.setAttribute('aria-label', 'Мобильная навигация');
+    sourceLinks.slice(0, 4).forEach(source => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `mobile-nav-link${source.classList.contains('active') ? ' active' : ''}`;
+      button.dataset.section = source.dataset.section;
+      button.innerHTML = `<span aria-hidden="true">${navIcon(source)}</span><small>${navLabel(source)}</small>`;
+      nav.append(button);
+    });
+    if (sourceLinks.length > 4) {
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'mobile-nav-link';
+      more.dataset.mobileMore = '1';
+      more.innerHTML = '<span aria-hidden="true">•••</span><small>Ещё</small>';
+      more.addEventListener('click', () => document.querySelector('.menu-toggle')?.click());
+      nav.append(more);
+    }
+    document.body.append(nav);
+  }
+
+  function resetInterfaceLayout() {
+    try {
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith(LAYOUT_PREFIX) || key.startsWith('eduai.ui.section:') || key === 'eduai.ui.chatSidebarCollapsed') {
+          localStorage.removeItem(key);
+        }
+      });
+    } catch (_) {}
+    location.reload();
+  }
+
+  function createSettingsPanel() {
+    if (document.querySelector('[data-ui-settings]')) return;
+    const host = document.querySelector('.topbar > :last-child') || document.querySelector('.interactive-toolbar') || document.body;
+    const wrap = document.createElement('div');
+    wrap.className = 'ui-settings-wrap';
+    wrap.dataset.uiSettings = '1';
+    wrap.innerHTML = `
+      <button class="icon-btn ui-settings-toggle" type="button" aria-label="Настройки интерфейса" aria-haspopup="dialog" aria-expanded="false">⚙</button>
+      <div class="ui-settings-popover glass-strong" role="dialog" aria-label="Настройки интерфейса" hidden>
+        <div class="ui-settings-head"><strong>Интерфейс</strong><button type="button" class="thread-action" data-ui-settings-close aria-label="Закрыть">×</button></div>
+        <p class="ui-settings-label">Тема</p>
+        <div class="theme-segmented" role="group" aria-label="Тема оформления">
+          <button type="button" data-theme-choice="light">Светлая</button>
+          <button type="button" data-theme-choice="dark">Тёмная</button>
+          <button type="button" data-theme-choice="system">Система</button>
+        </div>
+        <button type="button" class="btn-secondary ui-reset-layout" data-ui-reset-layout>Сбросить расположение</button>
+      </div>`;
+    if (host === document.body) {
+      wrap.classList.add('ui-settings-floating');
+      document.body.append(wrap);
+    } else {
+      host.append(wrap);
+    }
+    const toggle = wrap.querySelector('.ui-settings-toggle');
+    const popover = wrap.querySelector('.ui-settings-popover');
+    const close = () => { popover.hidden = true; toggle.setAttribute('aria-expanded', 'false'); };
+    toggle.addEventListener('click', event => {
+      event.stopPropagation();
+      popover.hidden = !popover.hidden;
+      toggle.setAttribute('aria-expanded', popover.hidden ? 'false' : 'true');
+    });
+    wrap.querySelector('[data-ui-settings-close]').addEventListener('click', close);
+    wrap.querySelectorAll('[data-theme-choice]').forEach(button => button.addEventListener('click', () => setTheme(button.dataset.themeChoice)));
+    wrap.querySelector('[data-ui-reset-layout]').addEventListener('click', resetInterfaceLayout);
+    document.addEventListener('click', event => { if (!wrap.contains(event.target)) close(); });
+    applyTheme();
+  }
+
+  function moduleKey(element, index) {
+    if (element.dataset.uiModule) return element.dataset.uiModule;
+    const ownId = element.id || element.querySelector('[id]')?.id;
+    const text = element.querySelector('h2,h3,.stat-value,p')?.textContent?.trim()?.slice(0, 32) || `module-${index}`;
+    const slug = (ownId || text).toLowerCase().replace(/[^a-z0-9а-яё]+/gi, '-').replace(/^-|-$/g, '');
+    element.dataset.uiModule = slug || `module-${index}`;
+    return element.dataset.uiModule;
+  }
+
+  function applySavedOrder(container, storageKey) {
+    let order = [];
+    try { order = JSON.parse(safeGet(storageKey, '[]')); } catch (_) {}
+    if (!Array.isArray(order) || !order.length) return;
+    const byKey = new Map([...container.children].map((child, index) => [moduleKey(child, index), child]));
+    order.forEach(key => { const child = byKey.get(key); if (child) container.append(child); });
+  }
+
+  function saveOrder(container, storageKey) {
+    const order = [...container.children].filter(child => child.matches('.ui-movable-module')).map((child, index) => moduleKey(child, index));
+    safeSet(storageKey, JSON.stringify(order));
+  }
+
+  function enableMovableContainer(container, name) {
+    if (!container || container.dataset.uiMovableReady) return;
+    container.dataset.uiMovableReady = '1';
+    const storageKey = `${LAYOUT_PREFIX}${currentPath}:${name}`;
+    [...container.children].forEach((child, index) => {
+      child.classList.add('ui-movable-module');
+      child.draggable = true;
+      moduleKey(child, index);
+      child.addEventListener('dragstart', event => {
+        if (window.matchMedia('(max-width: 767px)').matches) { event.preventDefault(); return; }
+        child.classList.add('ui-dragging');
+        event.dataTransfer?.setData('text/plain', child.dataset.uiModule);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+      });
+      child.addEventListener('dragend', () => { child.classList.remove('ui-dragging'); saveOrder(container, storageKey); });
+    });
+    container.addEventListener('dragover', event => {
+      const dragging = container.querySelector('.ui-dragging');
+      if (!dragging) return;
+      event.preventDefault();
+      const siblings = [...container.querySelectorAll('.ui-movable-module:not(.ui-dragging)')];
+      const target = siblings.find(item => {
+        const box = item.getBoundingClientRect();
+        return event.clientY < box.top + box.height / 2 && event.clientX < box.right + Math.max(48, box.width / 2);
+      });
+      if (target) container.insertBefore(dragging, target); else container.append(dragging);
+    });
+    applySavedOrder(container, storageKey);
+  }
+
+  function enableMovableModules() {
+    enableMovableContainer(document.querySelector('.student-dashboard-stats'), 'student-stats');
+    const adminOverview = document.getElementById('admin-overview');
+    enableMovableContainer(adminOverview?.querySelector('.grid.grid-cols-2'), 'admin-stats');
+  }
+
+  function setupBookModePanels() {
+    document.querySelectorAll('[data-chat-layout]').forEach((layout, index) => {
+      const asides = [...layout.children].filter(child => child.tagName === 'ASIDE');
+      const panel = asides.at(-1);
+      const center = layout.querySelector('.chat-center-card');
+      if (!panel || !center || panel.matches('[data-chat-sidebar]') || panel.dataset.bookPanelReady) return;
+      panel.dataset.bookPanelReady = '1';
+      panel.classList.add('chat-context-panel');
+      panel.style.setProperty('--book-panel-index', String(index));
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn-secondary book-panel-toggle';
+      button.setAttribute('aria-expanded', 'false');
+      button.innerHTML = '<span aria-hidden="true">📚</span><span>Book Mode</span>';
+      const headerRow = center.querySelector(':scope > div:first-child .flex') || center.firstElementChild;
+      headerRow?.append(button);
+      const backdrop = document.createElement('button');
+      backdrop.type = 'button';
+      backdrop.className = 'ui-context-backdrop';
+      backdrop.setAttribute('aria-label', 'Закрыть Book Mode');
+      layout.append(backdrop);
+      const close = () => { layout.classList.remove('book-panel-open'); button.setAttribute('aria-expanded', 'false'); };
+      button.addEventListener('click', () => {
+        const open = !layout.classList.contains('book-panel-open');
+        document.querySelectorAll('[data-chat-layout].book-panel-open').forEach(other => { if (other !== layout) other.classList.remove('book-panel-open'); });
+        layout.classList.toggle('book-panel-open', open);
+        button.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+      backdrop.addEventListener('click', close);
+    });
+  }
+
+  function setupGlobalScrollControl() {
+    if (document.querySelector('[data-global-scroll-control]')) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'global-scroll-control';
+    button.dataset.globalScrollControl = '1';
+    button.hidden = true;
+    document.body.append(button);
+    let engaged = false;
+    let hideTimer = null;
+
+    const targetInfo = () => {
+      const active = document.querySelector('.page-section.active');
+      const log = active?.querySelector('.chat-log');
+      if (log && log.scrollHeight > log.clientHeight + 96) return { element: log, isWindow: false };
+      const root = document.scrollingElement || document.documentElement;
+      return { element: root, isWindow: true };
+    };
+
+    const update = () => {
+      const { element, isWindow } = targetInfo();
+      const top = isWindow ? window.scrollY : element.scrollTop;
+      const height = isWindow ? window.innerHeight : element.clientHeight;
+      const max = Math.max(0, element.scrollHeight - height);
+      if (!engaged || max < 140 || top < 4) { button.hidden = true; return; }
+      const down = top < max / 2;
+      button.textContent = down ? '↓' : '↑';
+      button.setAttribute('aria-label', down ? 'Прокрутить вниз' : 'Прокрутить вверх');
+      button.setAttribute('title', down ? 'Вниз' : 'Вверх');
+      button.hidden = false;
+      clearTimeout(hideTimer);
+      if (top < 8 || max - top < 8) hideTimer = setTimeout(() => { button.hidden = true; engaged = false; }, 650);
+    };
+
+    const onScroll = () => { engaged = true; update(); };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    document.querySelectorAll('.chat-log,.table-wrap,.modal-panel').forEach(element => element.addEventListener('scroll', onScroll, { passive: true }));
+    button.addEventListener('click', () => {
+      const { element, isWindow } = targetInfo();
+      const top = isWindow ? window.scrollY : element.scrollTop;
+      const height = isWindow ? window.innerHeight : element.clientHeight;
+      const max = Math.max(0, element.scrollHeight - height);
+      const destination = top < max / 2 ? element.scrollHeight : 0;
+      if (isWindow) window.scrollTo({ top: destination, behavior: 'smooth' });
+      else element.scrollTo({ top: destination, behavior: 'smooth' });
+    });
+  }
+
+  function syncNavState() {
+    const sync = () => {
+      const activeSection = document.body.dataset.activeSection || document.querySelector('.page-section.active')?.id;
+      if (!activeSection) return;
+      document.querySelectorAll('.quick-nav-link,.mobile-nav-link[data-section]').forEach(item => item.classList.toggle('active', item.dataset.section === activeSection));
+    };
+    new MutationObserver(sync).observe(document.body, { attributes: true, attributeFilter: ['data-active-section'] });
+    sync();
+  }
+
+  function initAdaptiveUI() {
+    applyTheme();
+    createQuickNavigation();
+    createMobileNavigation();
+    createSettingsPanel();
+    enableMovableModules();
+    setupBookModePanels();
+    setupGlobalScrollControl();
+    syncNavState();
+  }
+
+  mediaDark?.addEventListener?.('change', () => { if (currentThemePreference() === 'system') applyTheme('system'); });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initAdaptiveUI, { once: true });
+  else initAdaptiveUI();
+
+  window.EduAIUI = { applyTheme, setTheme, resetInterfaceLayout };
+})();
+/* === EDUAI IOS-INSPIRED ADAPTIVE UI END === */

@@ -2,13 +2,11 @@ import json
 from typing import Optional
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
-from openai import AsyncOpenAI
 
 from database import db
-from config import settings
-from api.schemas.tasks import TaskGenerationResponse, SubmitAnswerRequest, SubmitAnswerResponse
+from api.schemas.tasks import OpenAITaskVerification, TaskGenerationResponse, SubmitAnswerRequest, SubmitAnswerResponse
 from logger_config import logger
-from services.response_formatter import MATH_FORMATTING_RULES
+from services.ai import openai_client, parse_chat_completion
 from services.context_resolver import resolve_book_context
 from services.educational_context import build_context_from_metadata, build_educational_context, selected_context_from_page
 from services.task_generation import (
@@ -22,16 +20,11 @@ from services.gamification import award_learning_result, infer_difficulty, norma
 
 router = APIRouter(prefix="/api/tasks", tags=["Tasks"])
 
-openai_client = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
 
 
 class OpenAITaskGeneration(GeneratedTaskSet):
     """Backward-compatible name for the structured multi-task response model."""
 
-
-class OpenAITaskVerification(BaseModel):
-    is_correct: bool = Field(..., description="True если ответ верен, иначе False")
-    explanation: str = Field(..., description="Доброжелательное объяснение для Ученика на русском языке")
 
 class GenerateTaskRequest(BaseModel):
     student_id: int
@@ -300,8 +293,7 @@ async def submit_task_answer(payload: SubmitAnswerRequest):
         )
 
     try:
-        response = await openai_client.beta.chat.completions.parse(
-            model="gpt-4o",
+        response = await parse_chat_completion(openai_client,
             messages=[
                 {"role": "system", "content": task_grading_prompt()},
                 {

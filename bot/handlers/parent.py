@@ -4,9 +4,8 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from database import db
-from openai import AsyncOpenAI
-from config import settings
 from logger_config import logger
+from services.ai import create_chat_completion, openai_client
 from bot.messages import answer_plain, send_plain_to_chat
 from services.tutor_policy import teacher_task_prompt, teacher_analytics_prompt
 from services.educational_context import build_educational_context, selected_context_from_page
@@ -14,7 +13,6 @@ from services.task_generation import GeneratedTaskSet, extract_requested_task_co
 from services.tutor import search_web_for_education
 
 router = Router()
-openai_client = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
 
 class ParentStates(StatesGroup):
     waiting_for_analytics_question = State()
@@ -101,8 +99,7 @@ async def process_parent_analytics_query(message: Message, state: FSMContext):
 
         context_str = "\n".join(history_summary) if history_summary else "История заданий пока пуста."
 
-        response = await openai_client.chat.completions.create(
-            model="gpt-4o",
+        response = await create_chat_completion(openai_client,
             messages=[
                 {
                     "role": "system",

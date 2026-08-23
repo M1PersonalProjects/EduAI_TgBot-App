@@ -44,7 +44,7 @@
       const section = this.$('formId')?.closest('.page-section');
       this.layout = section?.querySelector('[data-chat-layout]') || null;
       this.jumpButton = section?.querySelector('[data-chat-jump-bottom]') || null;
-      this.jumpButton?.addEventListener('click', () => this.scrollToBottom('smooth'));
+      this.jumpButton?.addEventListener('click', () => this.jumpByPosition());
       this.layout?.querySelectorAll('[data-chat-sidebar-toggle]').forEach(button => {
         button.addEventListener('click', () => this.toggleThreadsPanel());
       });
@@ -60,7 +60,8 @@
     }
 
     isThreadsDrawerMode() {
-      return window.matchMedia('(max-width: 1279px)').matches;
+      // В новом интерфейсе список чатов всегда открывается как компактная выдвижная панель.
+      return true;
     }
 
     toggleThreadsPanel() {
@@ -69,6 +70,7 @@
         this.layout.classList.toggle('threads-drawer-open');
       } else {
         this.layout.classList.toggle('threads-collapsed');
+        try { localStorage.setItem('eduai.ui.chatSidebarCollapsed', this.layout.classList.contains('threads-collapsed') ? '1' : '0'); } catch (_) {}
       }
       this.updateSidebarButtons();
     }
@@ -104,9 +106,26 @@
       if (this.jumpButton) this.jumpButton.hidden = true;
     }
 
+    jumpByPosition() {
+      const log = this.$('logId');
+      if (!log) return;
+      const max = Math.max(0, log.scrollHeight - log.clientHeight);
+      const towardBottom = log.scrollTop < max / 2;
+      if (typeof log.scrollTo === 'function') log.scrollTo({ top: towardBottom ? log.scrollHeight : 0, behavior: 'smooth' });
+      else log.scrollTop = towardBottom ? log.scrollHeight : 0;
+    }
+
     updateJumpButton() {
       if (!this.jumpButton) return;
-      this.jumpButton.hidden = this.isNearBottom();
+      const log = this.$('logId');
+      if (!log) return;
+      const max = Math.max(0, log.scrollHeight - log.clientHeight);
+      if (max < 96 || log.scrollTop < 4) { this.jumpButton.hidden = true; return; }
+      const towardBottom = log.scrollTop < max / 2;
+      this.jumpButton.textContent = towardBottom ? '↓' : '↑';
+      this.jumpButton.setAttribute('aria-label', towardBottom ? 'Перейти вниз' : 'Перейти вверх');
+      this.jumpButton.setAttribute('title', towardBottom ? 'Вниз' : 'Вверх');
+      this.jumpButton.hidden = false;
     }
 
     resizeComposer() {

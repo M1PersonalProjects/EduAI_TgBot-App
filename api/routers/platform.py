@@ -3,16 +3,14 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 
-from api.routers.admin import upload_pdf_and_process
-from api.routers.tasks import OpenAITaskVerification
+from api.schemas.tasks import OpenAITaskVerification
 from api.security import get_current_user, require_roles
-from config import settings
 from database import db
 from logger_config import logger
-from services.response_formatter import MATH_FORMATTING_RULES, canonicalize_message
+from services.ai import openai_client, parse_chat_completion
+from services.response_formatter import canonicalize_message
 from services.context_resolver import resolve_book_context
 from services.educational_context import build_context_from_metadata, build_educational_context
 from services.task_generation import extract_requested_task_count, generate_exact_task_set, task_set_payload
@@ -29,6 +27,7 @@ from services.gamification import (
     infer_difficulty,
     normalize_assignment_source,
 )
+from services.textbook_digitizer import digitize_pdf_bytes
 from services.attachment_storage import (
     load_attachment_for_ai,
     validate_owned_attachments,
@@ -36,7 +35,6 @@ from services.attachment_storage import (
 
 
 router = APIRouter(prefix="/api/v1", tags=["Web platform v1"])
-openai_client = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
 
 
 def parse_json(value: Any) -> Any:
@@ -538,8 +536,7 @@ async def submit_student_task(task_id: int, payload: TaskAnswerRequest, user=Dep
             topic_context,
         )
     try:
-        response = await openai_client.beta.chat.completions.parse(
-            model="gpt-4o",
+        response = await parse_chat_completion(openai_client,
             messages=[
                 {"role": "system", "content": task_grading_prompt()},
                 {
@@ -849,8 +846,7 @@ async def _generate_manual_answer_key(
         )
 
     try:
-        response = await openai_client.beta.chat.completions.parse(
-            model="gpt-4o",
+        response = await parse_chat_completion(openai_client,
             temperature=0.1,
             messages=[
                 {
@@ -1547,7 +1543,21 @@ async def admin_delete_book(book_id: int, user=Depends(require_roles("admin"))):
 
 @router.post("/admin/books/{book_id}/upload", status_code=status.HTTP_200_OK)
 async def admin_upload_book(book_id: int, file: UploadFile = File(...), user=Depends(require_roles("admin"))):
-    return await upload_pdf_and_process(book_id, file)
+    """Оцифровывает PDF через общий сервис, без зависимости одного роутера от другого."""
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Файл должен быть в формате PDF")
+    pdf_bytes = await file.read()
+    if not pdf_bytes:
+        raise HTTPException(status_code=400, detail="PDF пуст")
+    if len(pdf_bytes) > 100 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="PDF должен быть не больше 100 МБ")
+    try:
+        return await digitize_pdf_bytes(book_id, pdf_bytes, client=openai_client)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Ошибка загрузки учебника %s", book_id)
+        raise HTTPException(status_code=500, detail="Ошибка обработки PDF-файла") from exc
 
 
 @router.get("/admin/books/{book_id}/pages")

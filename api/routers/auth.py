@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from api.routers.accounts import verify_telegram_webapp_data
 from api.schemas.accounts import WebAppAuthRequest, WebAuthRequest
-from api.security import create_session_token, get_current_user
+from api.security import create_session_token, get_current_user, verify_telegram_webapp_data
 from database import db
 
 
@@ -10,6 +9,9 @@ router = APIRouter(prefix="/api/v1/auth", tags=["Authentication v1"])
 
 
 def _auth_response(user) -> dict:
+    """
+    Формирует ответ сессии для пользователя.
+    """
     return {
         "status": "success",
         "tg_id": user["tg_id"],
@@ -20,6 +22,9 @@ def _auth_response(user) -> dict:
 
 
 async def _find_user(tg_id: int):
+    """
+    Находит пользователя по tg_id в базе данных для проверки существует он или нет.
+    """
     async with db.pool.acquire() as conn:
         user = await conn.fetchrow(
             "SELECT tg_id, username, role, parent_id FROM users WHERE tg_id = $1",
@@ -35,6 +40,10 @@ async def _find_user(tg_id: int):
 
 @router.post("/telegram-webapp")
 async def telegram_webapp_login(payload: WebAppAuthRequest):
+    """
+    Точка входа для Telegram Web App.
+    Проверяет сессию и возвращает роль пользователя из СУБД.
+    """
     telegram_user = verify_telegram_webapp_data(payload.init_data_raw)
     tg_id = telegram_user.get("id")
     if not isinstance(tg_id, int):
@@ -44,11 +53,18 @@ async def telegram_webapp_login(payload: WebAppAuthRequest):
 
 @router.post("/browser-login")
 async def browser_login(payload: WebAuthRequest):
+    """
+    Точка входа для браузерного входа.
+    Проверяет сессию и возвращает роль пользователя из СУБД.
+    """
     return _auth_response(await _find_user(payload.tg_id))
 
 
 @router.get("/session")
 async def validate_session(user=Depends(get_current_user)):
+    """
+    Проверка действительности сессии и получение информации о пользователе.
+    """
     return {
         "tg_id": user["tg_id"],
         "username": user["username"],

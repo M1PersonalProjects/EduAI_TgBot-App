@@ -5,12 +5,11 @@ import re
 import uuid
 from typing import Any, Dict, List, Optional
 
-from openai import APIConnectionError, APITimeoutError, AsyncOpenAI
 from pydantic import BaseModel, Field
 
-from config import settings
 from database import db
 from logger_config import logger
+from services.ai import AIUpstreamError, openai_client, parse_chat_completion
 from services.context_resolver import ResolvedContext
 from services.task_generation import find_requested_task_count
 from services.templates import render_interactive_shell
@@ -24,7 +23,6 @@ from services.tutor_policy import (
 from services.prompts import INTERACTIVE_ANSWER_KEY_RULES, INTERACTIVE_GRADING_RULES
 
 
-openai_client = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value(), timeout=45.0, max_retries=1)
 
 
 class InteractiveSection(BaseModel):
@@ -1021,8 +1019,7 @@ async def _generate(
         user_text += "\n\nCURRENT HTML VERSION (DATA TO EDIT):\n" + previous_html[:160000]
 
     async def request_spec(extra_instruction: str = "", temperature: float = 0.25) -> Optional[InteractiveAppSpec]:
-        response = await openai_client.beta.chat.completions.parse(
-            model="gpt-4o",
+        response = await parse_chat_completion(openai_client,
             temperature=temperature,
             messages=[
                 {"role": "system", "content": _generation_prompt(role)},
@@ -1034,7 +1031,7 @@ async def _generate(
 
     try:
         spec = await request_spec()
-    except (APITimeoutError, APIConnectionError) as exc:
+    except AIUpstreamError as exc:
         logger.warning("Interactive app generation temporarily unavailable: %s", exc)
         raise InteractiveAppTemporaryError(
             "Не удалось сейчас создать или изменить интерактивное приложение: "
@@ -1064,7 +1061,7 @@ async def _generate(
         )
         try:
             repaired_spec = await request_spec(correction, temperature=0.2)
-        except (APITimeoutError, APIConnectionError) as exc:
+        except AIUpstreamError as exc:
             logger.warning("Interactive quality repair attempt %s failed upstream: %s", attempt + 1, exc)
             continue
         if not repaired_spec:
@@ -1100,8 +1097,7 @@ async def _generate(
 async def generate_teacher_answer_key(*, title: str, request: str, html_document: str) -> str:
     """Generate an answer key on demand for an authorized Teacher; never store it in learner HTML."""
     prompt = "\n\n".join([private_answer_key_prompt(), INTERACTIVE_ANSWER_KEY_RULES])
-    response = await openai_client.beta.chat.completions.parse(
-        model="gpt-4o",
+    response = await parse_chat_completion(openai_client,
         temperature=0.1,
         messages=[
             {"role": "system", "content": prompt},
@@ -1118,8 +1114,7 @@ async def generate_teacher_answer_key(*, title: str, request: str, html_document
 async def grade_interactive_submission(*, title: str, request: str, html_document: str, answers: Dict[str, Any]) -> InteractiveGrade:
     """Grade learner answers server-side without exposing a solution key to the browser."""
     prompt = "\n\n".join([task_grading_prompt(), INTERACTIVE_GRADING_RULES])
-    response = await openai_client.beta.chat.completions.parse(
-        model="gpt-4o",
+    response = await parse_chat_completion(openai_client,
         temperature=0.05,
         messages=[
             {"role": "system", "content": prompt},

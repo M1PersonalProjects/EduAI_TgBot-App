@@ -93,3 +93,58 @@ def require_roles(*allowed_roles: str) -> Callable:
         return user
 
     return dependency
+
+
+def verify_telegram_webapp_data(init_data_raw: str) -> dict:
+    """Проверяет подпись и срок действия Telegram WebApp initData."""
+    import urllib.parse
+
+    try:
+        parsed_data = dict(urllib.parse.parse_qsl(init_data_raw))
+        if "hash" not in parsed_data:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Некорректный формат данных: отсутствует hash",
+            )
+        telegram_hash = parsed_data.pop("hash")
+        data_check_string = "\n".join(f"{key}={value}" for key, value in sorted(parsed_data.items()))
+        secret_key = hmac.new(
+            b"WebAppData",
+            settings.bot_token.get_secret_value().encode(),
+            hashlib.sha256,
+        ).digest()
+        calculated_hash = hmac.new(
+            secret_key,
+            data_check_string.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(calculated_hash, telegram_hash):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Ошибка валидации данных: хэш не совпадает",
+            )
+
+        try:
+            auth_date = int(parsed_data.get("auth_date", "0"))
+        except ValueError:
+            auth_date = 0
+        if auth_date <= 0 or abs(int(time.time()) - auth_date) > 24 * 60 * 60:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Данные Telegram устарели. Откройте Web App заново",
+            )
+
+        user_data = parsed_data.get("user")
+        if not user_data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Данные пользователя отсутствуют в initData",
+            )
+        return json.loads(user_data)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Ошибка разбора initData: {exc}",
+        ) from exc

@@ -5,9 +5,8 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from database import db
-from openai import AsyncOpenAI
-from config import settings
 from logger_config import logger
+from services.ai import openai_client, parse_chat_completion
 from bot.messages import answer_plain, send_plain_to_chat
 from services.tutor_policy import task_grading_prompt
 from services.educational_context import build_context_from_metadata
@@ -15,7 +14,6 @@ from services.gamification import TEACHER, award_learning_result, infer_difficul
 
 router = Router()
 
-openai_client = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
 
 
 class QuestStates(StatesGroup):
@@ -144,7 +142,7 @@ async def check_quest_answer(message: Message, state: FSMContext):
 
     status_msg = await message.answer("🔍 ИИ проверяет твой ответ…")
     try:
-        from api.routers.tasks import OpenAITaskVerification
+        from api.schemas.tasks import OpenAITaskVerification
 
         async with db.pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -172,8 +170,7 @@ async def check_quest_answer(message: Message, state: FSMContext):
                 topic_context,
             )
 
-        response = await openai_client.beta.chat.completions.parse(
-            model="gpt-4o",
+        response = await parse_chat_completion(openai_client,
             messages=[
                 {"role": "system", "content": task_grading_prompt()},
                 {

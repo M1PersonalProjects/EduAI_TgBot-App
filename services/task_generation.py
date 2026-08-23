@@ -5,6 +5,8 @@ from typing import Any, List, Optional, Sequence
 
 from pydantic import BaseModel, Field
 
+from services.ai import parse_chat_completion
+
 
 class GeneratedTaskItem(BaseModel):
     question: str = Field(..., min_length=1, max_length=12000)
@@ -88,7 +90,7 @@ async def generate_exact_task_set(
     system_prompt: str,
     user_content: Any,
     requested_count: int,
-    model: str = "gpt-4o",
+    model: Optional[str] = None,
     temperature: float = 0.3,
 ) -> GeneratedTaskSet:
     """Generate and verify the requested count, with the required repair request on mismatch."""
@@ -116,7 +118,7 @@ async def generate_exact_task_set(
             )})
         else:
             final_content = str(content) + count_instruction
-        response = await client.beta.chat.completions.parse(
+        response = await parse_chat_completion(client,
             model=model,
             temperature=temperature if not repair else min(temperature, 0.2),
             messages=[

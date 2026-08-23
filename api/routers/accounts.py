@@ -1,14 +1,10 @@
-import hashlib
-import hmac
-import urllib.parse
-import json
-import time
 from pathlib import Path
+from config import settings
 from fastapi import APIRouter, HTTPException, status, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from database import db
-from config import settings
+from api.security import verify_telegram_webapp_data
 from api.schemas.accounts import (
     LinkAccountsRequest, MonitoringResponse, StudentProgressResponse,
     WebAppAuthRequest, RoleSwitchRequest, AuthResponse, WebAuthRequest
@@ -21,69 +17,6 @@ templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[2] / 
 @router.get("/login", response_class=HTMLResponse)
 async def get_login_page(request: Request):
     return templates.TemplateResponse(request, "auth.html")
-
-def verify_telegram_webapp_data(init_data_raw: str) -> dict:
-    """
-    Проверяет initData от Telegram с помощью BOT_TOKEN согласно спецификации.
-    Возвращает словарь с данными пользователя, если проверка успешна.
-    """
-    try:
-        parsed_data = dict(urllib.parse.parse_qsl(init_data_raw))
-        if "hash" not in parsed_data:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Некорректный формат данных: отсутствует hash"
-            )
-
-        tg_hash = parsed_data.pop("hash")
-
-        data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed_data.items()))
-
-        secret_key = hmac.new(
-            b"WebAppData",
-            settings.bot_token.get_secret_value().encode(),
-            hashlib.sha256
-        ).digest()
-
-        calculated_hash = hmac.new(
-            secret_key,
-            data_check_string.encode(),
-            hashlib.sha256
-        ).hexdigest()
-
-        if not hmac.compare_digest(calculated_hash, tg_hash):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Ошибка валидации данных: хэш не совпадает"
-            )
-
-        try:
-            auth_date = int(parsed_data.get("auth_date", "0"))
-        except ValueError:
-            auth_date = 0
-        if auth_date <= 0 or abs(int(time.time()) - auth_date) > 24 * 60 * 60:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Данные Telegram устарели. Откройте Web App заново",
-            )
-
-        user_data_str = parsed_data.get("user")
-        if not user_data_str:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Данные пользователя отсутствуют в initData"
-            )
-
-        return json.loads(user_data_str)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Ошибка разбора initData: {str(e)}"
-        )
-
 
 @router.post("/verify-webapp", response_model=AuthResponse)
 async def verify_webapp_session(payload: WebAppAuthRequest):
@@ -115,17 +48,21 @@ async def verify_webapp_session(payload: WebAppAuthRequest):
 
 @router.post("/switch-role")
 async def switch_user_role(payload: RoleSwitchRequest):
+    """
+    Смена роли Учитель <-> Админ с проверкой безопасности через Telegram Web App.
+    В самом сайте Telegram WebApp.
+    """
     tg_user = verify_telegram_webapp_data(payload.init_data_raw)
     if tg_user.get("id") != payload.tg_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Действие запрещено: попытка изменения чужого аккаунта."
+            detail="Действие запрещено: попытка входа в чужой аккаунта."
         )
 
     if payload.target_role not in ["admin", "parent"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Недопустимая целевая роль. Возможны только 'admin' или 'parent'"
+            detail="Недопустимая роль пользователя. Возможны только 'admin' или 'teacher'"
         )
 
     if payload.target_role == "admin" and payload.tg_id not in settings.admin_ids:
@@ -165,6 +102,9 @@ async def switch_user_role(payload: RoleSwitchRequest):
 
 @router.get("/monitoring/{parent_tg_id}", response_model=MonitoringResponse)
 async def get_parent_monitoring(parent_tg_id: int):
+    """
+    Получение мониторинга активности учеников для Учителя/Админа на их странице сайта.
+    """
     async with db.pool.acquire() as conn:
         parent = await conn.fetchrow(
             "SELECT tg_id FROM users WHERE tg_id = $1 AND role IN ('parent', 'admin')",
@@ -173,7 +113,7 @@ async def get_parent_monitoring(parent_tg_id: int):
         if not parent:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Родитель/Администратор с таким Telegram ID не найден"
+                detail="Учитель/Администратор с таким Telegram ID не найден"
             )
 
         rows = await conn.fetch(
@@ -208,6 +148,10 @@ async def get_parent_monitoring(parent_tg_id: int):
 
 @router.post("/link", status_code=status.HTTP_200_OK)
 async def link_parent_and_student(payload: LinkAccountsRequest):
+    """
+    Логика привязки аккаунта ученика к Учителю/Админу (без создания самой ссылки).
+    Результатом является привязка аккаунта ученика к Учителю/Админу в БД.
+    """
     async with db.pool.acquire() as conn:
         async with conn.transaction():
             parent = await conn.fetchrow(
@@ -217,7 +161,7 @@ async def link_parent_and_student(payload: LinkAccountsRequest):
             if not parent:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Родитель с таким Telegram ID не найден"
+                    detail="Учитель с таким Telegram ID не найден"
                 )
 
             student = await conn.fetchrow(
@@ -256,12 +200,15 @@ async def link_parent_and_student(payload: LinkAccountsRequest):
 
     return {
         "status": "success",
-        "message": f"Аккаунт ученика {payload.student_tg_id} успешно привязан к родителю {payload.parent_tg_id}"
+        "message": f"Аккаунт ученика {payload.student_tg_id} успешно привязан к Учителю {payload.parent_tg_id}"
     }
 
 
 @router.get("/profile/{tg_id}", response_model=StudentProgressResponse)
 async def get_user_profile(tg_id: int):
+    """
+    Получение профиля Ученика по tg_id.
+    """
     async with db.pool.acquire() as conn:
         profile = await conn.fetchrow(
             """

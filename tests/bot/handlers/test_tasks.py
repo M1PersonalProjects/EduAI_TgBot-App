@@ -1,5 +1,4 @@
 import pytest
-import sys
 import json
 from unittest.mock import AsyncMock, MagicMock, ANY
 from types import SimpleNamespace
@@ -15,10 +14,6 @@ class MockTaskVer(BaseModel):
     is_correct: bool
     explanation: str
 
-mock_api_module = MagicMock()
-mock_api_module.OpenAITaskGeneration = MockTaskGen
-mock_api_module.OpenAITaskVerification = MockTaskVer
-sys.modules["api.routers.tasks"] = mock_api_module
 
 from bot.handlers.tasks import start_quest, check_quest_answer, QuestStates, openai_client
 

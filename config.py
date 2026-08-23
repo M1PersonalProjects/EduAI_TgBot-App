@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     admin_ids: set[int] = Field(default_factory=set)
     webapp_base_url: str = "https://localhost:8000"
     attachments_dir: str = "storage/attachments"
+    openai_model: str = "gpt-4o"
+    openai_timeout_seconds: float = Field(default=45.0, gt=0, le=300)
+    openai_max_retries: int = Field(default=2, ge=0, le=10)
 
     @field_validator("admin_ids", mode="before")
     @classmethod
