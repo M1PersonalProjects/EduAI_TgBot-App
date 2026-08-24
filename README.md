@@ -1,6 +1,6 @@
 # EduAI
 
-EduAI — единая образовательная платформа с WebApp, FastAPI backend, Telegram-ботом и AI-тьютором. Проект поддерживает роли **Ученик**, **Учитель** (техническое значение роли в БД/API — `parent`) и **Администратор**, работу с учебниками и Book Mode, задания, интерактивные приложения, вложения, прогресс и геймификацию.
+EduAI — единая образовательная платформа с WebApp, FastAPI backend, Telegram-ботом и AI-тьютором. Проект поддерживает роли **Ученик**, **Учитель** (техническое значение роли в БД/API — `parent`) и **Администратор**, работу с учебниками и Book Mode, задания, интерактивные приложения, вложения и учебный прогресс.
 
 ## Архитектура
 
@@ -17,7 +17,7 @@ shared services
   ├─ attachments
   ├─ interactive apps
   ├─ textbook digitization
-  ├─ gamification
+  ├─ assignment source / task workflow
   └─ services/ai (единый OpenAI client layer)
         │
         ▼
@@ -55,26 +55,16 @@ python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-cp .env.example .env
+# Создайте .env вручную или скопируйте .env.example, если используете шаблон
 ```
 
-Заполните `.env` реальными значениями. Секреты не должны попадать в Git.
+Минимально задайте `BOT_TOKEN`, `OPENAI_API_KEY` и `DATABASE_URL`. Секреты не должны попадать в Git.
 
-## База данных и миграции
+## База данных и актуализация схемы
 
-Приложение ожидает существующую базовую схему EduAI. Совместимая idempotent-миграция текущей версии находится в:
+Приложение ожидает существующую базовую схему EduAI. Минимальные совместимые изменения, необходимые текущему коду (`assignment_source`, draft-first задания и `pending_review`), проверяются и идемпотентно применяются при старте через `services/schema_migrations.py`. Runtime не зависит от одноразовых `.sql`-файлов.
 
-```text
-migrations/20260819_assignment_sources_gamification.sql
-```
-
-Она автоматически применяется при старте через `services/schema_migrations.py` и может быть применена вручную:
-
-```bash
-psql "$DATABASE_URL" -f migrations/20260819_assignment_sources_gamification.sql
-```
-
-Перед production-обновлением сделайте резервную копию БД.
+Перед любыми ручными изменениями production-БД делайте резервную копию.
 
 ## Запуск
 
@@ -106,7 +96,12 @@ uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 
 Legacy `.html` URL сохранены как совместимые UI-адаптеры.
 
-Frontend использует единый iOS-inspired design system в `static/css/app.css`: режимы Light/Dark/System с сохранением выбора, компактную top navigation на desktop, bottom navigation на mobile, выдвижные chat/Book Mode panels, сохранение части layout в `localStorage`, единый rich Markdown/Math renderer и `prefers-reduced-motion`. Интерфейс вдохновлён iOS/iPadOS/macOS, но не копирует системные приложения Apple.
+Frontend использует единый iOS-inspired design system в `static/css/app.css`: режимы Light/Dark/System, мягкий EduAI glow, glass-панели, компактную desktop navigation, bottom navigation на mobile, swipe-drawer списка чатов, Book Mode sheet, `visualViewport` для экранной клавиатуры, сохранение layout/theme в `localStorage`, единый Markdown/Math renderer и `prefers-reduced-motion`. Интерфейс вдохновлён iOS/iPadOS/macOS, но не копирует системные приложения Apple.
+
+### Задания Учителя
+
+Обычное задание всегда проходит путь `черновик → редактирование/preview → выбор Ученика → отправка`. Черновик можно начать со страницы «Ученики» или из конкретного ответа AI Tutor. Ответ Ученика переводит обычное задание в `pending_review`; окончательную оценку и комментарий выставляет Учитель. AI может дать Учителю подсказку, но не принимает финальное решение. Интерактивные приложения остаются отдельным типом задания с автоматической серверной проверкой.
+
 
 ## AI и prompts
 
@@ -121,6 +116,8 @@ Frontend использует единый iOS-inspired design system в `static
 
 Runtime-файлы хранятся в `storage/attachments/` и не входят в репозиторий. Каталог создаётся автоматически при необходимости. Ограничения типов и ownership проверяются в `services/attachment_storage.py`.
 
+Страница `/files` показывает единое хранилище вложений WebApp и Telegram, сгруппированное по чатам. Пользователь может просмотреть или скачать файл, а действие «Удалить из памяти» удаляет связь с историей чата и AI-контекстом; физический файл удаляется только если он не нужен заданию или другой активной ссылке.
+
 ## Тесты
 
 ```bash
@@ -128,7 +125,7 @@ python -m pytest -q
 python -m compileall -q api bot services tests main.py config.py database.py
 ```
 
-Перед релизом также вручную проверьте регистрацию/авторизацию, роли, AI tutor, Book Mode, задания Учителя и практику, файлы, Telegram, интерактивные приложения, оцифровку, Math rendering, геймификацию и admin pages.
+Перед релизом также вручную проверьте регистрацию/авторизацию, роли, AI Tutor, sender names и greeting нового чата, Book Mode, draft/send/manual-review flow заданий, файлы, Telegram, интерактивные приложения и их server-side grading, оцифровку, Math rendering и admin pages.
 
 ## Структура
 
@@ -148,7 +145,6 @@ static/
   js/                     shared and role-specific frontend logic
 templates/                Jinja2 pages
 tests/                    automatic tests
-migrations/               PostgreSQL migrations
 docs/                     user/developer/architecture docs
 storage/attachments/      runtime user files (ignored by Git)
 ```
@@ -170,3 +166,16 @@ storage/attachments/      runtime user files (ignored by Git)
 - [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — инструкция пользователя;
 - [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) — руководство разработчика и design system;
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — карта зависимостей и потоков;
+## Reference UI (Фон_ИИ.html)
+
+Актуальный WebApp использует единый iOS-like visual layer по мотивам предоставленного `Фон_ИИ.html`:
+
+- Light/Dark/System темы;
+- полупрозрачные glass-панели;
+- лёгкий `Matrix Formula Stream` на Canvas на всех страницах;
+- blue/violet/pink top glow только во время реальной обработки AI-запроса;
+- компактный desktop rail и off-canvas список чатов;
+- полноширинный ответ ИИ и пользовательская плашка не шире 75% рабочей области;
+- pill-shaped composer;
+- mobile drawer для чатов и bottom sheet для Book Mode.
+

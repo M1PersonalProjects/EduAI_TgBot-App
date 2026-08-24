@@ -2,7 +2,7 @@
   class ChatUI {
     constructor(options) {
       this.options = options;
-      this.state = { sessions: [], activeId: null, editingInteractiveId: null, interactiveAction: null };
+      this.state = { sessions: [], activeId: null, editingInteractiveId: null, interactiveAction: null, profile: null, threadQuery: '' };
       this.$ = name => document.getElementById(options[name]);
       this.layout = null;
       this.jumpButton = null;
@@ -10,6 +10,7 @@
 
     async init() {
       this.bind();
+      await this.loadProfile();
       const preferredChat = new URLSearchParams(window.location.search).get('chat');
       await Promise.all([this.loadSessions(preferredChat), this.loadClasses()]);
     }
@@ -54,14 +55,229 @@
         this.updateSidebarButtons();
         this.resizeComposer();
       }, { passive: true });
+      this.installThreadSearch();
+      this.installTutorRail();
+      this.installSwipeGestures();
+      try {
+        const saved = localStorage.getItem('eduai.ui.tutorSidebarCollapsed.v2');
+        this.layout?.classList.toggle('threads-collapsed', saved !== '0');
+      } catch (_) {
+        this.layout?.classList.add('threads-collapsed');
+      }
       this.updateSidebarButtons();
       this.resizeComposer();
       queueMicrotask(() => this.updateJumpButton());
     }
 
+
+    installThreadSearch() {
+      const list = this.$('threadsId');
+      const sidebar = list?.closest('[data-chat-sidebar]');
+      if (!list || !sidebar || sidebar.querySelector('[data-chat-search]')) return;
+      const field = document.createElement('label');
+      field.className = 'chat-thread-search';
+      field.innerHTML = `<span class="sr-only">Поиск по чатам</span><input class="input" type="search" autocomplete="off" placeholder="Поиск чатов" data-chat-search aria-label="Поиск по чатам">`;
+      list.before(field);
+      if (!sidebar.querySelector('[data-chat-library-link]')) {
+        const libraryButton = document.createElement('button');
+        libraryButton.type = 'button';
+        libraryButton.className = 'btn-secondary chat-library-link';
+        libraryButton.dataset.chatLibraryLink = '1';
+        libraryButton.innerHTML = '<span aria-hidden="true">▣</span><span>Библиотека файлов</span>';
+        field.after(libraryButton);
+        libraryButton.addEventListener('click', () => { location.href = '/files.html'; });
+      }
+      field.querySelector('[data-chat-search]')?.addEventListener('input', event => {
+        this.state.threadQuery = String(event.target.value || '').trim().toLocaleLowerCase('ru-RU');
+        this.renderThreads();
+      });
+    }
+
+    installTutorRail() {
+      const sidebar = this.layout?.querySelector('[data-chat-sidebar]');
+      if (!sidebar || sidebar.querySelector('[data-chat-rail]')) return;
+      const rail = document.createElement('div');
+      rail.className = 'chat-rail-actions';
+      rail.dataset.chatRail = '1';
+      rail.innerHTML = `
+        <button type="button" class="icon-btn" data-rail-chats aria-label="Открыть список чатов" title="Чаты">☰</button>
+        <button type="button" class="icon-btn" data-rail-new aria-label="Создать новый чат" title="Новый чат">＋</button>
+        <button type="button" class="icon-btn" data-rail-files aria-label="Открыть библиотеку файлов" title="Библиотека файлов">▣</button>
+        <span class="chat-rail-spacer" aria-hidden="true"></span>
+        <button type="button" class="chat-rail-avatar" data-rail-profile aria-label="Личный кабинет" title="Личный кабинет">E</button>`;
+      sidebar.prepend(rail);
+      rail.querySelector('[data-rail-chats]')?.addEventListener('click', () => this.toggleThreadsPanel());
+      rail.querySelector('[data-rail-new]')?.addEventListener('click', () => this.newChat());
+      rail.querySelector('[data-rail-files]')?.addEventListener('click', () => { location.href = '/files.html'; });
+      rail.querySelector('[data-rail-profile]')?.addEventListener('click', () => this.openProfile());
+    }
+
+    telegramAvatarUrl() {
+      const fromWebApp = window.Telegram?.WebApp?.initDataUnsafe?.user?.photo_url;
+      const fromSession = EduAI.readSession?.()?.telegram_photo_url;
+      return String(fromWebApp || fromSession || '').trim();
+    }
+
+    decorateProfile(profile) {
+      const telegramPhoto = this.telegramAvatarUrl();
+      if (!telegramPhoto) return profile;
+      return {
+        ...profile,
+        avatar_fallback_url: profile?.avatar_url || '',
+        avatar_url: telegramPhoto,
+      };
+    }
+
+    installAvatarFallback(image, profile, fallbackNode = null) {
+      if (!image) return;
+      const fallbackUrl = String(profile?.avatar_fallback_url || '').trim();
+      let fallbackTried = false;
+      image.addEventListener('load', () => {
+        image.hidden = false;
+        if (fallbackNode) fallbackNode.hidden = true;
+      });
+      image.addEventListener('error', () => {
+        if (!fallbackTried && fallbackUrl && image.src !== fallbackUrl) {
+          fallbackTried = true;
+          image.src = fallbackUrl;
+          return;
+        }
+        image.hidden = true;
+        if (fallbackNode) fallbackNode.hidden = false;
+      });
+    }
+
+    updateTutorRailProfile() {
+      const button = this.layout?.querySelector('[data-rail-profile]');
+      if (!button) return;
+      const profile = this.state.profile || {};
+      const label = profile.username ? `@${profile.username}` : String(profile.tg_id || 'Профиль');
+      button.title = `${label} · Личный кабинет`;
+      button.setAttribute('aria-label', `Личный кабинет: ${label}`);
+      const initial = EduAI.escapeHtml(label.replace(/^@/, '').charAt(0).toUpperCase() || 'E');
+      if (profile.avatar_url) {
+        button.innerHTML = `<img src="${EduAI.escapeHtml(profile.avatar_url)}" alt=""><span>${initial}</span>`;
+        const image = button.querySelector('img');
+        this.installAvatarFallback(image, profile, button.querySelector('span'));
+      } else {
+        button.innerHTML = `<span>${initial}</span>`;
+      }
+    }
+
+    async loadProfile() {
+      try {
+        this.state.profile = this.decorateProfile(await EduAI.api('/api/v1/tutor/profile'));
+        this.installProfileButton();
+      } catch (error) {
+        console.warn('EduAI profile is unavailable', error);
+      }
+    }
+
+    installProfileButton() {
+      const sidebar = this.layout?.querySelector('[data-chat-sidebar]') || this.$('threadsId')?.closest('[data-chat-sidebar]');
+      if (!sidebar || sidebar.querySelector('[data-chat-profile]')) return;
+      this.updateTutorRailProfile();
+      const profile = this.state.profile || {};
+      const label = profile.username ? `@${profile.username}` : String(profile.tg_id || 'Профиль');
+      const wrap = document.createElement('div');
+      wrap.className = 'chat-profile-wrap';
+      wrap.innerHTML = `
+        <button type="button" class="chat-profile-button" data-chat-profile aria-label="Открыть личный кабинет">
+          <span class="chat-profile-avatar"><img src="${EduAI.escapeHtml(profile.avatar_url || '')}" alt="" data-chat-profile-avatar><span data-chat-profile-fallback>${EduAI.escapeHtml(label.charAt(0).toUpperCase())}</span></span>
+          <span class="min-w-0"><strong class="block truncate">${EduAI.escapeHtml(label)}</strong><small class="muted">Личный кабинет</small></span>
+        </button>`;
+      sidebar.appendChild(wrap);
+      const image = wrap.querySelector('[data-chat-profile-avatar]');
+      const fallback = wrap.querySelector('[data-chat-profile-fallback]');
+      this.installAvatarFallback(image, profile, fallback);
+      wrap.querySelector('[data-chat-profile]')?.addEventListener('click', () => this.openProfile());
+    }
+
+    openProfile() {
+      const profile = this.state.profile || {};
+      let modal = document.getElementById('chat-profile-modal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'chat-profile-modal';
+        modal.className = 'modal-backdrop';
+        modal.innerHTML = `<div class="modal-panel glass-strong profile-sheet"><div class="flex items-start justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-wider muted">EduAI</p><h2 class="text-xl font-extrabold">Личный кабинет</h2></div><button class="icon-btn" type="button" data-profile-close aria-label="Закрыть">×</button></div><div data-profile-body class="mt-5"></div></div>`;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', event => { if (event.target === modal || event.target.closest('[data-profile-close]')) EduAI.closeModal('chat-profile-modal'); });
+      }
+      const label = profile.username ? `@${profile.username}` : String(profile.tg_id || '—');
+      modal.querySelector('[data-profile-body]').innerHTML = `<div class="flex items-center gap-4"><span class="chat-profile-avatar chat-profile-avatar-large"><img src="${EduAI.escapeHtml(profile.avatar_url || '')}" alt="Аватар Telegram" data-profile-avatar-image><span data-profile-avatar-fallback>${EduAI.escapeHtml(label.charAt(0).toUpperCase())}</span></span><div><p class="font-extrabold">${EduAI.escapeHtml(label)}</p><p class="text-sm muted">Telegram ID: ${EduAI.escapeHtml(String(profile.tg_id || '—'))}</p></div></div>`;
+      this.installAvatarFallback(modal.querySelector('[data-profile-avatar-image]'), profile, modal.querySelector('[data-profile-avatar-fallback]'));
+      EduAI.openModal('chat-profile-modal');
+    }
+
+    installSwipeGestures() {
+      if (!this.layout || this.layout.dataset.swipeReady === '1') return;
+      this.layout.dataset.swipeReady = '1';
+      let startX = null;
+      let startY = null;
+      let blocked = false;
+      let dragging = false;
+      let initialOpen = false;
+      const isControl = target => Boolean(target?.closest?.('input,textarea,select,button,a,[contenteditable="true"],.chat-plus-menu,.table-wrap,.thread-menu-panel,.tutor-mobile-nav-sheet'));
+      const sidebar = () => this.layout?.querySelector('[data-chat-sidebar]');
+      const clearDrag = () => {
+        this.layout?.classList.remove('thread-swipe-active', 'thread-swipe-dragging');
+        this.layout?.style.removeProperty('--thread-drag-x');
+        this.layout?.style.removeProperty('--thread-drawer-progress');
+        startX = startY = null;
+        blocked = dragging = false;
+      };
+      this.layout.addEventListener('touchstart', event => {
+        const touch = event.touches?.[0];
+        if (!touch || !this.isThreadsDrawerMode()) return;
+        blocked = isControl(event.target);
+        startX = touch.clientX;
+        startY = touch.clientY;
+        initialOpen = this.layout.classList.contains('threads-drawer-open');
+        dragging = false;
+      }, { passive: true });
+      this.layout.addEventListener('touchmove', event => {
+        if (startX === null || blocked || !this.isThreadsDrawerMode()) return;
+        const touch = event.touches?.[0];
+        if (!touch) return;
+        const dx = touch.clientX - startX;
+        const dy = touch.clientY - startY;
+        if (!dragging) {
+          if (Math.abs(dx) < 10) return;
+          if (Math.abs(dx) <= Math.abs(dy) * 1.15) { blocked = true; return; }
+          dragging = true;
+          this.layout.classList.add('thread-swipe-active', 'thread-swipe-dragging');
+        }
+        const drawerWidth = sidebar()?.getBoundingClientRect().width || Math.min(window.innerWidth * .86, 336);
+        const offset = initialOpen ? Math.max(-drawerWidth, Math.min(0, dx)) : Math.max(0, Math.min(drawerWidth, dx));
+        const progress = initialOpen ? 1 - Math.abs(offset) / drawerWidth : offset / drawerWidth;
+        this.layout.style.setProperty('--thread-drag-x', `${offset}px`);
+        this.layout.style.setProperty('--thread-drawer-progress', String(Math.max(0, Math.min(1, progress))));
+        event.preventDefault();
+      }, { passive: false });
+      this.layout.addEventListener('touchend', event => {
+        if (startX === null || blocked || !this.isThreadsDrawerMode()) { clearDrag(); return; }
+        const touch = event.changedTouches?.[0];
+        if (!touch) { clearDrag(); return; }
+        const dx = touch.clientX - startX;
+        const dy = touch.clientY - startY;
+        const horizontal = Math.abs(dx) >= 48 && Math.abs(dx) > Math.abs(dy) * 1.15;
+        this.layout.classList.remove('thread-swipe-dragging', 'thread-swipe-active');
+        this.layout.style.removeProperty('--thread-drag-x');
+        this.layout.style.removeProperty('--thread-drawer-progress');
+        if (horizontal) {
+          if (!initialOpen && dx > 0) this.layout.classList.add('threads-drawer-open');
+          if (initialOpen && dx < 0) this.layout.classList.remove('threads-drawer-open');
+        }
+        this.updateSidebarButtons();
+        startX = startY = null;
+        blocked = dragging = false;
+      }, { passive: true });
+      this.layout.addEventListener('touchcancel', clearDrag, { passive: true });
+    }
+
     isThreadsDrawerMode() {
-      // В новом интерфейсе список чатов всегда открывается как компактная выдвижная панель.
-      return true;
+      return window.matchMedia('(max-width: 1279px)').matches;
     }
 
     toggleThreadsPanel() {
@@ -70,7 +286,7 @@
         this.layout.classList.toggle('threads-drawer-open');
       } else {
         this.layout.classList.toggle('threads-collapsed');
-        try { localStorage.setItem('eduai.ui.chatSidebarCollapsed', this.layout.classList.contains('threads-collapsed') ? '1' : '0'); } catch (_) {}
+        try { localStorage.setItem('eduai.ui.tutorSidebarCollapsed.v2', this.layout.classList.contains('threads-collapsed') ? '1' : '0'); } catch (_) {}
       }
       this.updateSidebarButtons();
     }
@@ -131,9 +347,17 @@
     resizeComposer() {
       const input = this.$('inputId');
       if (!input) return;
+      const mobile = window.matchMedia('(max-width: 767px)').matches;
+      const baseHeight = mobile ? 34 : 32;
+      const maxHeight = mobile ? 112 : 136;
+      if (!String(input.value || '').trim()) {
+        input.style.height = `${baseHeight}px`;
+        input.style.overflowY = 'hidden';
+        return;
+      }
       input.style.height = 'auto';
-      const maxHeight = window.matchMedia('(max-width: 639px)').matches ? 128 : 160;
-      input.style.height = `${Math.min(Math.max(input.scrollHeight, 48), maxHeight)}px`;
+      const nextHeight = Math.min(Math.max(input.scrollHeight, baseHeight), maxHeight);
+      input.style.height = `${nextHeight}px`;
       input.style.overflowY = input.scrollHeight > maxHeight ? 'auto' : 'hidden';
     }
 
@@ -219,7 +443,11 @@
     }
 
     renderThreads() {
-      this.$('threadsId').innerHTML = this.state.sessions.map(item => {
+      const query = this.state.threadQuery || '';
+      const sessions = query
+        ? this.state.sessions.filter(item => `${item.title || ''} ${item.book_title || ''}`.toLocaleLowerCase('ru-RU').includes(query))
+        : this.state.sessions;
+      this.$('threadsId').innerHTML = sessions.map(item => {
         const id = String(item.session_id);
         const active = id === this.state.activeId;
         const telegramDefault = item.chat_type === 'telegram_default';
@@ -246,6 +474,9 @@
           </details>
         </div>`;
       }).join('');
+      if (!sessions.length && query) {
+        this.$('threadsId').innerHTML = '<p class="chat-thread-empty muted">Чаты не найдены</p>';
+      }
       const session = this.state.sessions.find(item => String(item.session_id) === this.state.activeId);
       this.renderContextState(session);
     }
@@ -301,6 +532,7 @@
         <span class="min-w-0 flex-1"><strong class="break-all">📎 ${EduAI.escapeHtml(name)}</strong>${meta ? `<span class="ml-2 muted">${EduAI.escapeHtml(meta)}</span>` : ''}</span>
         ${attachment.preview_url ? `<button type="button" class="attachment-action" data-chat-attachment="preview" data-url="${EduAI.escapeHtml(attachment.preview_url)}" data-name="${EduAI.escapeHtml(name)}">Просмотр</button>` : ''}
         ${attachment.download_url ? `<button type="button" class="attachment-action" data-chat-attachment="download" data-url="${EduAI.escapeHtml(attachment.download_url)}" data-name="${EduAI.escapeHtml(name)}">Скачать</button>` : ''}
+        ${attachment.attachment_id ? `<button type="button" class="attachment-action danger" data-chat-attachment="forget" data-attachment-id="${Number(attachment.attachment_id)}" data-name="${EduAI.escapeHtml(name)}">Удалить из памяти</button>` : ''}
       </div>`;
     }
 
@@ -309,8 +541,13 @@
       const follow = options.forceScroll === true || (options.forceScroll !== false && this.isNearBottom());
       const bubble = document.createElement('div');
       bubble.className = `message ${sender === 'user' ? 'user' : ''}`;
-      const sourceBadge = source === 'telegram' ? '<div class="mb-1 text-[.65rem] muted">📱 Telegram</div>' : '';
-      bubble.innerHTML = `${sourceBadge}${EduAI.markdown(text)}${(attachments || []).map(item => this.attachmentHtml(item)).join('')}${this.interactiveCardHtml(interactiveApp)}`;
+      if (options.messageId) bubble.dataset.messageId = String(options.messageId);
+      const sourceBadge = source === 'telegram' ? '<span class="message-source">Telegram</span>' : '';
+      const senderName = options.senderName || (sender === 'user' ? (this.state.profile?.display_name || this.state.profile?.tg_id || 'Пользователь') : 'ИИ-тьютор');
+      const session = EduAI.readSession?.();
+      const canCreateTask = sender === 'ai' && ['parent', 'admin'].includes(session?.user?.role) && options.messageId;
+      const taskAction = canCreateTask ? `<button type="button" class="message-action" data-create-task-from-ai data-message-id="${EduAI.escapeHtml(String(options.messageId))}">Создать задание</button>` : '';
+      bubble.innerHTML = `<div class="message-meta"><strong>${EduAI.escapeHtml(String(senderName))}</strong>${sourceBadge}</div><div class="message-content">${EduAI.markdown(text)}</div>${(attachments || []).map(item => this.attachmentHtml(item)).join('')}${this.interactiveCardHtml(interactiveApp)}${taskAction ? `<div class="message-actions">${taskAction}</div>` : ''}`;
       this.$('logId').append(bubble);
       EduAI.renderMath?.(bubble);
       if (follow) this.scrollToBottom(options.behavior || 'smooth');
@@ -322,18 +559,17 @@
       try {
         const messages = await EduAI.api(`/api/v1/tutor/sessions/${this.state.activeId}/messages`);
         this.$('logId').innerHTML = '';
-        if (!messages.length) {
-          this.append('ai', this.options.welcome, [], null, null, { forceScroll: false });
-        } else {
-          messages.forEach(item => this.append(
-            item.sender,
-            item.message_text,
-            item.attachments?.length ? item.attachments : (item.attachment_name || ''),
-            item.message_source,
-            item.interactive_app || null,
-            { forceScroll: false, behavior: 'auto' }
-          ));
-        }
+        // Приветствие является UI-элементом истории: оно не записывается в БД и поэтому не дублируется.
+        const displayName = this.state.profile?.display_name || this.state.profile?.tg_id || '';
+        this.append('ai', `Добрый день, ${displayName}`, [], null, null, { forceScroll: false, senderName: 'ИИ-тьютор' });
+        messages.forEach(item => this.append(
+          item.sender,
+          item.message_text,
+          item.attachments?.length ? item.attachments : (item.attachment_name || ''),
+          item.message_source,
+          item.interactive_app || null,
+          { forceScroll: false, behavior: 'auto', senderName: item.sender_name, messageId: item.message_id }
+        ));
         requestAnimationFrame(() => this.scrollToBottom('auto'));
       } catch (error) { EduAI.toast(error.message, 'error'); }
     }
@@ -371,6 +607,15 @@
     }
 
     async messageAction(event) {
+      const taskButton = event.target.closest('[data-create-task-from-ai]');
+      if (taskButton) {
+        const bubble = taskButton.closest('.message');
+        document.dispatchEvent(new CustomEvent('eduai:create-task-from-ai', { detail: {
+          messageId: Number(taskButton.dataset.messageId),
+          text: bubble?.querySelector('.message-content')?.innerText?.trim() || ''
+        }}));
+        return;
+      }
       const card = event.target.closest('[data-interactive-app]');
       if (card) {
         const appId = card.dataset.interactiveApp;
@@ -399,20 +644,59 @@
       try {
         const students = await EduAI.api('/api/v1/interactive/students');
         if (!students.length) { EduAI.toast('Нет привязанных Учеников', 'error'); return; }
-        const menu = students.map((item, index) => `${index + 1}. ${item.username ? '@' + item.username : 'ID ' + item.tg_id}`).join('\n');
-        const choice = prompt(`Выберите Ученика:\n${menu}\n\nВведите номер:`);
-        if (choice === null) return;
-        const student = students[Number(choice) - 1];
-        if (!student) { EduAI.toast('Некорректный выбор Ученика', 'error'); return; }
-        await EduAI.api(`/api/v1/interactive/${encodeURIComponent(appId)}/assign`, {
-          method: 'POST', body: JSON.stringify({ student_ids: [student.tg_id] })
-        });
-        EduAI.toast('Интерактивное задание назначено Ученику', 'success');
+        let modal = document.getElementById('interactive-assign-modal');
+        if (!modal) {
+          modal = document.createElement('div');
+          modal.id = 'interactive-assign-modal';
+          modal.className = 'modal-backdrop';
+          modal.innerHTML = `<div class="modal-panel glass-strong interactive-assign-sheet"><div class="flex items-start justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-wider muted">Интерактивное приложение</p><h2 class="text-xl font-extrabold">Отправить как задание</h2></div><button class="icon-btn" type="button" data-assign-close aria-label="Закрыть">×</button></div><form data-interactive-assign-form class="mt-5 grid gap-4"><div class="field"><label>Название</label><input class="input" name="title" maxlength="255" value="Интерактивное задание"></div><div class="field"><label>Комментарий Ученику</label><textarea class="textarea" name="comment" maxlength="4000" placeholder="Необязательно"></textarea></div><div class="field"><label>Ученики</label><div data-assign-students class="grid sm:grid-cols-2 gap-2"></div></div><div class="flex flex-col-reverse sm:flex-row justify-end gap-2"><button type="button" class="btn-secondary" data-assign-preview>Проверить приложение</button><button type="submit" class="btn-primary">Отправить Ученикам</button></div></form></div>`;
+          document.body.appendChild(modal);
+          modal.addEventListener('click', event => { if (event.target === modal || event.target.closest('[data-assign-close]')) EduAI.closeModal('interactive-assign-modal'); });
+        }
+        modal.dataset.appId = appId;
+        modal.querySelector('[data-assign-students]').innerHTML = students.map(item => `<label class="flex items-center gap-3 rounded-xl bg-white/[.04] p-3"><input type="checkbox" name="students" value="${item.tg_id}"><span class="text-sm font-bold">${EduAI.escapeHtml(item.username ? '@' + item.username : 'ID ' + item.tg_id)}</span></label>`).join('');
+        const form = modal.querySelector('[data-interactive-assign-form]');
+        modal.querySelector('[data-assign-preview]').onclick = () => window.open(`/interactive/${encodeURIComponent(appId)}`, '_blank', 'noopener,noreferrer');
+        form.onsubmit = async event => {
+          event.preventDefault();
+          const button = event.submitter;
+          const studentIds = Array.from(form.querySelectorAll('input[name="students"]:checked')).map(input => Number(input.value));
+          if (!studentIds.length) { EduAI.toast('Выберите хотя бы одного Ученика', 'error'); return; }
+          EduAI.setBusy(button, true, 'Отправляем…');
+          try {
+            await EduAI.api(`/api/v1/interactive/${encodeURIComponent(appId)}/assign`, {
+              method: 'POST',
+              body: JSON.stringify({ student_ids: studentIds, title: form.elements.title.value.trim(), comment: form.elements.comment.value.trim() })
+            });
+            EduAI.closeModal('interactive-assign-modal');
+            EduAI.toast('Интерактивное приложение отправлено как задание', 'success');
+          } catch (error) { EduAI.toast(error.message, 'error'); }
+          finally { EduAI.setBusy(button, false); }
+        };
+        EduAI.openModal('interactive-assign-modal');
       } catch (error) { EduAI.toast(error.message, 'error'); }
     }
+
     async attachmentAction(event) {
       const button = event.target.closest('[data-chat-attachment]');
       if (!button) return;
+      if (button.dataset.chatAttachment === 'forget') {
+        const attachmentId = Number(button.dataset.attachmentId);
+        if (!attachmentId) return;
+        if (!confirm(`Удалить «${button.dataset.name || 'файл'}» из памяти этого пользователя? Вложение исчезнет из истории чата.`)) return;
+        EduAI.setBusy(button, true, 'Удаляем…');
+        try {
+          const result = await EduAI.api(`/api/v1/attachments/${attachmentId}/memory`, { method: 'DELETE' });
+          EduAI.toast(result.retained_for_tasks ? 'Файл удалён из памяти чата; копия сохранена для задания' : 'Файл удалён из памяти и хранилища', 'success');
+          await this.loadMessages();
+          await this.loadSessions(this.state.activeId, { loadMessages: false });
+        } catch (error) {
+          EduAI.toast(error.message, 'error');
+        } finally {
+          if (button.isConnected) EduAI.setBusy(button, false);
+        }
+        return;
+      }
       try {
         const blob = await this.fetchProtected(button.dataset.url);
         const objectUrl = URL.createObjectURL(blob);
@@ -447,7 +731,7 @@
         const isPdf = file && (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'));
         const sizeLimit = isPdf ? 100 * 1024 * 1024 : 15 * 1024 * 1024;
         if (file && file.size > sizeLimit) throw new Error(`Максимальный размер ${isPdf ? 'PDF' : 'файла'} — ${isPdf ? 100 : 15} МБ`);
-        this.append('user', text || 'Проанализируй вложение', file ? [{ original_name: file.name, mime_type: file.type, size_bytes: file.size }] : [], null, null, { forceScroll: true });
+        this.append('user', text || 'Проанализируй вложение', file ? [{ original_name: file.name, mime_type: file.type, size_bytes: file.size }] : [], null, null, { forceScroll: true, senderName: this.state.profile?.display_name });
         const form = new FormData();
         form.append('session_id', this.state.activeId);
         form.append('message_text', text);
@@ -458,18 +742,12 @@
         mapping.forEach(([id,key]) => { const element = this.$(id); if (element && element.value) form.append(key, element.value); });
         EduAI.setBusy(button, true, interactiveAction ? 'Создаём…' : 'Отправляем…');
         stopThinking = EduAI.startThinking(
-          interactiveAction === 'edit' ? 'ИИ изменяет интерактивное приложение' :
-          interactiveAction === 'create' ? 'ИИ создаёт интерактивное приложение' :
-          file ? 'ИИ обрабатывает вложение' : 'ИИ формулирует ответ'
+          interactiveAction === 'edit' ? 'EduAI думает · изменяет приложение' :
+          interactiveAction === 'create' ? 'EduAI думает · создаёт приложение' :
+          file ? 'EduAI думает · анализирует вложение' : 'EduAI думает · формулирует ответ'
         );
         const result = await EduAI.api('/api/v1/tutor/messages', { method: 'POST', body: form });
-        this.append('ai', result.message_text, [], null, result.interactive_app || null);
-        if (result.study_session_reward?.xp) {
-          const reward = result.study_session_reward;
-          const bits = [`+${reward.xp} XP`];
-          if (reward.coins) bits.push(`+${reward.coins} монет`);
-          EduAI.toast(`📚 Полная учебная сессия: ${bits.join(' · ')}`, 'success');
-        }
+        this.append('ai', result.message_text, [], null, result.interactive_app || null, { senderName: result.sender_name || 'EduAI', messageId: result.message_id });
         if (!result.interactive_error) {
           input.value = '';
           this.resizeComposer();
@@ -524,7 +802,7 @@
       if (!this.$('bookId').value) { EduAI.toast('Выберите учебник', 'error'); return; }
       const payload = { book_id: Number(this.$('bookId').value) };
       if (this.$('pageId').value) payload.page_id = Number(this.$('pageId').value);
-      try { await EduAI.api(`/api/v1/tutor/sessions/${this.state.activeId}/context`, { method: 'PUT', body: JSON.stringify(payload) }); EduAI.toast('Book Mode включён', 'success'); await this.loadSessions(this.state.activeId); }
+      try { await EduAI.api(`/api/v1/tutor/sessions/${this.state.activeId}/context`, { method: 'PUT', body: JSON.stringify(payload) }); this.layout?.classList.remove('book-panel-open'); EduAI.toast('Book Mode включён', 'success'); await this.loadSessions(this.state.activeId); }
       catch (error) { EduAI.toast(error.message, 'error'); }
     }
     async exitContext() {

@@ -14,7 +14,7 @@ FastAPI routers          bot/handlers
           ├─ tutor + tutor_policy
           ├─ context_resolver + educational_context
           ├─ conversation_context + chat_memory
-          ├─ task_generation + gamification
+          ├─ task_generation + assignment_source
           ├─ attachment_storage + file_parser
           ├─ interactive_apps
           ├─ textbook_digitizer + digitization_queue
@@ -92,24 +92,34 @@ upload → ownership metadata → storage path
 ## Task flow
 
 ```text
-Teacher/manual or AI generation
-        │
-        ▼
+Students page / Teacher AI message
+        ↓
+persistent task_drafts
+        ↓
+Teacher edit + preview + student/file selection
+        ↓
+explicit Send
+        ↓
 tasks_history (assignment_source='teacher')
-        │
-        ▼
-Student answer → server-side checking → evaluated → reward
+        ↓
+Student answer → pending_review
+        ↓
+optional AI suggestion → final Teacher score/comment → evaluated
 
-Student practice generation
-        │
-        ▼
+Student AI practice
+        ↓
 tasks_history (assignment_source='tutor_practice')
-        │
-        ▼
-Student answer → checking → completed → reward
+        ↓
+automatic server-side checking → completed
+
+Interactive assignment
+        ↓
+interactive_assignments + tasks_history
+        ↓
+server-side interactive grading → evaluated/completed
 ```
 
-Student DTO удаляет private answer keys и internal metadata рекурсивно.
+Student DTO удаляет private answer keys и internal metadata рекурсивно. Полный Teacher reference остаётся только в защищённых Teacher endpoints/DB.
 
 ## Interactive app flow
 
@@ -129,12 +139,24 @@ Correct answers не должны быть встроены в learner HTML.
 
 `services/textbook_digitizer.py` отвечает за PDF → page image/text → Structured Output → сохранение в `page`. И admin API, и platform v1 используют один сервис.
 
-## Gamification
-
-`services/gamification.py` содержит начисления XP/coins, anti-farm коэффициенты, цели и достижения. `gamification_events` имеет уникальный `(user_id, event_key)` для идемпотентности завершения задачи.
-
 ## Frontend
 
 `static/css/app.css` — единый design system и layout. `static/js/app.js` — общие API/UI/Markdown/Math utilities. Role-specific JS не должен заново реализовывать common fetch/render helpers.
 
 Breakpoints, используемые layout: mobile ~360–767px, tablet 768–1023px, desktop 1024+; chat sidebar переключается в drawer ниже 1280px.
+
+## Chat identity / profile flow
+
+```text
+users.username (fallback tg_id)
+        ↓
+Tutor message DTO sender_name
+        ↓
+shared ChatUI message header
+
+/api/v1/tutor/profile
+        ├─ username/tg_id
+        └─ /profile/avatar → Telegram Bot API proxy/cache
+```
+
+Новый пустой chat отображает UI-only greeting и не дублирует его в `chat_messages`.

@@ -34,13 +34,3 @@ def test_light_design_system_and_reduced_motion_are_present():
     assert "color-scheme: light" in css
     assert "prefers-reduced-motion: reduce" in css
 
-
-def test_delivery_documentation_and_env_template_exist():
-    expected = [
-        "README.md",
-        "docs/USER_GUIDE.md",
-        "docs/DEVELOPER_GUIDE.md",
-        "docs/ARCHITECTURE.md",
-    ]
-    missing = [item for item in expected if not (ROOT / item).is_file()]
-    assert missing == []

@@ -352,7 +352,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h4 class="font-extrabold">Сопоставление учебников</h4>
-            <p class="mt-1 text-sm ${ready?'text-emerald-200':'muted'}">
+            <p class="mt-1 text-sm ${ready?'admin-accent-text':'muted'}">
               ${matched} / ${jobs.length} файлов сопоставлены
             </p>
           </div>
@@ -600,8 +600,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       return sender === 'assistant' ? 'Ответ ИИ' : 'Сообщение чата';
     }
     return {
-      task: 'Задание',
-      purchase: 'Покупка награды'
+      task: 'Задание'
     }[type] || type;
   }
 

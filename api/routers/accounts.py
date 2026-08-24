@@ -118,12 +118,8 @@ async def get_parent_monitoring(parent_tg_id: int):
 
         rows = await conn.fetch(
             """
-            SELECT u.tg_id, u.username,
-                   COALESCE(g.balance_coins, 0) as balance_coins,
-                   COALESCE(g.xp_total, 0) as xp_total,
-                   COALESCE(g.streak_days, 0) as streak_days
+            SELECT u.tg_id, u.username, u.role
             FROM users u
-            LEFT JOIN gamification g ON u.tg_id = g.user_id
             WHERE u.parent_id = $1 AND u.role = 'student'
             """,
             parent_tg_id
@@ -133,10 +129,7 @@ async def get_parent_monitoring(parent_tg_id: int):
         StudentProgressResponse(
             tg_id=row["tg_id"],
             username=row["username"] or f"ID: {row['tg_id']}",
-            role="student",
-            balance_coins=row["balance_coins"],
-            xp_total=row["xp_total"],
-            streak_days=row["streak_days"]
+            role="student"
         ) for row in rows
     ]
 
@@ -189,14 +182,6 @@ async def link_parent_and_student(payload: LinkAccountsRequest):
                     payload.parent_tg_id
                 )
 
-            await conn.execute(
-                """
-                INSERT INTO gamification (user_id, balance_coins, xp_total, streak_days)
-                VALUES ($1, 0, 0, 0)
-                ON CONFLICT (user_id) DO NOTHING
-                """,
-                payload.student_tg_id
-            )
 
     return {
         "status": "success",
@@ -212,15 +197,8 @@ async def get_user_profile(tg_id: int):
     async with db.pool.acquire() as conn:
         profile = await conn.fetchrow(
             """
-            SELECT
-                u.tg_id,
-                u.username,
-                u.role,
-                COALESCE(g.balance_coins, 0) as balance_coins,
-                COALESCE(g.xp_total, 0) as xp_total,
-                COALESCE(g.streak_days, 0) as streak_days
+            SELECT u.tg_id, u.username, u.role
             FROM users u
-            LEFT JOIN gamification g ON u.tg_id = g.user_id
             WHERE u.tg_id = $1
             """,
             tg_id
@@ -235,10 +213,7 @@ async def get_user_profile(tg_id: int):
     return StudentProgressResponse(
         tg_id=profile["tg_id"],
         username=profile["username"] or f"ID: {profile['tg_id']}",
-        role=profile["role"],
-        balance_coins=profile["balance_coins"],
-        xp_total=profile["xp_total"],
-        streak_days=profile["streak_days"]
+        role=profile["role"]
     )
 
 

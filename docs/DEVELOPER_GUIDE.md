@@ -19,8 +19,10 @@
 - `services/educational_context.py` — ранжирование учебных источников;
 - `services/chat_memory.py` / `conversation_context.py` — память и активный контекст;
 - `services/task_generation.py` — общий structured task generation;
-- `services/gamification.py` — награды, streak/achievements/goals;
+- `services/assignment_source.py` — источник задания (`teacher` / `tutor_practice`) и нормализация сложности;
 - `services/attachment_storage.py` — ownership/storage/linking файлов;
+- `GET /api/v1/attachments/library` — библиотека вложений текущего пользователя по чатам WebApp/Telegram;
+- `DELETE /api/v1/attachments/{attachment_id}/memory` — удаление связи вложения с памятью/историей чата с сохранением файла, если он ещё нужен заданию;
 - `services/interactive_apps.py` — безопасные интерактивные приложения;
 - `services/textbook_digitizer.py` / `digitization_queue.py` — оцифровка;
 - `services/response_formatter.py` — canonical Markdown/Math и Telegram fallback;
@@ -64,21 +66,29 @@ Legacy GET `/api/tasks/generate/{tg_id}` пока сохранён для обр
 
 При добавлении Student response убедитесь, что рекурсивно исключены `reference_answer`, `correct_answer`, `ai_instructions`, system prompts и private verification metadata.
 
-## 6. База данных
+## 6. Task workflow и privacy
 
-Все multi-step изменения, способные оставить частичное состояние, выполняйте внутри `async with conn.transaction()`. Миграции должны быть idempotent там, где их выполняет runtime runner.
+Обычное Teacher assignment никогда не отправляется сразу из генератора. `POST /api/v1/parent/task-drafts` создаёт persistent draft; `PATCH` редактирует; `/send` является единственным UI-финализатором. `POST /api/v1/parent/tasks/generate` также возвращает `status=draft`.
 
-Не удаляйте columns без отдельной миграции. Перед изменением schema проверьте модели, SQL в services/routers и тестовые fixtures.
+После ответа обычного задания статус становится `pending_review`. `POST /api/v1/parent/tasks/{task_id}/review-suggestion` возвращает только рекомендацию AI, а `POST /api/v1/parent/tasks/{task_id}/review` фиксирует решение Учителя. Legacy `/api/tasks/submit` и Telegram handler обязаны соблюдать ту же ручную проверку для `assignment_source=teacher`.
 
-## 7. Async
+`student_safe_task_payload()` рекурсивно удаляет private answer fields. Никогда не передавайте `reference_answer`, `correct_answer`, `ai_instructions` или hidden criteria в Student DOM/state/download/Telegram. Интерактивные приложения проверяются через backend `grade_interactive_submission`; learner HTML проходит проверку `contains_embedded_solution_data`.
+
+## 7. База данных
+
+Все multi-step изменения, способные оставить частичное состояние, выполняйте внутри `async with conn.transaction()`. Совместимая схема, необходимая текущей версии приложения, централизована в `services/schema_migrations.py` и должна оставаться идемпотентной.
+
+Перед удалением колонок или таблиц проверьте модели, SQL в services/routers и тестовые fixtures. Одноразовые SQL-файлы не являются runtime-зависимостью проекта.
+
+## 8. Async
 
 Не выполняйте тяжёлые синхронные операции в event loop без необходимости. PDF/OCR/file parsing должны либо быть короткими, либо выноситься в worker/thread. Долгие сетевые операции обязаны иметь timeout.
 
-## 8. Errors и logging
+## 9. Errors и logging
 
 Пользователь видит короткое безопасное сообщение. Полная ошибка остаётся в server log. Не логируйте tokens, passwords, API keys и полный текст приватных документов без необходимости.
 
-## 9. Тесты
+## 10. Тесты
 
 ```bash
 python -m pytest -q
@@ -87,11 +97,11 @@ python -m compileall -q api bot services tests main.py config.py database.py
 
 Не подменяйте production modules глобально через `sys.modules`, если можно monkeypatch конкретную зависимость. Это загрязняет collection state других тестов.
 
-## 10. Миграции
+## 11. Изменения схемы
 
-Добавляйте SQL-файл в `migrations/`. Если он должен применяться автоматически текущим build, добавьте путь в `_MIGRATIONS` внутри `services/schema_migrations.py`. SQL должен безопасно повторно выполняться.
+Если текущей версии приложения требуется новое поле, индекс или служебная таблица, добавляйте минимальный идемпотентный DDL в `services/schema_migrations.py` и покрывайте именно требуемый runtime-контракт тестом. Не добавляйте тесты, которые проверяют наличие исторического отчёта или уже выполненного одноразового SQL-файла.
 
-## 11. Добавление функции
+## 12. Добавление функции
 
 1. Определите transport contracts/schema.
 2. Добавьте business logic в service.
@@ -123,7 +133,11 @@ python -m compileall -q api bot services tests main.py config.py database.py
 
 ## AI Tutor panels
 
-Список чатов всегда работает как drawer/sheet. Book Mode превращается в отдельную `.chat-context-panel`, открываемую кнопкой `Book Mode`; центральный `.chat-center-card` остаётся главным содержимым. На телефоне обе панели превращаются в bottom sheets. Не возвращайте постоянную широкую колонку без отдельного UX-обоснования.
+На desktop список чатов — компактный collapsible sidebar с поиском и профилем внизу; на mobile — off-canvas swipe-drawer с обычными кнопками открытия/закрытия для accessibility. Book Mode превращается в `.chat-context-panel`/sheet; после Apply панель закрывается. Центральный `.chat-center-card` остаётся главным содержимым.
+
+Имя отправителя приходит в message DTO как `sender_name`. Профиль загружается один раз через `/api/v1/tutor/profile`; Telegram avatar отдаётся безопасным server-side proxy. Не делайте отдельный profile request на каждое сообщение.
+
+Mobile keyboard определяется через `visualViewport` и focus: bottom navigation скрывается, composer остаётся над клавиатурой, layout не создаёт бесконечный vertical scroll.
 
 ## Layout customization
 

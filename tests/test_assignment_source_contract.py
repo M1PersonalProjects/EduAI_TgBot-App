@@ -8,18 +8,18 @@ def _text(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_migration_backfills_old_self_practice_before_parent_fallback():
-    sql = _text("migrations/20260819_assignment_sources_gamification.sql")
-    assert "assignment_source" in sql
-    assert "telegram_quest_test" in sql
-    assert "telegram_quest_generation" in sql
-    assert "legacy_random_page_generation" in sql
-    assert "legacy_task_generation" in sql
-    assert "CHECK (assignment_source IN ('teacher', 'tutor_practice'))" in sql
-    assert "tasks_history_source_owner_check" in sql
-    assert "SET parent_id = NULL" in sql
-    assert "assignment_source NOT IN ('teacher', 'tutor_practice')" in sql
-    assert "assignment_source = 'teacher' AND parent_id IS NULL" in sql
+def test_runtime_schema_backfills_old_self_practice_before_parent_fallback():
+    schema = _text("services/schema_migrations.py")
+    assert "assignment_source" in schema
+    assert "telegram_quest_test" in schema
+    assert "telegram_quest_generation" in schema
+    assert "legacy_random_page_generation" in schema
+    assert "legacy_task_generation" in schema
+    assert "CHECK (assignment_source IN ('teacher', 'tutor_practice'))" in schema
+    assert "tasks_history_source_owner_check" in schema
+    assert "SET parent_id = NULL" in schema
+    assert "assignment_source NOT IN ('teacher', 'tutor_practice')" in schema
+    assert "assignment_source = 'teacher' AND parent_id IS NULL" in schema
 
 
 def test_all_task_history_inserts_set_assignment_source():
@@ -28,7 +28,6 @@ def test_all_task_history_inserts_set_assignment_source():
         "api/routers/platform.py",
         "api/routers/interactive.py",
         "bot/handlers/quests.py",
-        "bot/handlers/parent.py",
     ]
     for path in files:
         source = _text(path)
@@ -40,6 +39,14 @@ def test_all_task_history_inserts_set_assignment_source():
         assert inserts, f"expected at least one tasks_history INSERT in {path}"
         for columns in inserts:
             assert "assignment_source" in columns, f"missing assignment_source in {path}"
+
+
+def test_telegram_teacher_creation_point_was_intentionally_removed():
+    """Старый Telegram-flow не должен создавать tasks_history в обход WebApp draft workflow."""
+    source = _text("bot/handlers/parent.py")
+    assert "INSERT INTO tasks_history" not in source
+    assert "Создание обычных заданий перенесено в WebApp" in source
+    assert "'teacher'" in source
 
 
 def test_student_practice_and_teacher_creation_use_different_sources():
@@ -61,13 +68,6 @@ def test_teacher_lists_and_statistics_filter_by_source():
     assert "assignment_source='teacher'" in teacher_bot or "assignment_source = 'teacher'" in teacher_bot
 
 
-def test_gamification_ledger_is_idempotent_per_task_completion():
-    sql = _text("migrations/20260819_assignment_sources_gamification.sql")
-    service = _text("services/gamification.py")
-    assert "UNIQUE(user_id, event_key)" in sql
-    assert 'f"task:{task_id}:complete"' in service
-    assert "duplicate_event=True" in service
-
 
 def test_teacher_attachment_access_also_checks_assignment_source():
     source = _text("services/attachment_storage.py")
@@ -80,8 +80,8 @@ def test_answer_workflows_branch_on_assignment_source():
     platform = _text("api/routers/platform.py")
     interactive = _text("api/routers/interactive.py")
     assert "if source == TEACHER and parent_id" in bot_tasks
-    assert '"evaluated" if source == TEACHER else "completed"' in bot_tasks
-    assert '"evaluated" if source == "teacher" else "completed"' in api_tasks
-    assert '"evaluated" if source == TEACHER else "completed"' in platform
+    assert "pending_review" in bot_tasks
+    assert "if source == TEACHER" in api_tasks and "pending_review" in api_tasks
+    assert "if source == TEACHER" in platform and "pending_review" in platform
     assert "assignment_source = normalize_assignment_source" in interactive
     assert '"evaluated" if assignment_source == TEACHER else "completed"' in interactive

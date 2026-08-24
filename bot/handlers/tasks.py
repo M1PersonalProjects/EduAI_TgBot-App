@@ -10,7 +10,7 @@ from services.ai import openai_client, parse_chat_completion
 from bot.messages import answer_plain, send_plain_to_chat
 from services.tutor_policy import task_grading_prompt
 from services.educational_context import build_context_from_metadata
-from services.gamification import TEACHER, award_learning_result, infer_difficulty, normalize_assignment_source
+from services.assignment_source import TEACHER, normalize_assignment_source
 
 router = Router()
 
@@ -84,13 +84,18 @@ async def start_quest(message: Message, state: FSMContext):
             async with db.pool.acquire() as conn:
                 await conn.execute("UPDATE tasks_history SET status = 'in_progress'::task_status WHERE task_id = $1", parent_task["task_id"])
             quest_items = quest.get("items") or []
-            first_item = quest_items[0] if quest_items else {}
-            active_question = first_item.get("question_text") or quest.get("question_text") or ""
-            active_answer = first_item.get("reference_answer") or quest.get("reference_answer") or ""
+            if quest_items:
+                question_blocks = [
+                    f"{index}. {item.get('question_text') or ''}"
+                    for index, item in enumerate(quest_items, start=1)
+                    if (item.get("question_text") or "").strip()
+                ]
+                active_question = "\n\n".join(question_blocks)
+            else:
+                active_question = quest.get("question_text") or ""
             await state.update_data(
                 active_task_id=parent_task["task_id"],
                 question_text=active_question,
-                correct_answer=active_answer,
                 parent_id=parent_task["parent_id"],
                 assignment_source="teacher",
                 quest_subject=parent_task.get("subject") if hasattr(parent_task, "get") else None,
@@ -103,15 +108,15 @@ async def start_quest(message: Message, state: FSMContext):
             await state.set_state(QuestStates.waiting_for_answer)
 
             await status_msg.delete()
-            progress = f"❓ Вопрос 1 из {len(quest_items)}\n\n" if quest_items else ""
             await answer_plain(
                 message,
                 f"👨‍👩‍👦 Персональное задание от Учителя!\n"
-                f"🏆 Квест: {quest.get('title')}\n\n"
-                f"{progress}{active_question}"
+                f"📘 {quest.get('title') or 'Задание'}\n\n"
+                f"{active_question}"
                 f"{parent_comment_block}"
                 f"{history_feedback}\n\n"
-                "✨ Награда зависит от качества, сложности и прогресса.\n\n"
+                "Отправь ответы одним сообщением. После отправки задание перейдёт Учителю "
+                "на ручную проверку.\n\n"
                 "Напиши ответ в чат (или введи /cancel для отмены)."
             )
             return
@@ -164,6 +169,54 @@ async def check_quest_answer(message: Message, state: FSMContext):
                 if isinstance(raw_topic_context, str)
                 else (raw_topic_context or {})
             )
+
+            if source == TEACHER:
+                answer_data = {
+                    "provided_answer": user_answer,
+                    "review_status": "pending_review",
+                }
+                async with conn.transaction():
+                    attempt_number = int(await conn.fetchval(
+                        "SELECT COALESCE(MAX(attempt_number),0)+1 FROM task_submissions WHERE task_id=$1 AND student_id=$2",
+                        task_id, user_id,
+                    ) or 1)
+                    await conn.execute(
+                        """
+                        INSERT INTO task_submissions (task_id, student_id, answer_text, attempt_number, status)
+                        VALUES ($1,$2,$3,$4,'pending_review')
+                        """,
+                        task_id, user_id, user_answer, attempt_number,
+                    )
+                    updated = await conn.fetchval(
+                        """
+                        UPDATE tasks_history
+                        SET student_answers_json=$1::jsonb, status='pending_review'::task_status,
+                            updated_at=CURRENT_TIMESTAMP
+                        WHERE task_id=$2 AND student_id=$3 AND status IN ('created','in_progress')
+                        RETURNING task_id
+                        """,
+                        json.dumps(answer_data, ensure_ascii=False), task_id, user_id,
+                    )
+                    if not updated:
+                        await status_msg.edit_text("⚠️ Задание уже было отправлено на проверку.")
+                        await state.clear()
+                        return
+
+                await status_msg.delete()
+                await answer_plain(message, "✅ Ответ отправлен Учителю и ожидает ручной проверки.")
+                if parent_id:
+                    try:
+                        await send_plain_to_chat(
+                            message.bot,
+                            parent_id,
+                            "📝 Ученик отправил ответ на назначенное задание. "
+                            "Откройте историю заданий в EduAI для ручной проверки.",
+                        )
+                    except Exception:
+                        logger.warning("Не удалось уведомить Учителя о новом ответе", exc_info=True)
+                await state.clear()
+                return
+
             grading_context = await build_context_from_metadata(
                 conn,
                 str(topic_context.get("topic") or row.get("topic") or question_text or "answer checking"),
@@ -239,10 +292,6 @@ async def check_quest_answer(message: Message, state: FSMContext):
             question_count = max(1, len(quest_items) or 1)
             total_attempts = max(question_count, len(quest_answers))
             quality = min(1.0, question_count / total_attempts)
-            corrected_mistakes = sum(1 for item in quest_answers if not bool(item.get("is_correct")))
-            corrected_after_hint = corrected_mistakes > 0
-            reward_attempt = 1 if total_attempts == question_count else 2
-            difficulty = str(topic_context.get("difficulty") or infer_difficulty(question_text, topic_context.get("request")))
             final_status = "evaluated" if source == TEACHER else "completed"
             student_answers_json["completed_items"] = question_count
             student_answers_json["quality_score"] = quality
@@ -264,7 +313,7 @@ async def check_quest_answer(message: Message, state: FSMContext):
                         round(quality * 100), final_status, task_id, user_id,
                     )
                     if str(update_result).strip().upper() == "UPDATE 0":
-                        await answer_plain(message, "Этот квест уже был завершён; повторная награда не начислена.")
+                        await answer_plain(message, "Этот квест уже был завершён.")
                         await state.clear()
                         return
                     await conn.execute(
@@ -276,40 +325,11 @@ async def check_quest_answer(message: Message, state: FSMContext):
                         task_id, user_id, user_answer, attempt_number, verification.explanation,
                         100, "completed",
                     )
-                    reward = await award_learning_result(
-                        conn,
-                        user_id=user_id,
-                        task_id=task_id,
-                        assignment_source=source,
-                        subject=str(row.get("subject") or topic_context.get("subject") or ""),
-                        topic=str(row.get("topic") or topic_context.get("topic") or ""),
-                        is_correct=True,
-                        completed=True,
-                        quality_score=quality,
-                        attempt_number=reward_attempt,
-                        question_count=question_count,
-                        difficulty=difficulty,
-                        corrected_after_hint=corrected_after_hint,
-                        corrected_mistakes=corrected_mistakes,
-                    )
 
-            reward_line = f"✨ +{reward.xp} XP"
-            if reward.coins:
-                reward_line += f" · 💰 +{reward.coins} монет"
-            if reward.repetition_multiplier < 1:
-                reward_line += " · повтор: сниженный XP"
             completion = f"\n🏁 Квест-тест завершён: {question_count} из {question_count} вопросов."
-            motivation_lines = []
-            if reward.achievements:
-                motivation_lines.append("🏅 Новое достижение: " + ", ".join(reward.achievements))
-            if reward.completed_goals:
-                motivation_lines.append("🎯 Выполнена цель: " + ", ".join(reward.completed_goals))
-            motivation_note = ("\n" + "\n".join(motivation_lines)) if motivation_lines else ""
             await answer_plain(
                 message,
-                f"🎉 Верно! {verification.explanation}{completion}\n\n"
-                f"{reward_line}{motivation_note}\n"
-                "Награда зависит от качества, прогресса и повторяемости темы.",
+                f"🎉 Верно! {verification.explanation}{completion}",
             )
             # Only explicit Teacher assignments are reported to the Teacher.
             if source == TEACHER and parent_id:
@@ -350,7 +370,7 @@ async def check_quest_answer(message: Message, state: FSMContext):
         await answer_plain(
             message,
             f"❌ Не совсем так…\n{verification.explanation}{progress}\n\n"
-            "Попробуй ещё раз! Исправление ошибки учитывается как полезный прогресс.",
+            "Попробуй ещё раз.",
         )
 
     except Exception as exc:

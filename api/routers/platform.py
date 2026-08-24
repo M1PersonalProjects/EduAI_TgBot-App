@@ -20,13 +20,7 @@ from services.tutor_policy import (
     task_grading_prompt,
 )
 from services.tutor import clean_ai_text, ensure_session, respond as tutor_respond, search_web_for_education
-from services.gamification import (
-    TEACHER,
-    award_learning_result,
-    get_gamification_snapshot,
-    infer_difficulty,
-    normalize_assignment_source,
-)
+from services.assignment_source import TEACHER, infer_difficulty, normalize_assignment_source
 from services.textbook_digitizer import digitize_pdf_bytes
 from services.attachment_storage import (
     load_attachment_for_ai,
@@ -97,7 +91,7 @@ class ManualAnswerKeyGeneration(BaseModel):
 
 
 class GenerateParentTaskRequest(BaseModel):
-    student_ids: List[int] = Field(..., min_length=1, max_length=50)
+    student_ids: List[int] = Field(default_factory=list, max_length=50)
 
     topic: str = Field(
         ...,
@@ -129,11 +123,31 @@ class GenerateParentTaskRequest(BaseModel):
     task_count: int = Field(default=1, ge=1, le=100)
 
 
-class RewardPayload(BaseModel):
-    name: str = Field(..., min_length=2, max_length=256)
-    description: str = Field(default="", max_length=500)
-    cost_coins: int = Field(..., ge=1, le=1_000_000)
-    category: str = Field(default="other", max_length=100)
+class TaskDraftPayload(BaseModel):
+    student_ids: List[int] = Field(default_factory=list, max_length=50)
+    title: str = Field(default="", max_length=255)
+    description: str = Field(default="", max_length=40000)
+    reference_answer: str = Field(default="", max_length=30000)
+    subject: str = Field(default="Практика", max_length=150)
+    topic: str = Field(default="", max_length=255)
+    parent_comment: str = Field(default="", max_length=4000)
+    ai_instructions: str = Field(default="", max_length=4000)
+    book_id: Optional[int] = None
+    page_id: Optional[int] = None
+    attachment_ids: List[int] = Field(default_factory=list, max_length=10)
+    attachment_options: List[TaskAttachmentOption] = Field(default_factory=list, max_length=10)
+    send_files_to_student: bool = False
+    context_mode: Optional[str] = None
+    used_pages: List[Dict[str, Any]] = Field(default_factory=list)
+    generated_items: List[Dict[str, Any]] = Field(default_factory=list, max_length=100)
+    source_trace: List[Dict[str, Any]] = Field(default_factory=list)
+    source_message_id: Optional[int] = None
+    interactive_app_id: Optional[str] = None
+
+
+class TaskReviewRequest(BaseModel):
+    score: int = Field(..., ge=0, le=100)
+    comment: str = Field(default="", max_length=4000)
 
 
 class BookPayload(BaseModel):
@@ -367,7 +381,7 @@ SENSITIVE_STUDENT_TASK_KEYS = {
 
 
 def student_safe_task_payload(value: Any) -> Any:
-    """Recursively remove private answer/Teacher-only fields from Student API payloads."""
+    """Рекурсивно удаляет приватные ответы и поля Учителя из Student API."""
     if isinstance(value, dict):
         return {
             key: student_safe_task_payload(item)
@@ -380,7 +394,7 @@ def student_safe_task_payload(value: Any) -> Any:
 
 
 def student_task_attachment_dto(row: Any) -> dict[str, Any]:
-    """Public attachment DTO. Never expose AI-context metadata to students."""
+    """Формирует публичный DTO вложения без служебных метаданных ИИ."""
     return {
         "attachment_id": row["attachment_id"],
         "original_name": row["original_name"],
@@ -399,13 +413,8 @@ async def student_dashboard(user=Depends(require_roles("student"))):
     async with db.pool.acquire() as conn:
         profile = await conn.fetchrow(
             """
-            SELECT u.tg_id, u.username, u.role, u.parent_id,
-                   COALESCE(g.balance_coins, 0) AS balance_coins,
-                   COALESCE(g.xp_total, 0) AS xp_total,
-                   COALESCE(g.streak_days, 0) AS streak_days,
-                   COALESCE(g.streak_saves, 0) AS streak_saves,
-                   COALESCE(g.active_days_total, 0) AS active_days_total
-            FROM users u LEFT JOIN gamification g ON g.user_id = u.tg_id
+            SELECT u.tg_id, u.username, u.role, u.parent_id
+            FROM users u
             WHERE u.tg_id = $1
             """,
             user["tg_id"],
@@ -429,16 +438,14 @@ async def student_dashboard(user=Depends(require_roles("student"))):
                 sent_at
             FROM tasks_history
             WHERE student_id = $1
-            AND status IN ('created', 'in_progress')
+              AND status IN ('created', 'in_progress', 'pending_review')
             ORDER BY created_at ASC
             """,
             user["tg_id"],
         )
 
         task_ids = [row["task_id"] for row in tasks]
-
         task_attachments = []
-
         if task_ids:
             task_attachments = await conn.fetch(
                 """
@@ -453,39 +460,17 @@ async def student_dashboard(user=Depends(require_roles("student"))):
                     a.extension,
                     a.size_bytes
                 FROM task_attachments ta
-                JOIN attachments a
-                    ON a.attachment_id = ta.attachment_id
+                JOIN attachments a ON a.attachment_id = ta.attachment_id
                 WHERE ta.task_id = ANY($1::integer[])
-                AND ta.visible_to_student = true
+                  AND ta.visible_to_student = true
                 ORDER BY ta.task_id, ta.sort_order
                 """,
                 task_ids,
             )
-        
-        rewards = await conn.fetch(
-            """
-            SELECT reward_id, name, description, cost_coins, category
-            FROM rewards WHERE parent_id = $1 ORDER BY cost_coins ASC
-            """,
-            profile["parent_id"],
-        ) if profile["parent_id"] else []
-        purchases = await conn.fetch(
-            """
-            SELECT rp.purchase_id, rp.cost_coins, rp.purchased_at, r.name, r.category
-            FROM reward_purchases rp JOIN rewards r ON r.reward_id = rp.reward_id
-            WHERE rp.student_id = $1 ORDER BY rp.purchased_at DESC LIMIT 20
-            """,
-            user["tg_id"],
-        )
-        motivation = await get_gamification_snapshot(conn, user["tg_id"])
 
     attachments_by_task: dict[int, list[dict[str, Any]]] = {}
-
     for row in task_attachments:
-        attachments_by_task.setdefault(
-            row["task_id"],
-            [],
-        ).append(student_task_attachment_dto(row))
+        attachments_by_task.setdefault(row["task_id"], []).append(student_task_attachment_dto(row))
 
     task_items = []
     for item in tasks:
@@ -493,21 +478,21 @@ async def student_dashboard(user=Depends(require_roles("student"))):
         row["topic_context"] = parse_json(row["topic_context"])
         row["questions_json"] = student_safe_task_payload(parse_json(row["questions_json"]))
         row["student_answers_json"] = parse_json(row["student_answers_json"])
-        row["attachments"] = attachments_by_task.get(
-            row["task_id"],
-            [],
-        )
+        row["attachments"] = attachments_by_task.get(row["task_id"], [])
         task_items.append(row)
-    teacher_tasks = [item for item in task_items if normalize_assignment_source(item.get("assignment_source"), item.get("parent_id")) == TEACHER]
-    practice_tasks = [item for item in task_items if normalize_assignment_source(item.get("assignment_source"), item.get("parent_id")) != TEACHER]
+
+    teacher_tasks = [
+        item for item in task_items
+        if normalize_assignment_source(item.get("assignment_source"), item.get("parent_id")) == TEACHER
+    ]
+    practice_tasks = [
+        item for item in task_items
+        if normalize_assignment_source(item.get("assignment_source"), item.get("parent_id")) != TEACHER
+    ]
     return {
         "profile": dict(profile),
-        # `tasks` intentionally means Teacher assignments for backward-compatible UI clients.
         "tasks": teacher_tasks,
         "practice_tasks": practice_tasks,
-        "motivation": motivation,
-        "rewards": [dict(item) for item in rewards],
-        "purchases": [dict(item) for item in purchases],
     }
 
 
@@ -516,7 +501,7 @@ async def submit_student_task(task_id: int, payload: TaskAnswerRequest, user=Dep
     async with db.pool.acquire() as conn:
         task = await conn.fetchrow(
             """
-            SELECT parent_id, assignment_source, subject, topic, questions_json, topic_context
+            SELECT parent_id, assignment_source, questions_json, topic_context
             FROM tasks_history
             WHERE task_id = $1 AND student_id = $2 AND status IN ('created', 'in_progress')
             """,
@@ -529,6 +514,40 @@ async def submit_student_task(task_id: int, payload: TaskAnswerRequest, user=Dep
     questions = parse_json(task["questions_json"])
     topic_context = parse_json(task["topic_context"])
     source = normalize_assignment_source(task.get("assignment_source"), task.get("parent_id"))
+
+    if source == TEACHER:
+        answer_data = {"provided_answer": without_latex(payload.student_answer), "review_status": "pending_review"}
+        async with db.pool.acquire() as conn:
+            async with conn.transaction():
+                attempt_number = int(await conn.fetchval(
+                    "SELECT COALESCE(MAX(attempt_number), 0) + 1 FROM task_submissions WHERE task_id=$1 AND student_id=$2",
+                    task_id, user["tg_id"],
+                ) or 1)
+                await conn.execute(
+                    """
+                    INSERT INTO task_submissions (task_id, student_id, answer_text, attempt_number, status)
+                    VALUES ($1,$2,$3,$4,'pending_review')
+                    """,
+                    task_id, user["tg_id"], without_latex(payload.student_answer), attempt_number,
+                )
+                updated = await conn.fetchval(
+                    """
+                    UPDATE tasks_history
+                    SET student_answers_json=$1::jsonb, status='pending_review'::task_status, updated_at=CURRENT_TIMESTAMP
+                    WHERE task_id=$2 AND student_id=$3 AND status IN ('created','in_progress')
+                    RETURNING task_id
+                    """,
+                    json.dumps(answer_data, ensure_ascii=False), task_id, user["tg_id"],
+                )
+                if not updated:
+                    raise HTTPException(status_code=409, detail="Задание уже отправлено на проверку")
+        return {
+            "success": True,
+            "status": "pending_review",
+            "assignment_source": source,
+            "message": "Ответ отправлен Учителю и ожидает ручной проверки.",
+        }
+
     async with db.pool.acquire() as conn:
         grading_context = await build_context_from_metadata(
             conn,
@@ -536,7 +555,8 @@ async def submit_student_task(task_id: int, payload: TaskAnswerRequest, user=Dep
             topic_context,
         )
     try:
-        response = await parse_chat_completion(openai_client,
+        response = await parse_chat_completion(
+            openai_client,
             messages=[
                 {"role": "system", "content": task_grading_prompt()},
                 {
@@ -563,8 +583,6 @@ async def submit_student_task(task_id: int, payload: TaskAnswerRequest, user=Dep
         "verification_feedback": canonicalize_message(result.explanation),
         "is_correct": result.is_correct,
     }
-    question_count = max(1, int(questions.get("question_count") or len(questions.get("items") or []) or 1))
-    difficulty = str(topic_context.get("difficulty") or infer_difficulty(questions.get("question_text"), topic_context.get("request")))
 
     async with db.pool.acquire() as conn:
         async with conn.transaction():
@@ -587,12 +605,12 @@ async def submit_student_task(task_id: int, payload: TaskAnswerRequest, user=Dep
                 task_id, user["tg_id"], without_latex(payload.student_answer), attempt_number,
                 canonicalize_message(result.explanation), 100 if result.is_correct else 0, submission_status,
             )
-            final_status = ("evaluated" if source == TEACHER else "completed") if result.is_correct else "in_progress"
+            final_status = "completed" if result.is_correct else "in_progress"
             updated = await conn.fetchval(
                 """
                 UPDATE tasks_history
                 SET student_answers_json=$1::jsonb, score=$2, status=$3::task_status,
-                    completed_at=CASE WHEN $3 IN ('completed','evaluated') THEN CURRENT_TIMESTAMP ELSE completed_at END,
+                    completed_at=CASE WHEN $3 = 'completed' THEN CURRENT_TIMESTAMP ELSE completed_at END,
                     updated_at=CURRENT_TIMESTAMP
                 WHERE task_id=$4 AND student_id=$5 AND status IN ('created','in_progress')
                 RETURNING task_id
@@ -606,83 +624,12 @@ async def submit_student_task(task_id: int, payload: TaskAnswerRequest, user=Dep
             if not updated:
                 raise HTTPException(status_code=409, detail="Задание уже было завершено")
 
-            if result.is_correct:
-                reward = await award_learning_result(
-                    conn,
-                    user_id=user["tg_id"],
-                    task_id=task_id,
-                    assignment_source=source,
-                    subject=str(task.get("subject") or topic_context.get("subject") or ""),
-                    topic=str(task.get("topic") or topic_context.get("topic") or ""),
-                    is_correct=True,
-                    completed=True,
-                    quality_score=1.0,
-                    attempt_number=attempt_number,
-                    question_count=question_count,
-                    difficulty=difficulty,
-                    corrected_after_hint=attempt_number > 1,
-                )
-                balance_coins, xp_total = reward.balance_coins, reward.xp_total
-                earned_coins, earned_xp = reward.coins, reward.xp
-                achievements = list(reward.achievements)
-                completed_goals = list(reward.completed_goals)
-            else:
-                stats = await conn.fetchrow(
-                    "SELECT balance_coins, xp_total FROM gamification WHERE user_id=$1",
-                    user["tg_id"],
-                )
-                balance_coins = int((stats and stats["balance_coins"]) or 0)
-                xp_total = int((stats and stats["xp_total"]) or 0)
-                earned_coins = earned_xp = 0
-                achievements = []
-                completed_goals = []
-
     return {
         "success": result.is_correct,
+        "status": final_status,
         "message": without_latex(result.explanation),
         "assignment_source": source,
-        "balance_coins": balance_coins,
-        "xp_total": xp_total,
-        "earned_coins": earned_coins,
-        "earned_xp": earned_xp,
-        "achievements": achievements,
-        "completed_goals": completed_goals,
     }
-
-
-@router.post("/student/rewards/{reward_id}/buy")
-async def buy_reward(reward_id: int, user=Depends(require_roles("student"))):
-    async with db.pool.acquire() as conn:
-        async with conn.transaction():
-            reward = await conn.fetchrow(
-                """
-                SELECT r.reward_id, r.name, r.cost_coins
-                FROM rewards r JOIN users u ON u.parent_id = r.parent_id
-                WHERE r.reward_id = $1 AND u.tg_id = $2
-                """,
-                reward_id,
-                user["tg_id"],
-            )
-            if not reward:
-                raise HTTPException(status_code=404, detail="Награда вашей семьи не найдена")
-            balance = await conn.fetchval(
-                """
-                UPDATE gamification SET balance_coins = balance_coins - $1
-                WHERE user_id = $2 AND balance_coins >= $1
-                RETURNING balance_coins
-                """,
-                reward["cost_coins"],
-                user["tg_id"],
-            )
-            if balance is None:
-                raise HTTPException(status_code=409, detail="Недостаточно монет")
-            await conn.execute(
-                "INSERT INTO reward_purchases (student_id, reward_id, cost_coins) VALUES ($1, $2, $3)",
-                user["tg_id"],
-                reward_id,
-                reward["cost_coins"],
-            )
-    return {"status": "success", "reward_name": reward["name"], "balance_coins": balance}
 
 
 @router.get("/chat/history")
@@ -726,35 +673,18 @@ async def parent_dashboard(user=Depends(require_roles("parent", "admin"))):
         children = await conn.fetch(
             """
             SELECT u.tg_id, u.username,
-                   COALESCE(g.balance_coins, 0) AS balance_coins,
-                   COALESCE(g.xp_total, 0) AS xp_total,
-                   COALESCE(g.streak_days, 0) AS streak_days,
                    COUNT(DISTINCT t.task_id) AS tasks_total,
                    COUNT(DISTINCT t.task_id) FILTER (WHERE t.status IN ('completed', 'evaluated')) AS tasks_done,
-                   COALESCE(ROUND(AVG(t.score))::int, 0) AS average_score,
-                   COUNT(DISTINCT rp.purchase_id) AS purchases_total
+                   COALESCE(ROUND(AVG(t.score))::int, 0) AS average_score
             FROM users u
-            LEFT JOIN gamification g ON g.user_id = u.tg_id
             LEFT JOIN tasks_history t ON t.student_id = u.tg_id AND t.assignment_source = 'teacher'
-            LEFT JOIN reward_purchases rp ON rp.student_id = u.tg_id
             WHERE u.parent_id = $1 AND u.role = 'student'
-            GROUP BY u.tg_id, u.username, g.balance_coins, g.xp_total, g.streak_days
+            GROUP BY u.tg_id, u.username
             ORDER BY u.username NULLS LAST
             """,
             user["tg_id"],
         )
-        purchases = await conn.fetch(
-            """
-            SELECT rp.purchase_id, rp.student_id, rp.cost_coins, rp.purchased_at,
-                   r.name, u.username
-            FROM reward_purchases rp
-            JOIN rewards r ON r.reward_id = rp.reward_id
-            JOIN users u ON u.tg_id = rp.student_id
-            WHERE u.parent_id = $1 ORDER BY rp.purchased_at DESC LIMIT 30
-            """,
-            user["tg_id"],
-        )
-    return {"children": [dict(row) for row in children], "purchases": [dict(row) for row in purchases]}
+    return {"children": [dict(row) for row in children]}
 
 
 def _manual_attachment_option_map(
@@ -890,17 +820,213 @@ async def _generate_manual_answer_key(
             ),
         )
 
+    answer_text = canonicalize_message(generated.answer_text).strip()
+    if "ответы:" not in answer_text.lower():
+        compact = answer_text.splitlines()[-1].strip() if answer_text.splitlines() else answer_text
+        generated.answer_text = f"{answer_text}\n\nОтветы:\n1. {compact}"
     return generated
 
 
-@router.post(
-    "/parent/tasks",
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_parent_task(
-    payload: ParentTaskRequest,
+def _draft_value(value: Any) -> Any:
+    return parse_json(value) if isinstance(value, str) else value
+
+
+def task_draft_dto(row: Any) -> dict[str, Any]:
+    """Преобразует черновик в безопасный DTO для интерфейса Учителя."""
+    item = dict(row)
+    item["draft_id"] = str(item["draft_id"])
+    if item.get("interactive_app_id"):
+        item["interactive_app_id"] = str(item["interactive_app_id"])
+    for key in ("student_ids", "attachment_ids", "attachment_options", "generated_items", "source_trace", "used_pages"):
+        item[key] = _draft_value(item.get(key)) or []
+    return item
+
+
+@router.post("/parent/task-drafts", status_code=status.HTTP_201_CREATED)
+async def create_task_draft(
+    payload: TaskDraftPayload,
     user=Depends(require_roles("parent", "admin")),
 ):
+    """Создаёт редактируемый черновик и ничего не отправляет Ученику."""
+    draft_id = uuid.uuid4()
+    teacher_id = int(user["tg_id"])
+    description = canonicalize_message(payload.description).strip()
+    title = without_latex(payload.title).strip()
+
+    async with db.pool.acquire() as conn:
+        if payload.student_ids:
+            await ensure_children(conn, teacher_id, payload.student_ids)
+        if payload.attachment_ids:
+            await validate_owned_attachments(conn, payload.attachment_ids, teacher_id)
+        if payload.source_message_id is not None:
+            message = await conn.fetchrow(
+                """
+                SELECT message_id, message_text
+                FROM chat_messages
+                WHERE message_id=$1 AND user_id=$2 AND sender='ai'
+                """,
+                payload.source_message_id,
+                teacher_id,
+            )
+            if not message:
+                raise HTTPException(status_code=404, detail="Ответ ИИ для черновика не найден")
+            if not description:
+                description = canonicalize_message(message["message_text"]).strip()
+        if payload.interactive_app_id:
+            app = await conn.fetchrow(
+                "SELECT app_id, title FROM interactive_apps WHERE app_id=$1::uuid AND owner_id=$2",
+                payload.interactive_app_id,
+                teacher_id,
+            )
+            if not app:
+                raise HTTPException(status_code=404, detail="Интерактивное приложение не найдено")
+            if not title:
+                title = without_latex(app["title"])
+        row = await conn.fetchrow(
+            """
+            INSERT INTO task_drafts (
+                draft_id, teacher_id, source_message_id, interactive_app_id,
+                title, description, subject, topic, parent_comment, ai_instructions,
+                reference_answer, book_id, page_id, student_ids, attachment_ids,
+                attachment_options, generated_items, source_trace, context_mode, used_pages
+            ) VALUES (
+                $1,$2,$3,$4::uuid,$5,$6,$7,$8,$9,$10,$11,$12,$13,
+                $14::jsonb,$15::jsonb,$16::jsonb,$17::jsonb,$18::jsonb,$19,$20::jsonb
+            )
+            RETURNING *
+            """,
+            draft_id, teacher_id, payload.source_message_id, payload.interactive_app_id,
+            title or "Черновик задания", description, without_latex(payload.subject or "Практика"),
+            without_latex(payload.topic), without_latex(payload.parent_comment),
+            payload.ai_instructions.strip() or None, canonicalize_message(payload.reference_answer).strip(),
+            payload.book_id, payload.page_id,
+            json.dumps(payload.student_ids), json.dumps(payload.attachment_ids),
+            json.dumps([item.model_dump() for item in payload.attachment_options]),
+            json.dumps(payload.generated_items, ensure_ascii=False),
+            json.dumps(payload.source_trace, ensure_ascii=False), payload.context_mode,
+            json.dumps(payload.used_pages, ensure_ascii=False),
+        )
+    return task_draft_dto(row)
+
+
+@router.get("/parent/task-drafts/{draft_id}")
+async def get_task_draft(
+    draft_id: uuid.UUID,
+    user=Depends(require_roles("parent", "admin")),
+):
+    async with db.pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM task_drafts WHERE draft_id=$1 AND teacher_id=$2",
+            draft_id,
+            user["tg_id"],
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail="Черновик не найден")
+    return task_draft_dto(row)
+
+
+@router.patch("/parent/task-drafts/{draft_id}")
+async def update_task_draft(
+    draft_id: uuid.UUID,
+    payload: TaskDraftPayload,
+    user=Depends(require_roles("parent", "admin")),
+):
+    teacher_id = int(user["tg_id"])
+    async with db.pool.acquire() as conn:
+        if payload.student_ids:
+            await ensure_children(conn, teacher_id, payload.student_ids)
+        if payload.attachment_ids:
+            await validate_owned_attachments(conn, payload.attachment_ids, teacher_id)
+        row = await conn.fetchrow(
+            """
+            UPDATE task_drafts SET
+                title=$1, description=$2, reference_answer=$3, subject=$4, topic=$5,
+                parent_comment=$6, ai_instructions=$7, book_id=$8, page_id=$9,
+                student_ids=$10::jsonb, attachment_ids=$11::jsonb,
+                attachment_options=$12::jsonb, generated_items=$13::jsonb,
+                source_trace=$14::jsonb, context_mode=$15, used_pages=$16::jsonb,
+                updated_at=CURRENT_TIMESTAMP
+            WHERE draft_id=$17 AND teacher_id=$18 AND status='draft'
+            RETURNING *
+            """,
+            without_latex(payload.title), canonicalize_message(payload.description),
+            canonicalize_message(payload.reference_answer), without_latex(payload.subject or "Практика"),
+            without_latex(payload.topic), without_latex(payload.parent_comment),
+            payload.ai_instructions.strip() or None, payload.book_id, payload.page_id,
+            json.dumps(payload.student_ids), json.dumps(payload.attachment_ids),
+            json.dumps([item.model_dump() for item in payload.attachment_options]),
+            json.dumps(payload.generated_items, ensure_ascii=False), json.dumps(payload.source_trace, ensure_ascii=False),
+            payload.context_mode, json.dumps(payload.used_pages, ensure_ascii=False), draft_id, teacher_id,
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail="Редактируемый черновик не найден")
+    return task_draft_dto(row)
+
+
+@router.delete("/parent/task-drafts/{draft_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_task_draft(
+    draft_id: uuid.UUID,
+    user=Depends(require_roles("parent", "admin")),
+):
+    async with db.pool.acquire() as conn:
+        deleted = await conn.fetchval(
+            "DELETE FROM task_drafts WHERE draft_id=$1 AND teacher_id=$2 AND status='draft' RETURNING draft_id",
+            draft_id,
+            user["tg_id"],
+        )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Черновик не найден")
+
+
+@router.post("/parent/task-drafts/{draft_id}/send", status_code=status.HTTP_201_CREATED)
+async def send_task_draft(
+    draft_id: uuid.UUID,
+    user=Depends(require_roles("parent", "admin")),
+):
+    async with db.pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM task_drafts WHERE draft_id=$1 AND teacher_id=$2 AND status='draft'",
+            draft_id,
+            user["tg_id"],
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail="Черновик не найден")
+    draft = task_draft_dto(row)
+    if not draft["student_ids"]:
+        raise HTTPException(status_code=422, detail="Выберите хотя бы одного Ученика перед отправкой")
+    payload = ParentTaskRequest(
+        student_ids=[int(value) for value in draft["student_ids"]],
+        title=draft.get("title") or "",
+        description=draft.get("description") or "",
+        reference_answer=draft.get("reference_answer") or "",
+        subject=draft.get("subject") or "Практика",
+        topic=draft.get("topic") or "",
+        parent_comment=draft.get("parent_comment") or "",
+        ai_instructions=draft.get("ai_instructions") or "",
+        book_id=draft.get("book_id"), page_id=draft.get("page_id"),
+        attachment_ids=[int(value) for value in draft["attachment_ids"]],
+        attachment_options=[TaskAttachmentOption(**item) for item in draft["attachment_options"]],
+        send_files_to_student=any(bool(item.get("visible_to_student")) for item in draft["attachment_options"]),
+        context_mode=draft.get("context_mode"), used_pages=draft["used_pages"],
+        generated_items=draft["generated_items"], source_trace=draft["source_trace"],
+        requested_count=max(1, len(draft["generated_items"]) or 1),
+    )
+    result = await _create_parent_task_from_draft(payload, user)
+    async with db.pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE task_drafts SET status='sent', sent_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE draft_id=$1 AND teacher_id=$2",
+            draft_id,
+            user["tg_id"],
+        )
+    result["draft_id"] = str(draft_id)
+    return result
+
+
+async def _create_parent_task_from_draft(
+    payload: ParentTaskRequest,
+    user: dict[str, Any],
+):
+    """Отправляет Ученикам уже подтверждённый черновик; отдельного публичного create endpoint нет."""
     parent_id = user["tg_id"]
 
     async with db.pool.acquire() as conn:
@@ -1071,7 +1197,8 @@ async def generate_parent_task(
     )
 
     async with db.pool.acquire() as conn:
-        await ensure_children(conn, user["tg_id"], payload.student_ids)
+        if payload.student_ids:
+            await ensure_children(conn, user["tg_id"], payload.student_ids)
         attachments = await validate_owned_attachments(conn, payload.attachment_ids, user["tg_id"])
         context = None
         if payload.book_id is not None:
@@ -1186,12 +1313,22 @@ async def generate_parent_task(
         requested_count=requested_count,
     )
 
-    result = await create_parent_task(manual, user)
-    result["task"] = manual.model_dump()
-    result["requested_count"] = requested_count
-    result["generated_count"] = len(generated.items)
-    result["source_trace"] = bundle.source_trace
-    return result
+    draft = await create_task_draft(
+        TaskDraftPayload(
+            **manual.model_dump(exclude={"requested_count"}),
+            generated_items=generated_payload.get("items", []),
+            source_trace=bundle.source_trace,
+        ),
+        user,
+    )
+    return {
+        "status": "draft",
+        "draft": draft,
+        "task": manual.model_dump(),
+        "requested_count": requested_count,
+        "generated_count": len(generated.items),
+        "source_trace": bundle.source_trace,
+    }
 
 
 @router.get("/parent/tasks")
@@ -1308,6 +1445,7 @@ async def get_child_task_history(
             SELECT COUNT(*) AS total,
                    COUNT(*) FILTER (WHERE status = 'created') AS created,
                    COUNT(*) FILTER (WHERE status = 'in_progress') AS in_progress,
+                   COUNT(*) FILTER (WHERE status = 'pending_review') AS pending_review,
                    COUNT(*) FILTER (WHERE status IN ('completed', 'evaluated')) AS completed,
                    COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelled
             FROM tasks_history
@@ -1404,7 +1542,9 @@ async def get_parent_task(
                 score,
                 status,
                 submitted_at,
-                reviewed_at
+                reviewed_at,
+                teacher_comment,
+                reviewed_by
             FROM task_submissions
             WHERE task_id = $1
             ORDER BY attempt_number DESC
@@ -1430,52 +1570,111 @@ async def get_parent_task(
     return result
 
 
-@router.get("/parent/rewards")
-async def list_parent_rewards(user=Depends(require_roles("parent", "admin"))):
+@router.post("/parent/tasks/{task_id}/review-suggestion")
+async def suggest_parent_task_review(
+    task_id: int,
+    user=Depends(require_roles("parent", "admin")),
+):
+    """Даёт Учителю необязательную AI-подсказку; итоговую оценку сервис не выставляет."""
     async with db.pool.acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT reward_id, name, description, cost_coins, category, created_at FROM rewards WHERE parent_id = $1 ORDER BY created_at DESC",
-            user["tg_id"],
+        task = await conn.fetchrow(
+            """
+            SELECT th.questions_json, th.topic_context, ts.answer_text
+            FROM tasks_history th
+            JOIN LATERAL (
+                SELECT answer_text FROM task_submissions
+                WHERE task_id=th.task_id AND student_id=th.student_id
+                ORDER BY attempt_number DESC LIMIT 1
+            ) ts ON TRUE
+            WHERE th.task_id=$1 AND th.parent_id=$2 AND th.assignment_source='teacher'
+            """,
+            task_id, user["tg_id"],
         )
-    return [dict(row) for row in rows]
+    if not task:
+        raise HTTPException(status_code=404, detail="Ответ Ученика не найден")
+    questions = parse_json(task["questions_json"])
+    try:
+        response = await parse_chat_completion(
+            openai_client,
+            messages=[
+                {"role": "system", "content": task_grading_prompt()},
+                {"role": "user", "content": (
+                    f"Assignment: {questions.get('question_text', '')}\n"
+                    f"Private Teacher reference: {questions.get('reference_answer', '')}\n"
+                    f"Student answer: {task['answer_text']}\n"
+                    "Give a concise suggestion for the Teacher. The Teacher makes the final decision."
+                )},
+            ],
+            response_format=OpenAITaskVerification,
+        )
+        suggestion = response.choices[0].message.parsed
+    except Exception as exc:
+        logger.exception("Teacher review suggestion failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Не удалось подготовить подсказку для проверки") from exc
+    return {
+        "is_correct": bool(suggestion.is_correct),
+        "suggested_score": 100 if suggestion.is_correct else 0,
+        "comment": canonicalize_message(suggestion.explanation),
+    }
 
 
-@router.post("/parent/rewards", status_code=status.HTTP_201_CREATED)
-async def create_parent_reward(payload: RewardPayload, user=Depends(require_roles("parent", "admin"))):
+@router.post("/parent/tasks/{task_id}/review")
+async def review_parent_task(
+    task_id: int,
+    payload: TaskReviewRequest,
+    user=Depends(require_roles("parent", "admin")),
+):
+    """Фиксирует окончательную ручную проверку обычного задания Учителем."""
     async with db.pool.acquire() as conn:
-        row = await conn.fetchrow(
-            """INSERT INTO rewards (parent_id, name, description, cost_coins, category)
-               VALUES ($1, $2, $3, $4, $5)
-               RETURNING reward_id, name, description, cost_coins, category, created_at""",
-            user["tg_id"], payload.name, payload.description, payload.cost_coins, payload.category,
-        )
-    return dict(row)
-
-
-@router.put("/parent/rewards/{reward_id}")
-async def update_parent_reward(reward_id: int, payload: RewardPayload, user=Depends(require_roles("parent", "admin"))):
-    async with db.pool.acquire() as conn:
-        row = await conn.fetchrow(
-            """UPDATE rewards SET name=$1, description=$2, cost_coins=$3, category=$4
-               WHERE reward_id=$5 AND parent_id=$6
-               RETURNING reward_id, name, description, cost_coins, category, created_at""",
-            payload.name, payload.description, payload.cost_coins, payload.category,
-            reward_id, user["tg_id"],
-        )
-    if not row:
-        raise HTTPException(status_code=404, detail="Награда не найдена")
-    return dict(row)
-
-
-@router.delete("/parent/rewards/{reward_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def remove_parent_reward(reward_id: int, user=Depends(require_roles("parent", "admin"))):
-    async with db.pool.acquire() as conn:
-        deleted = await conn.fetchval(
-            "DELETE FROM rewards WHERE reward_id=$1 AND parent_id=$2 RETURNING reward_id",
-            reward_id, user["tg_id"],
-        )
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Награда не найдена")
+        async with conn.transaction():
+            task = await conn.fetchrow(
+                """
+                SELECT task_id, student_id
+                FROM tasks_history
+                WHERE task_id=$1 AND parent_id=$2 AND assignment_source='teacher'
+                FOR UPDATE
+                """,
+                task_id, user["tg_id"],
+            )
+            if not task:
+                raise HTTPException(status_code=404, detail="Задание не найдено")
+            submission = await conn.fetchrow(
+                """
+                SELECT submission_id
+                FROM task_submissions
+                WHERE task_id=$1 AND student_id=$2
+                ORDER BY attempt_number DESC LIMIT 1
+                FOR UPDATE
+                """,
+                task_id, task["student_id"],
+            )
+            if not submission:
+                raise HTTPException(status_code=409, detail="Ученик ещё не отправил ответ")
+            await conn.execute(
+                """
+                UPDATE task_submissions
+                SET score=$1, status='reviewed', teacher_comment=$2, reviewed_by=$3,
+                    reviewed_at=CURRENT_TIMESTAMP
+                WHERE submission_id=$4
+                """,
+                payload.score, without_latex(payload.comment), user["tg_id"], submission["submission_id"],
+            )
+            await conn.execute(
+                """
+                UPDATE tasks_history
+                SET score=$1, status='evaluated'::task_status, completed_at=CURRENT_TIMESTAMP,
+                    updated_at=CURRENT_TIMESTAMP,
+                    student_answers_json=jsonb_set(COALESCE(student_answers_json, '{}'::jsonb), '{teacher_comment}', to_jsonb($2::text), true)
+                WHERE task_id=$3
+                """,
+                payload.score, without_latex(payload.comment), task_id,
+            )
+    return {
+        "status": "reviewed",
+        "task_id": task_id,
+        "score": payload.score,
+        "comment": without_latex(payload.comment),
+    }
 
 
 @router.get("/admin/overview")
@@ -1665,32 +1864,10 @@ async def admin_activity(user=Depends(require_roles("admin"))):
             LIMIT 40
             """
         )
-        purchases = await conn.fetch(
-            """
-            SELECT
-                rp.purchase_id AS id,
-                rp.student_id AS user_id,
-                (
-                    'Награда #' || rp.reward_id ||
-                    ', ' || rp.cost_coins || ' монет'
-                ) AS detail,
-                rp.purchased_at AS created_at,
-                NULL::uuid AS session_id,
-                u.username,
-                u.role::text AS user_role,
-                NULL::varchar AS session_title
-            FROM reward_purchases rp
-            LEFT JOIN users u
-                ON u.tg_id = rp.student_id
-            ORDER BY rp.purchased_at DESC
-            LIMIT 40
-            """
-        )
 
     result = (
         [{"type": "chat", **dict(row)} for row in chats]
         + [{"type": "task", **dict(row)} for row in tasks]
-        + [{"type": "purchase", **dict(row)} for row in purchases]
     )
     result.sort(
         key=lambda item: item["created_at"],

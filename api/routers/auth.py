@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from api.schemas.accounts import WebAppAuthRequest, WebAuthRequest
@@ -8,7 +10,7 @@ from database import db
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication v1"])
 
 
-def _auth_response(user) -> dict:
+def _auth_response(user, telegram_photo_url: Optional[str] = None) -> dict:
     """
     Формирует ответ сессии для пользователя.
     """
@@ -18,6 +20,7 @@ def _auth_response(user) -> dict:
         "username": user["username"],
         "role": user["role"],
         "session_token": create_session_token(user["tg_id"]),
+        "telegram_photo_url": telegram_photo_url or None,
     }
 
 
@@ -48,7 +51,7 @@ async def telegram_webapp_login(payload: WebAppAuthRequest):
     tg_id = telegram_user.get("id")
     if not isinstance(tg_id, int):
         raise HTTPException(status_code=400, detail="Telegram не передал идентификатор пользователя")
-    return _auth_response(await _find_user(tg_id))
+    return _auth_response(await _find_user(tg_id), telegram_user.get("photo_url"))
 
 
 @router.post("/browser-login")

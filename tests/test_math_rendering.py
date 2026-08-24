@@ -52,6 +52,10 @@ def test_ai_generated_telegram_notifications_use_safe_sender():
     tasks = Path("bot/handlers/tasks.py").read_text(encoding="utf-8")
     parent = Path("bot/handlers/parent.py").read_text(encoding="utf-8")
     assert "send_plain_to_chat" in tasks
-    assert "send_plain_to_chat" in parent
     assert "Разбор ИИ: {verification.explanation}" in tasks
-    assert "questions_json['question_text']" in parent
+
+    # После нового ТЗ Учитель больше не генерирует/отправляет обычное задание
+    # из Telegram: handler только строит аналитику и использует безопасный answer_plain.
+    assert "answer_plain" in parent
+    assert "INSERT INTO tasks_history" not in parent
+    assert "Создание обычных заданий перенесено в WebApp" in parent

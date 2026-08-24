@@ -1,28 +1,19 @@
 import json
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from database import db
 from logger_config import logger
 from services.ai import create_chat_completion, openai_client
-from bot.messages import answer_plain, send_plain_to_chat
-from services.tutor_policy import teacher_task_prompt, teacher_analytics_prompt
-from services.educational_context import build_educational_context, selected_context_from_page
-from services.task_generation import GeneratedTaskSet, extract_requested_task_count, generate_exact_task_set, task_set_payload
-from services.tutor import search_web_for_education
+from config import settings
+from bot.messages import answer_plain
+from services.tutor_policy import teacher_analytics_prompt
 
 router = Router()
 
 class ParentStates(StatesGroup):
     waiting_for_analytics_question = State()
-    waiting_for_test_topic = State()
-    moderating_test = State()
-    editing_test = State()
-
-# Схема для Structured Outputs от OpenAI при генерации теста Учителя
-class ParentTestGeneration(GeneratedTaskSet):
-    """Backward-compatible structured model name for Telegram Teacher generation."""
 
 
 # 1. ИИ-АНАЛИТИКА УСПЕВАЕМОСТИ ДЛЯ УЧИТЕЛЯ
@@ -93,7 +84,7 @@ async def process_parent_analytics_query(message: Message, state: FSMContext):
             
             history_summary.append(
                 f"- Предмет: {topic.get('subject')}, Тема: {quest.get('title')}\n"
-                f"  Статус: {status_str}, Оценка/XP: {row['score']}\n"
+                f"  Статус: {status_str}, Оценка: {row['score']}\n"
                 f"  Фидбек ИИ: {ans_feedback}"
             )
 
@@ -124,253 +115,26 @@ async def process_parent_analytics_query(message: Message, state: FSMContext):
 
 
 # 2. ИИ-ГЕНЕРАЦИЯ ТЕСТОВ РОДИТЕЛЕМ ДЛЯ УЧЕНИКОВ
+# 2. УСТАРЕВШАЯ ТОЧКА СОЗДАНИЯ ЗАДАНИЯ В TELEGRAM
 
 @router.message(F.text == "📝 Создать ИИ-тест для Ученика")
 async def parent_create_test_start(message: Message, state: FSMContext):
-    user_id = message.from_user.id
-    
+    """Перенаправляет старую кнопку в WebApp, не создавая параллельный workflow."""
+    await state.clear()
     async with db.pool.acquire() as conn:
-        user = await conn.fetchrow("SELECT role FROM users WHERE tg_id = $1", user_id)
-        child = await conn.fetchrow("SELECT tg_id FROM users WHERE parent_id = $1 AND role = 'student' LIMIT 1", user_id)
-        
+        user = await conn.fetchrow("SELECT role FROM users WHERE tg_id = $1", message.from_user.id)
     if not user or user["role"] not in ["parent", "admin"]:
         await message.answer("Эта функция доступна только Учителям.")
         return
-
-    if not child:
-        await message.answer("❌ У вас еще нет привязанных аккаунтов Учеников. Направьте ребенку ссылку для регистрации!")
-        return
-
-    await state.set_state(ParentStates.waiting_for_test_topic)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="🌐 Открыть EduAI",
+            web_app=WebAppInfo(url=settings.webapp_base_url),
+        )
+    ]])
     await message.answer(
-        "📝 *Конструктор домашних ИИ-заданий*\n\n"
-        "Напишите тему, по которой вы хотите устроить проверку знаний своему Ученику (например: _«Умножение дробей»_ или _«Теорема Пифагора»_):\n"
-        "Или напишите **Отмена** для выхода.",
-        parse_mode="Markdown"
+        "Создание обычных заданий перенесено в WebApp. "
+        "Создайте черновик на странице «Ученики» или прямо из ответа ИИ-тьютора, "
+        "проверьте его и только затем отправьте Ученику.",
+        reply_markup=keyboard,
     )
-
-
-@router.message(ParentStates.waiting_for_test_topic)
-async def process_custom_test_generation(message: Message, state: FSMContext):
-    if message.text.lower() == "отмена":
-        await state.clear()
-        await message.answer("Генерация отменена.")
-        return
-
-    parent_id = message.from_user.id
-    topic_query = message.text.strip()
-    status_msg = await message.answer("🎲 *ИИ сканирует библиотеку учебников и собирает проверочный тест...* ⏳", parse_mode="Markdown")
-
-    async with db.pool.acquire() as conn:
-        page = await conn.fetchrow(
-            """
-            SELECT p.page_id, p.page_markdown, p.page_title, p.page_number,
-                   b.book_id, b.book_title, b.book_program, b.book_class, b.book_author,
-                   (SELECT tg_id FROM users WHERE parent_id = $1 AND role = 'student' LIMIT 1) AS student_id
-            FROM page p
-            JOIN book b ON p.book_id = b.book_id
-            WHERE p.page_markdown ILIKE $2 OR p.page_title ILIKE $2
-            ORDER BY p.page_id DESC
-            LIMIT 1
-            """,
-            parent_id,
-            f"%{topic_query}%",
-        )
-        student_id = page.get("student_id") if page and hasattr(page, "get") else None
-        if student_id is None:
-            student_id = await conn.fetchval(
-                "SELECT tg_id FROM users WHERE parent_id = $1 AND role = 'student' LIMIT 1",
-                parent_id,
-            )
-
-    if not student_id:
-        await status_msg.edit_text("❌ Не удалось найти аккаунт Ученика.")
-        await state.clear()
-        return
-
-    try:
-        requested_count = extract_requested_task_count(topic_query, default=1)
-        async with db.pool.acquire() as conn:
-            primary = (
-                selected_context_from_page(page, source="telegram_teacher_task_generation")
-                if page else None
-            )
-            bundle = await build_educational_context(
-                conn,
-                topic_query,
-                selected_context=primary,
-                allow_context_resolution=primary is None,
-                allow_web=True,
-                web_search=search_web_for_education,
-                requested_items=requested_count,
-            )
-            primary = bundle.primary
-        ai_test = await generate_exact_task_set(
-            openai_client,
-            system_prompt=teacher_task_prompt(),
-            user_content=(
-                f"Requested Topic: {topic_query}\n"
-                f"Textbook Ref: {primary.book_title if primary else 'not selected'}\n"
-                f"PRIMARY TEXTBOOK CONTEXT:\n{primary.content if primary else 'none'}\n\n"
-                f"RANKED EDUAI SUPPLEMENTS:\n{bundle.database_context or 'none'}\n\n"
-                f"WEB FALLBACK:\n{bundle.web_context or 'none'}"
-            ),
-            requested_count=requested_count,
-        )
-        payload_json = task_set_payload(ai_test)
-
-        # Временно сохраняем параметры генерации в контекст FSM для модерации
-        await state.update_data(
-            generated_title=ai_test.title,
-            generated_description=ai_test.description,
-            generated_answer=ai_test.correct_answer,
-            generated_items=payload_json.get("items", []),
-            requested_count=requested_count,
-            source_trace=bundle.source_trace,
-            student_id=student_id,
-            book_id=primary.book_id if primary else None,
-            book_class=primary.book_class if primary else None,
-            page_id=primary.page_id if primary else None,
-            book_title=primary.book_title if primary else None,
-            book_program=primary.book_program if primary else None,
-            topic_query=topic_query
-        )
-
-        await status_msg.delete()
-        await state.set_state(ParentStates.moderating_test)
-        
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="✅ Отправить Ученику", callback_data="parent_approve_test"),
-                InlineKeyboardButton(text="✏️ Редактировать текст", callback_data="parent_edit_test")
-            ],
-            [InlineKeyboardButton(text="❌ Отклонить и сбросить", callback_data="parent_reject_test")]
-        ])
-
-        await answer_plain(
-            message,
-            "🔍 Предпросмотр созданного ИИ-теста:\n\n"
-            f"📋 Название: {ai_test.title}\n"
-            f"📝 Задание: {ai_test.description}\n"
-            f"🔑 Правильный ответ: {ai_test.correct_answer}\n\n"
-            "Вы можете отредактировать текст задания или отправить его Ученику:",
-            reply_markup=kb,
-        )
-
-    except Exception as e:
-        logger.error(f"Ошибка создания теста Учителя: {e}")
-        await status_msg.edit_text("❌ Не удалось сгенерировать тест. Попробуйте изменить формулировку темы.")
-        await state.clear()
-
-
-@router.callback_query(ParentStates.moderating_test, F.data == "parent_edit_test")
-async def callback_parent_edit_request(call: CallbackQuery, state: FSMContext):
-    await call.answer()
-    await state.set_state(ParentStates.editing_test)
-    await call.message.answer("📝 Введите новый измененный текст задания. Название теста и эталонный ответ останутся прежними:")
-
-
-@router.message(ParentStates.editing_test)
-async def process_parent_edited_text(message: Message, state: FSMContext):
-    new_desc = message.text.strip()
-    await state.update_data(generated_description=new_desc)
-    data = await state.get_data()
-    
-    await state.set_state(ParentStates.moderating_test)
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Отправить Ученику", callback_data="parent_approve_test"),
-            InlineKeyboardButton(text="✏️ Редактировать текст", callback_data="parent_edit_test")
-        ],
-        [InlineKeyboardButton(text="❌ Отклонить и сбросить", callback_data="parent_reject_test")]
-    ])
-
-    await answer_plain(
-        message,
-        "🔍 Обновлённый предпросмотр теста:\n\n"
-        f"📋 Название: {data.get('generated_title')}\n"
-        f"📝 Задание: {new_desc}\n"
-        f"🔑 Правильный ответ: {data.get('generated_answer')}\n\n"
-        "Всё верно? Отправляем?",
-        reply_markup=kb,
-    )
-
-
-@router.callback_query(ParentStates.moderating_test, F.data == "parent_approve_test")
-async def callback_approve_and_save(call: CallbackQuery, state: FSMContext):
-    parent_id = call.from_user.id
-    data = await state.get_data()
-    
-    student_id = data.get("student_id")
-    
-    generated_items = data.get("generated_items") or []
-    requested_count = int(data.get("requested_count") or max(1, len(generated_items)))
-    topic_context = {
-        "source": "telegram_teacher_task_generation",
-        "book_id": data.get("book_id"),
-        "book_class": data.get("book_class"),
-        "page_id": data.get("page_id"),
-        "book_title": data.get("book_title"),
-        "book_program": data.get("book_program"),
-        "page_title": f"Домашнее задание: {data.get('topic_query')}",
-        "topic": data.get("topic_query"),
-        "subject": data.get("book_program"),
-        "requested_count": requested_count,
-        "generated_count": len(generated_items) or 1,
-        "source_trace": data.get("source_trace") or [],
-    }
-
-    task_title = data.get("generated_title") or f"Квест: {data.get('topic_query') or 'задание'}"
-    questions_json = {
-        "title": task_title,
-        "question_text": data.get("generated_description"),
-        "reference_answer": data.get("generated_answer"),
-        "question_count": len(generated_items) or 1,
-        "items": generated_items,
-    }
-
-    try:
-        async with db.pool.acquire() as conn:
-            task_id = await conn.fetchval(
-                """
-                INSERT INTO tasks_history (
-                    student_id, parent_id, assignment_source, title, subject, topic, topic_context, questions_json, score, status
-                )
-                VALUES ($1, $2, 'teacher', $3, $4, $5, $6, $7, 0, 'created'::task_status)
-                RETURNING task_id
-                """,
-                student_id,
-                parent_id,
-                task_title,
-                data.get("book_program") or "Обучение",
-                data.get("topic_query") or data.get("page_title") or "Задание",
-                json.dumps(topic_context, ensure_ascii=False),
-                json.dumps(questions_json, ensure_ascii=False),
-            )
-
-        await send_plain_to_chat(
-            call.bot,
-            student_id,
-            "📬 Учитель прислал тебе персональное проверочное задание!\n\n"
-            f"🏆 Тест: {questions_json['title']}\n"
-            f"{questions_json['question_text']}\n\n"
-            "✨ Награда будет рассчитана по качеству, сложности и прогрессу.\n"
-            "Просто начни выполнять квесты через меню — этот тест будет приоритетным!",
-        )
-        
-        await call.message.edit_text("🚀 Тест успешно сохранен в базу и доставлен в Telegram-аккаунт вашего Ученика! Как только он даст ответ, система его проверит.", reply_markup=None)
-        await call.answer("Успешно отправлено!")
-    except Exception as e:
-        logger.error(f"Не удалось доставить тест ученику {student_id}: {e}")
-        await call.message.edit_text("⚠️ Тест сохранен в базу данных, но не удалось отправить личное уведомление Ученику (возможно, бот заблокирован).", reply_markup=None)
-        await call.answer()
-        
-    await state.clear()
-
-
-@router.callback_query(F.data == "parent_reject_test")
-async def callback_reject_test(call: CallbackQuery, state: FSMContext):
-    await call.answer("Тест отклонен")
-    await call.message.edit_text("❌ Создание теста отменено. Вы можете начать заново в любой момент.", reply_markup=None)
-    await state.clear()

@@ -22,10 +22,11 @@ def test_compact_navigation_and_sheets_are_present():
     css = _read("static/css/app.css")
     js = _read("static/js/app.js")
     assert ".desktop-quick-nav" in css
-    assert ".mobile-bottom-nav" in css
+    assert ".mobile-bottom-nav { display: none !important; }" in css
+    assert ".student-primary-nav" in css
     assert ".chat-context-panel" in css
     assert "setupBookModePanels" in js
-    assert "createMobileNavigation" in js
+    assert "createMobileNavigation" not in js
 
 
 def test_layout_persistence_reset_and_dynamic_scroll_are_present():

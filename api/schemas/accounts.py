@@ -9,9 +9,6 @@ class StudentProgressResponse(BaseModel):
     tg_id: int
     username: Optional[str] = None
     role: str
-    balance_coins: Optional[int] = None
-    xp_total: Optional[int] = None
-    streak_days: Optional[int] = None
 
 class MonitoringResponse(BaseModel):
     parent_tg_id: int

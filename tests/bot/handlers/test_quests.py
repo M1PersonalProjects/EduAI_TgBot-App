@@ -1,7 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, ANY
 from bot.handlers.quests import (
-    show_real_student_profile,
     start_book_filter,
     handle_grade_choice,
     handle_subject_choice,
@@ -10,19 +9,6 @@ from bot.handlers.quests import (
     BookFilterStates,
     openai_client # Импортируем инстанс клиента для явного мока
 )
-
-@pytest.mark.asyncio
-async def test_show_student_profile(make_message, mock_db):
-    user_id = 777
-    message = make_message(text="🏆 Мой профиль", user_id=user_id)
-    mock_db.mock_conn.fetchrow.side_effect = [
-        {"role": "student"},
-        {"balance_coins": 120, "xp_total": 450}
-    ]
-    await show_real_student_profile(message)
-    response = message.answer.call_args[0][0]
-    assert "120 монет" in response
-    assert "450 XP" in response
 
 @pytest.mark.asyncio
 async def test_book_filter_flow(make_message, make_callback_query, mock_db, mock_fsm_context):

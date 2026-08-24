@@ -11,9 +11,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const state = {
     children: [],
-    rewards: [],
     sentTasks: [],
-    taskAttachments: []
+    taskAttachments: [],
+    activeDraft: null
   };
 
   const empty = text => `
@@ -72,22 +72,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
               <div class="mt-4 grid grid-cols-3 gap-2 text-center">
                 <div class="rounded-xl bg-white/[.04] p-2">
-                  <strong class="block">${child.balance_coins}</strong>
-                  <span class="text-[.68rem] muted">монет</span>
+                  <strong class="block">${child.tasks_done}</strong>
+                  <span class="text-[.68rem] muted">выполнено</span>
                 </div>
                 <div class="rounded-xl bg-white/[.04] p-2">
-                  <strong class="block">${child.xp_total}</strong>
-                  <span class="text-[.68rem] muted">XP</span>
+                  <strong class="block">${child.tasks_total}</strong>
+                  <span class="text-[.68rem] muted">всего заданий</span>
                 </div>
                 <div class="rounded-xl bg-white/[.04] p-2">
                   <strong class="block">${child.average_score}</strong>
                   <span class="text-[.68rem] muted">ср. балл</span>
                 </div>
               </div>
-
-              <p class="mt-3 text-xs muted">
-                Серия: ${child.streak_days} дн. · Покупок: ${child.purchases_total}
-              </p>
 
               <div class="mt-4 grid gap-2">
                 <button class="btn-secondary w-full child-task" data-child="${child.tg_id}" type="button">
@@ -102,76 +98,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           .join('')
       : empty('Привязанных Учеников пока нет. Создайте приглашение через Telegram-бота.');
 
-    $('family-purchases').innerHTML = data.purchases?.length
-      ? data.purchases
-          .map(purchase => `
-            <div class="flex items-center justify-between gap-3 rounded-xl bg-white/[.035] p-3">
-              <div>
-                <p class="font-bold">
-                  ${EduAI.escapeHtml(purchase.name)}
-                </p>
-                <p class="text-xs muted">
-                  ${EduAI.escapeHtml(
-                    purchase.username
-                      ? `@${purchase.username}`
-                      : `ID ${purchase.student_id}`
-                  )}
-                  · ${EduAI.formatDate(purchase.purchased_at)}
-                </p>
-              </div>
-              <span class="badge">${purchase.cost_coins} монет</span>
-            </div>
-          `)
-          .join('')
-      : '<p class="py-6 text-center muted">Покупок пока нет.</p>';
   }
 
-  function renderRewards(items) {
-    state.rewards = items || [];
-
-    $('parent-rewards').innerHTML = state.rewards.length
-      ? state.rewards
-          .map(reward => `
-            <article class="glass card flex flex-col">
-              <div class="flex justify-between">
-                <span class="text-2xl">🎁</span>
-                <span class="badge">${reward.cost_coins} монет</span>
-              </div>
-
-              <h3 class="mt-4 font-extrabold">
-                ${EduAI.escapeHtml(reward.name)}
-              </h3>
-
-              <p class="mt-2 text-sm muted flex-1">
-                ${EduAI.escapeHtml(reward.description || 'Без описания')}
-              </p>
-
-              <div class="mt-4 flex gap-2">
-                <button
-                  class="btn-secondary flex-1 edit-reward"
-                  data-id="${reward.reward_id}"
-                  type="button"
-                >
-                  Изменить
-                </button>
-                <button
-                  class="btn-danger delete-reward"
-                  data-id="${reward.reward_id}"
-                  type="button"
-                >
-                  Удалить
-                </button>
-              </div>
-            </article>
-          `)
-          .join('')
-      : empty('Добавьте первую семейную награду.');
-  }
 
   function taskStatusLabel(status) {
     const labels = {
       created: 'Создано',
       in_progress: 'Выполняется',
+      pending_review: 'Ожидает проверки Учителя',
       completed: 'Выполнено',
       evaluated: 'Проверено',
       cancelled: 'Отменено',
@@ -375,6 +309,21 @@ document.addEventListener('DOMContentLoaded', async () => {
           </div>
           <div class="grid gap-2">${attachmentsHtml}</div>
         </section>
+
+        ${task.status === 'pending_review' ? `
+          <section class="rounded-2xl border border-violet-300/20 bg-violet-300/[.055] p-4" data-review-task="${task.task_id}">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div><p class="text-xs font-bold uppercase tracking-[.12em] text-violet-200">Ручная проверка Учителя</p><p class="mt-1 text-sm muted">ИИ может предложить комментарий, но итоговый балл выставляете только вы.</p></div>
+              <button type="button" class="btn-secondary task-review-suggest" data-id="${task.task_id}">✦ Подсказка ИИ</button>
+            </div>
+            <div class="task-review-suggestion mt-3" hidden></div>
+            <form class="task-review-form mt-4 grid gap-3" data-id="${task.task_id}">
+              <div class="field"><label>Итоговый балл, 0–100</label><input class="input task-review-score" type="number" min="0" max="100" required value="${task.score ?? ''}"></div>
+              <div class="field"><label>Комментарий Ученику</label><textarea class="textarea task-review-comment" maxlength="4000" placeholder="Комментарий для Ученика после проверки"></textarea></div>
+              <button class="btn-primary justify-self-end" type="submit">Завершить проверку</button>
+            </form>
+          </section>
+        ` : ''}
 
         <section>
           <div class="mb-3 flex items-center justify-between gap-2">
@@ -707,14 +656,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function loadAll() {
     try {
-      const [dashboard, rewards, tasks] = await Promise.all([
+      const [dashboard, tasks] = await Promise.all([
         EduAI.api('/api/v1/parent/dashboard'),
-        EduAI.api('/api/v1/parent/rewards'),
         EduAI.api('/api/v1/parent/tasks')
       ]);
 
       renderDashboard(dashboard);
-      renderRewards(rewards);
       renderSentTasks(tasks);
     } catch (error) {
       EduAI.toast(error.message, 'error');
@@ -745,8 +692,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       const summary = data.summary || {};
       const cells = [
         ['Всего', summary.total || 0], ['Создано', summary.created || 0],
-        ['В работе', summary.in_progress || 0], ['Выполнено', summary.completed || 0],
-        ['Отменено', summary.cancelled || 0]
+        ['В работе', summary.in_progress || 0], ['Ожидает проверки', summary.pending_review || 0],
+        ['Выполнено', summary.completed || 0], ['Отменено', summary.cancelled || 0]
       ];
       $('task-history-summary').innerHTML = cells.map(([label, value]) => `
         <div class="rounded-xl bg-white/[.04] p-3 text-center"><strong class="block">${value}</strong><span class="text-xs muted">${label}</span></div>
@@ -767,7 +714,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  function openTask(childId) {
+  function openTask(childId = null, seed = null) {
     if (!state.children.length) {
       EduAI.toast('Сначала привяжите Ученика', 'error');
       return;
@@ -775,6 +722,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     $('task-form').reset();
     state.taskAttachments = [];
+    state.activeDraft = null;
+    $('task-draft-id').value = '';
+    $('task-source-message-id').value = seed?.sourceMessageId || '';
+    $('task-draft-preview').hidden = true;
+    $('send-task-draft').hidden = true;
     renderTaskAttachments();
 
     resetSelect('task-subject', 'Сначала выберите класс');
@@ -782,25 +734,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     resetSelect('task-page', 'Страница или параграф');
 
     setSelectedStudents(childId ? [childId] : []);
+    if (seed?.description) $('task-description').value = seed.description;
+    if (seed?.title) $('task-title').value = seed.title;
+    if (seed?.topic) $('task-topic').value = seed.topic;
 
     EduAI.openModal('task-modal');
-  }
-
-  function openReward(item = null) {
-    $('reward-form').reset();
-    $('reward-id').value = item?.reward_id || '';
-    $('reward-modal-title').textContent = item
-      ? 'Изменить награду'
-      : 'Новая награда';
-
-    if (item) {
-      $('reward-name').value = item.name;
-      $('reward-description').value = item.description || '';
-      $('reward-cost').value = item.cost_coins;
-      $('reward-category').value = item.category;
-    }
-
-    EduAI.openModal('reward-modal');
   }
 
   async function downloadProtectedFile(url, filename) {
@@ -835,9 +773,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
   }
 
-  ['new-task-top', 'new-task-overview', 'new-task'].forEach(id => {
-    $(id)?.addEventListener('click', () => openTask());
-  });
+  $('new-task-overview')?.addEventListener('click', () => openTask());
 
   $('children-grid').addEventListener('click', event => {
     const taskButton = event.target.closest('.child-task');
@@ -910,69 +846,82 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderTaskAttachments();
   });
 
-$('task-form').addEventListener('submit', async event => {
+  function buildTaskDraftPayload() {
+    return {
+      student_ids: selectedStudentIds(),
+      subject: $('task-subject').value || $('task-topic').value.trim() || 'Практика',
+      topic: $('task-topic').value.trim(),
+      title: $('task-title').value.trim().replaceAll('$', ''),
+      description: $('task-description').value.trim().replaceAll('$', ''),
+      reference_answer: $('task-answer').value.trim().replaceAll('$', ''),
+      parent_comment: $('task-parent-comment').value.trim().replaceAll('$', ''),
+      ai_instructions: $('task-ai-instructions').value.trim().replaceAll('$', ''),
+      book_id: $('task-book').value ? Number($('task-book').value) : null,
+      page_id: $('task-page').value ? Number($('task-page').value) : null,
+      attachment_ids: state.taskAttachments.map(item => Number(item.attachment_id)),
+      attachment_options: state.taskAttachments.map(item => ({
+        attachment_id: Number(item.attachment_id),
+        use_as_ai_context: item.use_as_ai_context !== false,
+        visible_to_student: Boolean(item.visible_to_student)
+      })),
+      send_files_to_student: state.taskAttachments.some(item => Boolean(item.visible_to_student)),
+      source_message_id: $('task-source-message-id').value ? Number($('task-source-message-id').value) : null
+    };
+  }
+
+  function renderDraftPreview(draft) {
+    state.activeDraft = draft;
+    $('task-draft-id').value = draft?.draft_id || '';
+    $('task-draft-preview').hidden = false;
+    $('send-task-draft').hidden = false;
+    $('task-draft-preview-title').textContent = draft?.title || draft?.topic || 'Черновик задания';
+    const studentNames = selectedStudentIds().map(id => {
+      const child = state.children.find(item => Number(item.tg_id) === Number(id));
+      return child ? childName(child) : `ID ${id}`;
+    });
+    $('task-draft-preview-body').innerHTML = `
+      <div class="grid gap-3">
+        <div><span class="muted">Ученики:</span> ${studentNames.length ? studentNames.map(EduAI.escapeHtml).join(', ') : '<strong>не выбраны</strong>'}</div>
+        <div><span class="muted">Тема:</span> ${EduAI.escapeHtml(draft?.topic || $('task-topic').value || '—')}</div>
+        <div class="rounded-xl bg-white/[.035] p-3">${EduAI.markdown(draft?.description || $('task-description').value || 'Текст пока не добавлен.')}</div>
+        ${draft?.parent_comment ? `<div><span class="muted">Комментарий Ученику:</span> ${EduAI.escapeHtml(draft.parent_comment)}</div>` : ''}
+        <div class="text-xs muted">Вложений: ${state.taskAttachments.length}. Приватный эталон будет доступен только Учителю.</div>
+      </div>`;
+  }
+
+  function applyDraftToForm(draft) {
+    if (!draft) return;
+    $('task-title').value = draft.title || '';
+    $('task-description').value = draft.description || '';
+    $('task-answer').value = draft.reference_answer || '';
+    $('task-topic').value = draft.topic || '';
+    $('task-parent-comment').value = draft.parent_comment || '';
+    $('task-ai-instructions').value = draft.ai_instructions || '';
+    setSelectedStudents(draft.student_ids || []);
+    renderDraftPreview(draft);
+  }
+
+  async function saveTaskDraft() {
+    const payload = buildTaskDraftPayload();
+    if (!payload.description && !payload.attachment_ids.length && !payload.source_message_id) {
+      throw new Error('Добавьте текст задания, ответ ИИ или прикрепите файл');
+    }
+    const draftId = $('task-draft-id').value;
+    const draft = await EduAI.api(
+      draftId ? `/api/v1/parent/task-drafts/${encodeURIComponent(draftId)}` : '/api/v1/parent/task-drafts',
+      { method: draftId ? 'PATCH' : 'POST', body: JSON.stringify(payload) }
+    );
+    renderDraftPreview(draft);
+    return draft;
+  }
+
+  $('task-form').addEventListener('submit', async event => {
     event.preventDefault();
-
     const button = event.submitter;
-    EduAI.setBusy(button, true, 'Создаём…');
-
+    EduAI.setBusy(button, true, 'Сохраняем…');
     try {
-      const studentIds = selectedStudentIds();
-      if (!studentIds.length) throw new Error('Выберите хотя бы одного Ученика');
-      const description = $('task-description')
-        .value
-        .trim()
-        .replaceAll('$', '');
-
-      if (!description && !state.taskAttachments.length) {
-        throw new Error(
-          'Добавьте текст задания или прикрепите файл с заданием'
-        );
-      }
-
-      const payload = {
-        student_ids: studentIds,
-        subject:
-          $('task-subject').value ||
-          $('task-topic').value.trim() ||
-          'Практика',
-        topic: $('task-topic').value.trim(),
-        title: $('task-title').value.trim().replaceAll('$', ''),
-        description,
-        reference_answer: $('task-answer').value
-          .trim()
-          .replaceAll('$', ''),
-        parent_comment: $('task-parent-comment').value
-          .trim()
-          .replaceAll('$', ''),
-        ai_instructions: '',
-        book_id: $('task-book').value
-          ? Number($('task-book').value)
-          : null,
-        page_id: $('task-page').value
-          ? Number($('task-page').value)
-          : null,
-        attachment_ids: state.taskAttachments.map(
-          item => Number(item.attachment_id)
-        ),
-        attachment_options: state.taskAttachments.map(item => ({
-          attachment_id: Number(item.attachment_id),
-          use_as_ai_context: item.use_as_ai_context !== false,
-          visible_to_student: Boolean(item.visible_to_student)
-        })),
-        send_files_to_student: state.taskAttachments.some(
-          item => Boolean(item.visible_to_student)
-        )
-      };
-
-      await EduAI.api('/api/v1/parent/tasks', {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      });
-
-      EduAI.toast('Задание отправлено выбранным ученикам', 'success');
-      EduAI.closeModal('task-modal');
-      await loadAll();
+      const draft = await saveTaskDraft();
+      EduAI.toast(`Черновик «${draft.title || 'Задание'}» сохранён. Проверьте его перед отправкой.`, 'success');
     } catch (error) {
       EduAI.toast(error.message, 'error');
     } finally {
@@ -982,46 +931,47 @@ $('task-form').addEventListener('submit', async event => {
 
   $('generate-task').addEventListener('click', async event => {
     const topic = $('task-topic').value.trim();
-    const bookId = $('task-book').value ? Number($('task-book').value) : null;
-
     if (!topic) {
       EduAI.toast('Укажите тему задания', 'error');
       return;
     }
-
-
-    const studentIds = selectedStudentIds();
-    if (!studentIds.length) {
-      EduAI.toast('Выберите хотя бы одного Ученика', 'error');
-      return;
-    }
-
     const button = event.currentTarget;
-    EduAI.setBusy(button, true, 'ИИ создаёт…');
-
+    EduAI.setBusy(button, true, 'ИИ создаёт черновик…');
     try {
       const result = await EduAI.api('/api/v1/parent/tasks/generate', {
         method: 'POST',
         body: JSON.stringify({
-          student_ids: studentIds,
+          student_ids: selectedStudentIds(),
           topic,
           parent_comment: $('task-parent-comment').value.trim().replaceAll('$', ''),
           ai_instructions: $('task-ai-instructions').value.trim().replaceAll('$', ''),
-          book_id: bookId,
-          page_id: $('task-page').value
-            ? Number($('task-page').value)
-            : null,
-          attachment_ids: state.taskAttachments.map(
-            item => Number(item.attachment_id)
-          ),
-          send_files_to_student: $('task-send-files').checked
+          book_id: $('task-book').value ? Number($('task-book').value) : null,
+          page_id: $('task-page').value ? Number($('task-page').value) : null,
+          attachment_ids: state.taskAttachments.map(item => Number(item.attachment_id)),
+          send_files_to_student: state.taskAttachments.some(item => Boolean(item.visible_to_student))
         })
       });
+      const draft = result.draft || result;
+      applyDraftToForm(draft);
+      EduAI.toast('ИИ подготовил черновик. Проверьте и отредактируйте его перед отправкой.', 'success');
+    } catch (error) {
+      EduAI.toast(error.message, 'error');
+    } finally {
+      EduAI.setBusy(button, false);
+    }
+  });
 
-      EduAI.toast(
-        `Задание «${result.task?.title || topic}» создано и отправлено`,
-        'success'
-      );
+  $('send-task-draft').addEventListener('click', async event => {
+    const button = event.currentTarget;
+    if (!selectedStudentIds().length) {
+      EduAI.toast('Выберите хотя бы одного Ученика перед отправкой', 'error');
+      return;
+    }
+    EduAI.setBusy(button, true, 'Отправляем…');
+    try {
+      const draft = await saveTaskDraft();
+      await EduAI.api(`/api/v1/parent/task-drafts/${encodeURIComponent(draft.draft_id)}/send`, { method: 'POST' });
+      EduAI.toast('Задание отправлено Ученикам и будет проверено Учителем после ответа.', 'success');
       EduAI.closeModal('task-modal');
       await loadAll();
     } catch (error) {
@@ -1098,6 +1048,29 @@ $('task-form').addEventListener('submit', async event => {
       return;
     }
 
+    const suggestReview = event.target.closest('.task-review-suggest');
+    if (suggestReview) {
+      EduAI.setBusy(suggestReview, true, 'Анализируем…');
+      try {
+        const suggestion = await EduAI.api(`/api/v1/parent/tasks/${suggestReview.dataset.id}/review-suggestion`, { method: 'POST' });
+        const section = suggestReview.closest('[data-review-task]');
+        const box = section?.querySelector('.task-review-suggestion');
+        const score = section?.querySelector('.task-review-score');
+        const comment = section?.querySelector('.task-review-comment');
+        if (box) {
+          box.hidden = false;
+          box.innerHTML = `<div class="rounded-xl bg-white/[.04] p-3 text-sm"><strong>Подсказка ИИ:</strong> ${EduAI.markdown(suggestion.comment || 'Без комментария')}<p class="mt-2 text-xs muted">Предлагаемый балл: ${suggestion.suggested_score ?? '—'}. Решение остаётся за Учителем.</p></div>`;
+        }
+        if (score && score.value === '') score.value = suggestion.suggested_score ?? '';
+        if (comment && !comment.value) comment.value = suggestion.comment || '';
+      } catch (error) {
+        EduAI.toast(error.message, 'error');
+      } finally {
+        EduAI.setBusy(suggestReview, false);
+      }
+      return;
+    }
+
     const download = event.target.closest('.task-detail-download');
     if (download) {
       try {
@@ -1105,68 +1078,6 @@ $('task-form').addEventListener('submit', async event => {
       } catch (error) {
         EduAI.toast(error.message, 'error');
       }
-    }
-  });
-
-  $('new-reward').addEventListener('click', () => openReward());
-
-  $('parent-rewards').addEventListener('click', async event => {
-    const edit = event.target.closest('.edit-reward');
-    const remove = event.target.closest('.delete-reward');
-
-    if (edit) {
-      openReward(
-        state.rewards.find(
-          reward => reward.reward_id === Number(edit.dataset.id)
-        )
-      );
-    }
-
-    if (remove && confirm('Удалить награду?')) {
-      try {
-        await EduAI.api(`/api/v1/parent/rewards/${remove.dataset.id}`, {
-          method: 'DELETE'
-        });
-        EduAI.toast('Награда удалена', 'success');
-        await loadAll();
-      } catch (error) {
-        EduAI.toast(error.message, 'error');
-      }
-    }
-  });
-
-  $('reward-form').addEventListener('submit', async event => {
-    event.preventDefault();
-
-    const id = $('reward-id').value;
-    const button = event.submitter;
-    const payload = {
-      name: $('reward-name').value.trim(),
-      description: $('reward-description').value.trim(),
-      cost_coins: Number($('reward-cost').value),
-      category: $('reward-category').value
-    };
-
-    EduAI.setBusy(button, true, 'Сохраняем…');
-
-    try {
-      await EduAI.api(
-        id
-          ? `/api/v1/parent/rewards/${id}`
-          : '/api/v1/parent/rewards',
-        {
-          method: id ? 'PUT' : 'POST',
-          body: JSON.stringify(payload)
-        }
-      );
-
-      EduAI.closeModal('reward-modal');
-      EduAI.toast('Награда сохранена', 'success');
-      await loadAll();
-    } catch (error) {
-      EduAI.toast(error.message, 'error');
-    } finally {
-      EduAI.setBusy(button, false);
     }
   });
 
@@ -1202,6 +1113,39 @@ $('task-form').addEventListener('submit', async event => {
     } catch (error) {
       EduAI.toast(error.message, 'error');
     }
+  });
+
+  document.addEventListener('submit', async event => {
+    const form = event.target.closest('.task-review-form');
+    if (!form) return;
+    event.preventDefault();
+    const button = event.submitter;
+    EduAI.setBusy(button, true, 'Сохраняем…');
+    try {
+      const score = Number(form.querySelector('.task-review-score').value);
+      const comment = form.querySelector('.task-review-comment').value.trim();
+      await EduAI.api(`/api/v1/parent/tasks/${form.dataset.id}/review`, {
+        method: 'POST',
+        body: JSON.stringify({ score, comment })
+      });
+      EduAI.toast('Проверка завершена. Итог сохранён.', 'success');
+      await openTaskDetail(form.dataset.id);
+      await loadAll();
+    } catch (error) {
+      EduAI.toast(error.message, 'error');
+    } finally {
+      EduAI.setBusy(button, false);
+    }
+  });
+
+  document.addEventListener('eduai:create-task-from-ai', event => {
+    const detail = event.detail || {};
+    openTask(null, {
+      sourceMessageId: detail.messageId,
+      title: 'Задание из ответа ИИ',
+      topic: detail.topic || '',
+      description: detail.text || ''
+    });
   });
 
   document.querySelectorAll('.prompt-chip').forEach(button => {

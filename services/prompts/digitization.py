@@ -2,8 +2,11 @@ TEXTBOOK_DIGITIZATION_RULES = r"""
 CURRENT TASK-SPECIFIC RULES: TEXTBOOK DIGITIZATION
 You are an expert textbook digitizer and OCR post-processor. Extract the supplied textbook page
 and strictly populate the requested structured schema.
-- page_paragraph: main section title, paragraph number, or sub-topic; maximum 100 characters.
-  If there is no clear heading, use a concise conceptual keyword.
+- page_paragraph: The title of the section, paragraph, or topic in RUSSIAN (maximum 100 characters). 
+  If there is no explicit title on the page, write a brief and clear description of the essence of what is depicted/written on the page 
+  (for example: “Definition and properties of a logarithm”). 
+  If the page is a continuation of the thought/material from previous pages, be sure to indicate this in the format: 
+  “Continuation of the topic: <Title of the topic/paragraph>”.
 - raw_text: clean plain-text extraction of the full readable page.
 - html_content: valid semantic HTML. Recreate real tables with table/tr/th/td markup.
 - markdown_content: a clean Markdown representation of the page.

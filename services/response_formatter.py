@@ -7,14 +7,13 @@ rendered image.
 """
 from __future__ import annotations
 
+import matplotlib
+import matplotlib.pyplot as plt
 import io
 import re
 from dataclasses import dataclass
 from typing import List, Literal
 
-# IMPORTANT: this is a raw Python string, therefore LaTeX commands below use
-# ONE backslash. Writing ``\\frac`` here would literally instruct the model to
-# emit two backslashes and would leak transport escaping into the UI.
 MATH_FORMATTING_RULES = r"""
 MATHEMATICAL OUTPUT RULES
 - Keep educational responses in Markdown with valid canonical LaTeX for mathematical notation.
@@ -32,7 +31,7 @@ MATHEMATICAL OUTPUT RULES
 
 
 def canonicalize_message(value: object) -> str:
-    """Normalize transport whitespace without destroying Markdown or LaTeX."""
+    """Нормализовать пробелы в переносах, не нарушая Markdown или LaTeX."""
     return str(value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
 
 
@@ -43,8 +42,6 @@ class TelegramPart:
     display: bool = False
 
 
-# Common school/university math commands. Keeping an explicit allow-list avoids
-# treating Windows paths such as C:\\Users\\student as mathematics.
 _MATH_COMMANDS = (
     "frac", "dfrac", "tfrac", "sqrt", "times", "cdot", "div", "pm", "mp",
     "le", "leq", "ge", "geq", "ne", "neq", "approx", "equiv", "sim", "simeq",
@@ -72,16 +69,19 @@ _RAW_LATEX_RE = re.compile(rf"(?:\\){{1,2}}(?:{_MATH_COMMAND_PATTERN})(?![A-Za-z
 
 
 def contains_raw_latex(value: object) -> bool:
-    """Return True when user-facing text still contains recognized TeX."""
+    """Возвращать True, если текст, видимый пользователю, всё ещё содержит распознанный TeX."""
     return bool(_RAW_LATEX_RE.search(canonicalize_message(value)))
 
 
 def normalize_latex_transport(value: object) -> str:
-    """Collapse one accidental transport-escape layer for math tokens only."""
+    """Нормализовать один случайный слой экранирования для математических токенов."""
     return _DOUBLE_ESCAPED_MATH_RE.sub(r"\\", canonicalize_message(value))
 
 
 def _replace_nested_frac(text: str) -> str:
+    """
+    Замените вложенные \frac, \dfrac и \tfrac на простую форму (числитель)/(знаменатель).
+    """
     pattern = re.compile(r"\\(?:dfrac|tfrac|frac)\{([^{}]*)\}\{([^{}]*)\}")
     previous = None
     while previous != text:
@@ -113,14 +113,13 @@ def _simple_scripts(text: str) -> str:
 
 
 def _latex_fallback(expr: str) -> str:
-    """Convert TeX to readable Unicode/plain text without exposing commands."""
+    """Преобразование TeX в читаемый Unicode/обычный текст без раскрытия команд."""
     text = normalize_latex_transport(expr).strip()
     text = text.replace(r"\[", "").replace(r"\]", "").replace(r"\(", "").replace(r"\)", "")
     text = _replace_nested_frac(text)
     text = re.sub(r"\\sqrt\[([^]]+)\]\{([^{}]+)\}", r"root[\1](\2)", text)
     text = re.sub(r"\\sqrt\{([^{}]+)\}", r"√(\1)", text)
 
-    # Text/style wrappers keep their content.
     wrapper = r"(?:text|textrm|mathrm|mathbf|mathit|mathsf|mathtt|operatorname|overline|underline|vec|hat|bar|boxed)"
     previous = None
     while previous != text:
@@ -146,11 +145,9 @@ def _latex_fallback(expr: str) -> str:
         r"\Psi": "Ψ", r"\Omega": "Ω", r"\ldots": "…", r"\cdots": "⋯", r"\vdots": "⋮", r"\ddots": "⋱",
         r"\qquad": "  ", r"\quad": " ",
     }
-    # Longest command first (e.g. \iiint before \int).
     for source in sorted(replacements, key=len, reverse=True):
         text = text.replace(source, replacements[source])
 
-    # Common function names should remain readable, just without TeX slash.
     text = re.sub(r"\\(sin|cos|tan|tg|cot|ctg|log|ln|lg|exp|lim|min|max)\b", r"\1", text)
     text = text.replace(r"\\", "\n")
     text = re.sub(r"\\begin\{(?:cases|aligned|align\*?|matrix|pmatrix|bmatrix|vmatrix)\}|\\end\{(?:cases|aligned|align\*?|matrix|pmatrix|bmatrix|vmatrix)\}", "", text)
@@ -159,8 +156,6 @@ def _latex_fallback(expr: str) -> str:
     text = text.replace(r"\!", "")
     text = _simple_scripts(text)
 
-    # Absolute last-resort safety. At this point a remaining command is display
-    # noise, not useful text. Preserve the argument braces content below.
     text = re.sub(r"\\[A-Za-z]+\*?", "", text)
     text = text.replace("{", "").replace("}", "")
     return re.sub(r"[ \t]{2,}", " ", text).strip()
@@ -180,7 +175,7 @@ _WINDOWS_PATH_RE = re.compile(r"(?<![A-Za-z0-9_])(?:[A-Za-z]:)?(?:\\[A-Za-z0-9_.
 
 
 def _latex_fallback_preserving_paths(value: str) -> str:
-    """Run the TeX fallback while keeping Windows/UNC-style paths intact."""
+    """Запустить резервный вариант TeX, сохранив пути в стиле Windows/UNC без изменений."""
     paths: List[str] = []
 
     def protect(match: re.Match[str]) -> str:
@@ -213,7 +208,7 @@ def _looks_like_bare_formula(line: str) -> bool:
 
 
 def telegram_parts(value: object) -> List[TelegramPart]:
-    """Split canonical content while preserving ordinary code/URLs."""
+    """Разделить канонический контент, сохранив обычный код/URLы."""
     text = canonicalize_message(value)
     parts: List[TelegramPart] = []
     code_re = re.compile(r"```[\s\S]*?```|`[^`\n]*`")
@@ -221,8 +216,6 @@ def telegram_parts(value: object) -> List[TelegramPart]:
     for match in code_re.finditer(text):
         if match.start() > cursor:
             parts.extend(_math_parts_segment(normalize_latex_transport(text[cursor:match.start()])))
-        # Keep code as text here. telegram_safe_text is still applied at the final
-        # send boundary so TeX accidentally wrapped as code cannot leak raw.
         parts.append(TelegramPart("text", match.group(0)))
         cursor = match.end()
     if cursor < len(text):
@@ -267,8 +260,6 @@ def _bare_parts(text: str) -> List[TelegramPart]:
         stripped = line.rstrip("\r\n")
         suffix = line[len(stripped):]
         if _looks_like_bare_formula(stripped):
-            # Bare TeX mixed with prose is converted to readable text. Rendering
-            # the entire prose line as a formula image is both ugly and fragile.
             result.append(TelegramPart("text", _latex_fallback_preserving_paths(stripped) + suffix))
         else:
             result.append(TelegramPart("text", stripped + suffix))
@@ -280,7 +271,7 @@ def telegram_formula_fallback(expr: str) -> str:
 
 
 def _strip_telegram_markdown(segment: str) -> str:
-    """Remove Markdown control markers without touching ordinary punctuation."""
+    """Убрать управляющие маркеры Markdown, не затрагивая обычные знаки препинания."""
     text = segment
     # Headings are structural markers only when they start a line.
     text = re.sub(r"(?m)^[ \t]{0,3}#{1,6}[ \t]+", "", text)
@@ -296,7 +287,7 @@ def _strip_telegram_markdown(segment: str) -> str:
 
 
 def _format_telegram_prose(segment: str) -> str:
-    """Format one non-code segment, protecting URLs from text transformations."""
+    """Отформатировать один сегмент, не являющийся кодом, защитив URL от преобразования текста."""
     urls: List[str] = []
 
     def protect_url(match: re.Match[str]) -> str:
@@ -304,7 +295,6 @@ def _format_telegram_prose(segment: str) -> str:
         return f"\x00URL{len(urls) - 1}\x00"
 
     work = re.sub(r"https?://[^\s<>()]+", protect_url, segment)
-    # Convert explicit math delimiters before the residual-TeX firewall.
     converted: List[str] = []
     work = _DOUBLE_ESCAPED_MATH_RE.sub(r"\\", work)
     for part in _math_parts_segment(work):
@@ -325,10 +315,8 @@ def _format_telegram_prose(segment: str) -> str:
 
 
 def format_for_telegram(value: object) -> str:
-    """Convert canonical Markdown+LaTeX into safe readable Telegram plain text.
-
-    Code blocks/spans and URLs are isolated before prose formatting so broad replacements
-    never corrupt API routes, filesystem paths, regular expressions, or source code.
+    """
+    Форматировать канонический контент в безопасный для Telegram Markdown.
     """
     text = canonicalize_message(value)
     code_re = re.compile(r"```[\s\S]*?```|`[^`\n]*`")
@@ -338,8 +326,6 @@ def format_for_telegram(value: object) -> str:
         if match.start() > cursor:
             parts.append(_format_telegram_prose(text[cursor:match.start()]))
         code = match.group(0)
-        # Keep code byte-for-byte except for recognized raw TeX, which is never allowed
-        # to leak to Telegram in the current product contract.
         if contains_raw_latex(code):
             code = _latex_fallback(code)
         parts.append(code)
@@ -348,8 +334,6 @@ def format_for_telegram(value: object) -> str:
         parts.append(_format_telegram_prose(text[cursor:]))
     result = "".join(parts)
 
-    # Final validation pass for known technical markers. This is deliberately scoped:
-    # ordinary '#', '*', '/', and '\\' remain valid when they are not markup/TeX.
     if contains_raw_latex(result):
         result = "\n".join(
             _latex_fallback_preserving_paths(line) if contains_raw_latex(line) else line
@@ -361,16 +345,12 @@ def format_for_telegram(value: object) -> str:
 
 
 def telegram_safe_text(value: object) -> str:
-    """Backward-compatible alias for the single Telegram formatter."""
     return format_for_telegram(value)
 
 
 def render_formula_png(expr: str) -> bytes | None:
-    """Best-effort PNG renderer. Returns None when matplotlib/mathtext cannot render."""
     try:
-        import matplotlib
         matplotlib.use("Agg")
-        from matplotlib import pyplot as plt
 
         fig = plt.figure(figsize=(0.01, 0.01), dpi=180)
         fig.patch.set_alpha(0)

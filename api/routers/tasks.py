@@ -16,7 +16,7 @@ from services.task_generation import (
     task_set_payload,
 )
 from services.tutor_policy import student_task_prompt, task_grading_prompt
-from services.gamification import award_learning_result, infer_difficulty, normalize_assignment_source
+from services.assignment_source import TEACHER, infer_difficulty, normalize_assignment_source
 
 router = APIRouter(prefix="/api/tasks", tags=["Tasks"])
 
@@ -141,8 +141,6 @@ async def generate_task_legacy(tg_id: int):
             task_id=task_id,
             title=ai_task.title,
             description=ai_task.description,
-            reward_coins=0,
-            reward_xp=0,
         )
     except HTTPException:
         raise
@@ -246,8 +244,6 @@ async def generate_task(tg_id: int, payload: GenerateTaskRequest):
             task_id=task_id,
             title=ai_task.title,
             description=ai_task.description,
-            reward_coins=0,
-            reward_xp=0,
         )
     except Exception as exc:
         logger.error("Ошибка ИИ при генерации задачи: %s", exc)
@@ -259,13 +255,12 @@ async def submit_task_answer(payload: SubmitAnswerRequest):
     async with db.pool.acquire() as conn:
         task = await conn.fetchrow(
             """
-            SELECT task_id, parent_id, assignment_source, subject, topic,
-                   questions_json, topic_context, student_answers_json
+            SELECT task_id, parent_id, assignment_source, questions_json, topic_context, student_answers_json
             FROM tasks_history
             WHERE task_id = $1 AND student_id = $2
               AND status IN ('created', 'in_progress')
             """,
-            payload.task_id, payload.tg_id
+            payload.task_id, payload.tg_id,
         )
         if not task:
             raise HTTPException(status_code=404, detail="Задание не найдено")
@@ -273,8 +268,6 @@ async def submit_task_answer(payload: SubmitAnswerRequest):
         questions = task["questions_json"]
         if isinstance(questions, str):
             questions = json.loads(questions)
-        correct_answer = questions.get("reference_answer", "")
-        question_text = questions.get("question_text", "")
         topic_context = task["topic_context"]
         if isinstance(topic_context, str):
             topic_context = json.loads(topic_context)
@@ -286,6 +279,45 @@ async def submit_task_answer(payload: SubmitAnswerRequest):
                 previous_answers = {}
         previous_answers = previous_answers or {}
         attempt_number = int(previous_answers.get("attempt_count") or 0) + 1
+        source = normalize_assignment_source(
+            task.get("assignment_source") if hasattr(task, "get") else task["assignment_source"],
+            task.get("parent_id") if hasattr(task, "get") else task["parent_id"],
+        )
+
+        if source == TEACHER:
+            answer_data = {
+                "provided_answer": payload.student_answer,
+                "review_status": "pending_review",
+                "attempt_count": attempt_number,
+            }
+            async with conn.transaction():
+                await conn.execute(
+                    """
+                    INSERT INTO task_submissions (task_id, student_id, answer_text, attempt_number, status)
+                    VALUES ($1,$2,$3,$4,'pending_review')
+                    """,
+                    payload.task_id, payload.tg_id, payload.student_answer, attempt_number,
+                )
+                updated = await conn.fetchval(
+                    """
+                    UPDATE tasks_history
+                    SET student_answers_json=$1::jsonb, status='pending_review'::task_status,
+                        updated_at=CURRENT_TIMESTAMP
+                    WHERE task_id=$2 AND student_id=$3 AND status IN ('created','in_progress')
+                    RETURNING task_id
+                    """,
+                    json.dumps(answer_data, ensure_ascii=False), payload.task_id, payload.tg_id,
+                )
+                if not updated:
+                    raise HTTPException(status_code=409, detail="Задание уже отправлено на проверку")
+            return SubmitAnswerResponse(
+                success=True,
+                status="pending_review",
+                message="Ответ отправлен Учителю и ожидает ручной проверки.",
+            )
+
+        question_text = questions.get("question_text", "")
+        correct_answer = questions.get("reference_answer", "")
         grading_context = await build_context_from_metadata(
             conn,
             str((topic_context or {}).get("topic") or question_text),
@@ -293,7 +325,8 @@ async def submit_task_answer(payload: SubmitAnswerRequest):
         )
 
     try:
-        response = await parse_chat_completion(openai_client,
+        response = await parse_chat_completion(
+            openai_client,
             messages=[
                 {"role": "system", "content": task_grading_prompt()},
                 {
@@ -314,65 +347,35 @@ async def submit_task_answer(payload: SubmitAnswerRequest):
         logger.error("Ошибка ИИ при верификации ответа: %s", exc)
         raise HTTPException(status_code=500, detail="Ошибка нейросети при проверке ответа")
 
-    source = normalize_assignment_source(
-        task.get("assignment_source") if hasattr(task, "get") else task["assignment_source"],
-        task.get("parent_id") if hasattr(task, "get") else task["parent_id"],
-    )
     student_answers_json = {
         "provided_answer": payload.student_answer,
         "verification_feedback": verification.explanation,
         "is_correct": verification.is_correct,
         "attempt_count": attempt_number,
     }
-    question_count = max(1, int(questions.get("question_count") or len(questions.get("items") or []) or 1))
-    difficulty = str((topic_context or {}).get("difficulty") or infer_difficulty(question_text, (topic_context or {}).get("request")))
 
     async with db.pool.acquire() as conn:
         async with conn.transaction():
             if verification.is_correct:
-                final_status = "evaluated" if source == "teacher" else "completed"
                 updated_task = await conn.fetchval(
                     """
                     UPDATE tasks_history
-                    SET student_answers_json=$1::jsonb, score=$2, status=$3::task_status,
+                    SET student_answers_json=$1::jsonb, score=100, status='completed'::task_status,
                         completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
-                    WHERE task_id=$4 AND student_id=$5
+                    WHERE task_id=$2 AND student_id=$3
                       AND status IN ('created', 'in_progress')
                     RETURNING task_id
                     """,
                     json.dumps(student_answers_json, ensure_ascii=False),
-                    100,
-                    final_status,
                     payload.task_id,
                     payload.tg_id,
                 )
                 if not updated_task:
                     raise HTTPException(status_code=409, detail="Задание уже было завершено")
-                reward = await award_learning_result(
-                    conn,
-                    user_id=payload.tg_id,
-                    task_id=payload.task_id,
-                    assignment_source=source,
-                    subject=str(task.get("subject") or "") if hasattr(task, "get") else str(task["subject"] or ""),
-                    topic=str(task.get("topic") or (topic_context or {}).get("topic") or "") if hasattr(task, "get") else str(task["topic"] or ""),
-                    is_correct=True,
-                    completed=True,
-                    quality_score=1.0,
-                    attempt_number=attempt_number,
-                    question_count=question_count,
-                    difficulty=difficulty,
-                    corrected_after_hint=attempt_number > 1,
-                )
-                reward_text = f"+{reward.xp} XP"
-                if reward.coins:
-                    reward_text += f" и +{reward.coins} монет"
-                if reward.repetition_multiplier < 1:
-                    reward_text += " (повторная тренировка: XP снижен)"
                 return SubmitAnswerResponse(
                     success=True,
-                    message=f"🎉 {verification.explanation}. Награда: {reward_text}.",
-                    new_balance_coins=reward.balance_coins,
-                    new_xp_total=reward.xp_total,
+                    status="completed",
+                    message=f"🎉 {verification.explanation}",
                 )
 
             await conn.execute(
@@ -386,15 +389,8 @@ async def submit_task_answer(payload: SubmitAnswerRequest):
                 payload.task_id,
                 payload.tg_id,
             )
-            stats = await conn.fetchrow(
-                "SELECT balance_coins, xp_total FROM gamification WHERE user_id=$1",
-                payload.tg_id,
-            )
-            coins = int((stats and stats["balance_coins"]) or 0)
-            xp = int((stats and stats["xp_total"]) or 0)
             return SubmitAnswerResponse(
                 success=False,
+                status="in_progress",
                 message=f"❌ {verification.explanation}",
-                new_balance_coins=coins,
-                new_xp_total=xp,
             )

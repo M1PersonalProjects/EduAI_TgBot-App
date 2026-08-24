@@ -19,7 +19,6 @@ from services.interactive_apps import (
     set_source_message as set_interactive_source_message,
 )
 from services.response_formatter import canonicalize_message
-from services.gamification import award_tutor_study_session_if_eligible
 from logger_config import logger
 from services.ai import create_chat_completion, openai_client
 from services.chat_memory import (
@@ -254,6 +253,15 @@ async def get_messages(user_id: int, session_id: str) -> List[Dict[str, Any]]:
             user_id,
             session["session_id"],
         )
+        profile = await conn.fetchrow(
+            "SELECT tg_id, username FROM users WHERE tg_id=$1",
+            user_id,
+        )
+        display_name = (
+            str(profile["username"]).strip()
+            if profile and profile["username"]
+            else str(user_id)
+        )
         message_ids = [row["message_id"] for row in rows]
         attachments = await message_attachments_payload(conn, user_id, message_ids)
         app_rows = []
@@ -279,6 +287,7 @@ async def get_messages(user_id: int, session_id: str) -> List[Dict[str, Any]]:
     result = []
     for row in rows:
         item = dict(row)
+        item["sender_name"] = display_name if row["sender"] == "user" else "EduAI"
         item["attachments"] = attachments.get(row["message_id"], [])
         item["interactive_app"] = app_by_message.get(row["message_id"])
         result.append(item)
@@ -858,7 +867,6 @@ async def respond(
     if locked_context:
         reply += book_mode_footer(locked_context)
 
-    study_session_reward = None
     async with db.pool.acquire() as conn:
         ai_message_id = await conn.fetchval(
             """
@@ -884,14 +892,6 @@ async def respond(
                 session["session_id"],
                 user_id,
             )
-        if role == "student":
-            try:
-                async with conn.transaction():
-                    study_session_reward = await award_tutor_study_session_if_eligible(
-                        conn, user_id=user_id, session_id=session["session_id"]
-                    )
-            except Exception as exc:
-                logger.warning("Tutor study-session reward skipped for user %s: %s", user_id, exc)
 
     return {
         "message_id": ai_message_id,
@@ -901,15 +901,5 @@ async def respond(
         "context": context.to_dict() if context else None,
         "book_mode": bool(locked_context),
         "used_attachment_ids": selected_ids,
-        "study_session_reward": (
-            {
-                "xp": study_session_reward.xp,
-                "coins": study_session_reward.coins,
-                "streak_days": study_session_reward.streak_days,
-                "achievements": list(study_session_reward.achievements),
-                "completed_goals": list(study_session_reward.completed_goals),
-            }
-            if study_session_reward else None
-        ),
         "knowledge_source": "book+web" if locked_context and web_context else ("book_mode" if locked_context else ("database+web" if database_context and web_context else ("database" if database_context else ("web" if web_context else "model")))),
     }

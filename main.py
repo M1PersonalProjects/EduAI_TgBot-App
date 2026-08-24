@@ -20,7 +20,6 @@ from api.routers.accounts import router as accounts_router
 from api.routers.books import router as books_router
 from api.routers.tasks import router as tasks_router
 from api.routers.chats import router as chats_router, tutor_router as tutor_chats_router
-from api.routers.rewards import router as rewards_router
 from api.routers.auth import router as auth_v1_router
 from api.routers.platform import router as platform_v1_router
 from api.routers.tutor import router as tutor_v1_router
@@ -71,7 +70,6 @@ app.include_router(tasks_router)
 app.include_router(admin_router)
 app.include_router(chats_router)
 app.include_router(tutor_chats_router)
-app.include_router(rewards_router)
 app.include_router(auth_v1_router)
 app.include_router(platform_v1_router)
 app.include_router(tutor_v1_router)
@@ -110,6 +108,11 @@ async def serve_student_page(request: Request):
 async def parent_dashboard(request: Request):
     return templates.TemplateResponse(request, "parent.html")
 
+
+@app.get("/files", response_class=HTMLResponse)
+async def serve_files_page(request: Request):
+    return templates.TemplateResponse(request, "files.html")
+
 @app.get("/parent/create-test", response_class=HTMLResponse)
 async def parent_create_test(request: Request):
     return templates.TemplateResponse(request, "parent.html")
@@ -147,6 +150,11 @@ async def serve_parent_legacy(request: Request):
 @app.get("/admin.html", response_class=HTMLResponse)
 async def serve_admin_legacy(request: Request):
     return templates.TemplateResponse(request, "admin.html")
+
+
+@app.get("/files.html", response_class=HTMLResponse)
+async def serve_files_legacy(request: Request):
+    return templates.TemplateResponse(request, "files.html")
 
 
 def build_api_server() -> uvicorn.Server:

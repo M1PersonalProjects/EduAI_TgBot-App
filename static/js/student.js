@@ -161,7 +161,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <label class="text-xs font-bold muted" for="answer-${task.task_id}">Ваш ответ</label>
                 <div class="flex flex-col sm:flex-row gap-2">
                   <input id="answer-${task.task_id}" class="input flex-1" maxlength="4000" required placeholder="Введите ответ">
-                  <button class="btn-primary shrink-0" type="submit">Проверить</button>
+                  <button class="btn-primary shrink-0" type="submit">${teacherTask ? 'Отправить Учителю' : 'Проверить'}</button>
                 </div>
               </form>
             </article>`;
@@ -169,102 +169,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       : empty('Активных заданий этого типа пока нет.');
   }
 
-  function renderMotivation(motivation) {
-    const goals = motivation?.goals || [];
-    const achievements = motivation?.achievements || [];
-    const goalsNode = byId('goals-list');
-    const achievementsNode = byId('achievements-list');
-    if (goalsNode) {
-      goalsNode.innerHTML = goals.length ? goals.map(goal => {
-        const target = Math.max(1, Number(goal.target_value || 1));
-        const progress = Math.min(target, Number(goal.progress_value || 0));
-        const percent = Math.round((progress / target) * 100);
-        const reward = [goal.reward_xp ? `+${goal.reward_xp} XP` : '', goal.reward_coins ? `+${goal.reward_coins} монет` : ''].filter(Boolean).join(' · ');
-        return `<article class="glass card">
-          <div class="flex items-center justify-between gap-3"><span class="badge">${goal.period_type === 'daily' ? 'Сегодня' : 'Неделя'}</span><span class="text-xs muted">${reward}</span></div>
-          <h3 class="mt-3 font-extrabold">${EduAI.escapeHtml(goal.title)}</h3>
-          <div class="mt-3 h-2 overflow-hidden rounded-full bg-white/10"><div class="h-full rounded-full bg-emerald-300" style="width:${percent}%"></div></div>
-          <p class="mt-2 text-xs muted">${progress} / ${target}${goal.completed_at ? ' · выполнено' : ''}</p>
-        </article>`;
-      }).join('') : empty('Цели появятся после первой полезной учебной активности.');
-    }
-    if (achievementsNode) {
-      achievementsNode.innerHTML = achievements.length ? achievements.map(item => `
-        <article class="glass card"><span class="text-2xl">🏅</span><h3 class="mt-2 font-extrabold">${EduAI.escapeHtml(item.title)}</h3><p class="mt-1 text-sm muted">${EduAI.escapeHtml(item.description || '')}</p></article>
-      `).join('') : empty('Первое достижение уже близко — завершите полезную учебную сессию.');
-    }
-  }
-
   function renderDashboard(data) {
     state.dashboard = data;
 
-    byId('coins').textContent = data.profile.balance_coins.toLocaleString('ru-RU');
-    byId('xp').textContent = data.profile.xp_total.toLocaleString('ru-RU');
-    byId('streak').textContent = `${data.profile.streak_days}`;
     byId('task-count-badge').textContent = data.tasks.length;
     if (byId('practice-count-badge')) byId('practice-count-badge').textContent = (data.practice_tasks || []).length;
-    if (byId('streak-saves')) byId('streak-saves').textContent = `${data.profile.streak_saves || 0}`;
 
     byId('tasks-list').innerHTML = renderTaskCards(data.tasks || []);
     if (byId('practice-list')) byId('practice-list').innerHTML = renderTaskCards(data.practice_tasks || []);
-    renderMotivation(data.motivation || {});
 
-    byId('rewards-list').innerHTML = data.rewards.length
-      ? data.rewards
-          .map(reward => `
-            <article class="glass card flex flex-col">
-              <div class="flex items-center justify-between">
-                <span class="text-2xl">
-                  ${
-                    reward.category === 'activity'
-                      ? '🚲'
-                      : reward.category === 'screen'
-                        ? '🎮'
-                        : '🎁'
-                  }
-                </span>
-                <span class="badge">${reward.cost_coins} монет</span>
-              </div>
-
-              <h3 class="mt-4 font-extrabold">
-                ${EduAI.escapeHtml(reward.name)}
-              </h3>
-
-              <p class="mt-2 text-sm muted flex-1">
-                ${EduAI.escapeHtml(reward.description || 'Семейная награда')}
-              </p>
-
-              <button
-                class="btn-primary mt-5 reward-buy"
-                data-reward-id="${reward.reward_id}"
-                ${data.profile.balance_coins < reward.cost_coins ? 'disabled' : ''}
-              >
-                ${
-                  data.profile.balance_coins < reward.cost_coins
-                    ? 'Нужно больше монет'
-                    : 'Получить награду'
-                }
-              </button>
-            </article>
-          `)
-          .join('')
-      : empty('Учитель пока не добавил награды.');
-
-    byId('purchases-list').innerHTML = data.purchases.length
-      ? data.purchases
-          .map(item => `
-            <article class="glass card flex items-center justify-between gap-3">
-              <div>
-                <p class="font-bold">${EduAI.escapeHtml(item.name)}</p>
-                <p class="mt-1 text-xs muted">
-                  ${EduAI.formatDate(item.purchased_at)}
-                </p>
-              </div>
-              <span class="badge">−${item.cost_coins} монет</span>
-            </article>
-          `)
-          .join('')
-      : empty('Покупок ещё не было.');
   }
 
   async function loadDashboard() {
@@ -301,18 +214,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       );
 
-      const rewardBits = [];
-      if (result.earned_xp) rewardBits.push(`+${result.earned_xp} XP`);
-      if (result.earned_coins) rewardBits.push(`+${result.earned_coins} монет`);
-      EduAI.toast(
-        result.success ? `Верно! ${rewardBits.join(' · ') || 'Прогресс сохранён'}` : result.message,
-        result.success ? 'success' : 'error'
-      );
-      if (result.success && result.achievements?.length) {
-        EduAI.toast(`🏅 Новое достижение: ${result.achievements.join(', ')}`, 'success');
-      }
-      if (result.success && result.completed_goals?.length) {
-        EduAI.toast(`🎯 Цель выполнена: ${result.completed_goals.join(', ')}`, 'success');
+      if (result.status === 'pending_review') {
+        EduAI.toast(result.message || 'Ответ отправлен Учителю на проверку.', 'success');
+      } else {
+        EduAI.toast(
+          result.success ? (result.message || 'Верно!') : result.message,
+          result.success ? 'success' : 'error'
+        );
       }
 
       await loadDashboard();
@@ -348,31 +256,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  byId('rewards-list').addEventListener('click', async event => {
-    const button = event.target.closest('.reward-buy');
-    if (!button) return;
-
-    if (!confirm('Обменять монеты на эту награду?')) return;
-
-    EduAI.setBusy(button, true, 'Покупаем…');
-
-    try {
-      const result = await EduAI.api(
-        `/api/v1/student/rewards/${button.dataset.rewardId}/buy`,
-        { method: 'POST' }
-      );
-
-      EduAI.toast(
-        `Награда «${result.reward_name}» получена!`,
-        'success'
-      );
-      await loadDashboard();
-    } catch (error) {
-      EduAI.toast(error.message, 'error');
-    } finally {
-      EduAI.setBusy(button, false);
-    }
-  });
 
   byId('refresh-dashboard').addEventListener('click', loadDashboard);
   byId('refresh-tasks').addEventListener('click', loadDashboard);
@@ -394,7 +277,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     lockId: 'chat-lock-context',
     exitId: 'chat-exit-context',
     contextStatusId: 'chat-context-status',
-    welcome: 'Привет! Я ИИ-тьютор EduAI. Можем разбирать учёбу, повседневные вопросы, вложения и выбранные учебники — просто напиши, чем помочь.'
+    welcome: 'Добрый день' 
   });
 
   await Promise.all([

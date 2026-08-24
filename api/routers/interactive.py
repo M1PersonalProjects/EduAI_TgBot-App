@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from api.security import get_current_user
 from database import db
 from services.interactive_apps import contains_embedded_solution_data, generate_teacher_answer_key, grade_interactive_submission, serialize_app
-from services.gamification import TEACHER, award_learning_result, infer_difficulty, normalize_assignment_source
+from services.assignment_source import TEACHER, normalize_assignment_source
 
 
 router = APIRouter(prefix="/api/v1/interactive", tags=["Interactive assignments"])
@@ -19,6 +19,8 @@ router = APIRouter(prefix="/api/v1/interactive", tags=["Interactive assignments"
 
 class AssignmentRequest(BaseModel):
     student_ids: List[int] = Field(..., min_length=1, max_length=100)
+    title: str = Field(default="", max_length=255)
+    comment: str = Field(default="", max_length=4000)
 
 
 class ResultRequest(BaseModel):
@@ -91,8 +93,8 @@ async def get_interactive(app_id: str, user=Depends(get_current_user)):
         db_role = await conn.fetchval("SELECT role::text FROM users WHERE tg_id=$1", user["tg_id"])
     data = serialize_app(row)
     data["html_document"] = row["html_document"]
-    # Teacher capability is determined from the canonical users table by tg_id.
-    # Frontend role switching must never be able to hide or grant this permission.
+    # Права Учителя определяем только по канонической записи users.tg_id.
+    # Переключение роли во frontend не должно скрывать или выдавать это право.
     is_teacher = db_role in {"parent", "admin"}
     data["can_assign"] = is_teacher and row["owner_id"] == user["tg_id"]
     data["can_view_answers"] = is_teacher
@@ -208,8 +210,10 @@ async def assign_interactive(
                     "interactive_app_id": str(parsed),
                     "interactive_version": int(owner["current_version"]),
                 }
+                assignment_title = (payload.title or owner["title"] or "Интерактивное задание").strip()[:255]
+                parent_comment = (payload.comment or "").strip()
                 questions_json = {
-                    "title": owner["title"],
+                    "title": assignment_title,
                     "question_text": "Откройте интерактивное задание и выполните его на странице EduAI.",
                     "reference_answer": "Результат проверяется самим интерактивным заданием.",
                     "interactive_app_id": str(parsed),
@@ -217,18 +221,19 @@ async def assign_interactive(
                 task_id = await conn.fetchval(
                     """
                     INSERT INTO tasks_history (
-                        student_id, parent_id, assignment_source, assignment_batch_id, title,
+                        student_id, parent_id, assignment_source, assignment_batch_id, title, parent_comment,
                         subject, topic, topic_context, questions_json,
                         score, status, sent_at, updated_at
                     ) VALUES (
-                        $1,$2,'teacher',$3,$4,'Интерактивное задание',$4,$5::jsonb,$6::jsonb,
+                        $1,$2,'teacher',$3,$4,$5,'Интерактивное задание',$4,$6::jsonb,$7::jsonb,
                         0,'created'::task_status,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP
                     ) RETURNING task_id
                     """,
                     student_id,
                     user["tg_id"],
                     assignment_batch,
-                    owner["title"],
+                    assignment_title,
+                    parent_comment,
                     json.dumps(topic_context, ensure_ascii=False),
                     json.dumps(questions_json, ensure_ascii=False),
                 )
@@ -298,7 +303,6 @@ async def save_result(
             "answers": payload.answers,
             "feedback": grade.feedback,
         }
-        reward = None
         async with conn.transaction():
             await conn.execute(
                 """
@@ -357,25 +361,7 @@ async def save_result(
                     assignment["task_id"],
                     user["tg_id"],
                 )
-                if grade.completed:
-                    reward = await award_learning_result(
-                        conn,
-                        user_id=user["tg_id"],
-                        task_id=assignment["task_id"],
-                        assignment_source=assignment_source,
-                        subject=str(assignment.get("subject") or "Интерактивное задание"),
-                        topic=str(assignment.get("topic") or assignment["title"] or ""),
-                        is_correct=percent >= 60,
-                        completed=True,
-                        quality_score=percent / 100,
-                        attempt_number=int(attempt or 1),
-                        question_count=max(3, len(payload.answers or {})),
-                        difficulty=infer_difficulty(assignment.get("original_request"), assignment.get("title")),
-                        corrected_after_hint=int(attempt or 1) > 1,
-                    )
     return {
         "status": "saved", "score": score, "max_score": maximum, "percent": percent,
         "completed": bool(grade.completed), "feedback": grade.feedback,
-        "earned_xp": reward.xp if reward else 0,
-        "earned_coins": reward.coins if reward else 0,
     }

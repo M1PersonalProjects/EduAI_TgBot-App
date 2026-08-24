@@ -43,9 +43,6 @@ def get_student_menu() -> ReplyKeyboardMarkup:
             KeyboardButton(text="🤖 ИИ-помощник"),
         ],
         [
-            KeyboardButton(text="🏆 Мой профиль"),
-        ],
-        [
             KeyboardButton(
                 text="🌐 Открыть EduAI",
                 web_app=WebAppInfo(url=settings.webapp_base_url),

@@ -1,12 +1,13 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from pydantic import BaseModel, Field
 
 from api.security import get_current_user
 from database import db
 from logger_config import logger
 from services.attachment_storage import get_attachment, load_attachment_for_ai, save_upload
+from services.telegram_profile import get_telegram_avatar
 from services.tutor import (
     create_session,
     delete_session,
@@ -50,6 +51,41 @@ class ContextSelection(BaseModel):
 
 def _not_found(error: Exception) -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error))
+
+
+@router.get("/profile")
+async def tutor_profile(user=Depends(get_current_user)):
+    """Возвращает профиль одним DTO без дополнительных запросов для каждого сообщения."""
+    ensure_tutor_role(user)
+    async with db.pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT tg_id, username, role FROM users WHERE tg_id=$1",
+            user["tg_id"],
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail="Профиль не найден")
+    username = (row["username"] or "").strip() if row["username"] else ""
+    return {
+        "tg_id": int(row["tg_id"]),
+        "username": username or None,
+        "display_name": username or str(row["tg_id"]),
+        "role": row["role"],
+        "avatar_url": "/api/v1/tutor/profile/avatar",
+    }
+
+
+@router.get("/profile/avatar")
+async def tutor_profile_avatar(user=Depends(get_current_user)):
+    """Проксирует Telegram-аватар и не раскрывает Bot Token браузеру."""
+    ensure_tutor_role(user)
+    avatar = await get_telegram_avatar(int(user["tg_id"]))
+    if avatar is None:
+        raise HTTPException(status_code=404, detail="Аватар Telegram не найден")
+    return Response(
+        content=avatar.content,
+        media_type=avatar.content_type,
+        headers={"Cache-Control": "private, max-age=900"},
+    )
 
 
 @router.get("/sessions")
@@ -176,7 +212,7 @@ async def send_message(
         "page_paragraph": page_paragraph,
     }
     try:
-        return await respond(
+        result = await respond(
             user_id=user["tg_id"],
             role=user["role"],
             session_id=session_id,
@@ -188,6 +224,8 @@ async def send_message(
             interactive_app_id=interactive_app_id,
             interactive_action=interactive_action,
         )
+        result.setdefault("sender_name", "EduAI")
+        return result
     except LookupError as exc:
         raise _not_found(exc)
     except Exception as exc:

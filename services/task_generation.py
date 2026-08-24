@@ -11,6 +11,7 @@ from services.ai import parse_chat_completion
 class GeneratedTaskItem(BaseModel):
     question: str = Field(..., min_length=1, max_length=12000)
     answer: str = Field(..., min_length=1, max_length=8000)
+    short_answer: str = Field(default="", max_length=1000)
     task_type: str = Field(default="practice", max_length=80)
 
 
@@ -60,8 +61,21 @@ def normalize_task_set(generated: GeneratedTaskSet) -> GeneratedTaskSet:
         generated.description = "\n\n".join(
             f"{index}. {item.question.strip()}" for index, item in enumerate(generated.items, start=1)
         )
-        generated.correct_answer = "\n".join(
-            f"{index}. {item.answer.strip()}" for index, item in enumerate(generated.items, start=1)
+        solution_blocks = []
+        short_answers = []
+        for index, item in enumerate(generated.items, start=1):
+            solution = item.answer.strip()
+            short = item.short_answer.strip()
+            if not short:
+                lines = [line.strip() for line in solution.splitlines() if line.strip()]
+                short = lines[-1] if lines else solution
+                short = re.sub(r"^(?:ответ|answer)\s*:\s*", "", short, flags=re.I)
+            solution_blocks.append(f"Задание {index}\nРешение:\n{solution}")
+            short_answers.append(f"{index}. {short}")
+        generated.correct_answer = (
+            "\n\n".join(solution_blocks)
+            + "\n\nОтветы:\n"
+            + "\n".join(short_answers)
         )
     return generated
 

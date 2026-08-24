@@ -15,64 +15,13 @@
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;550;650;750;850&display=swap"
     rel="stylesheet"
   >
-  <link rel="stylesheet" href="/static/css/app.css?v=20260820-ios-1">
+  <link rel="stylesheet" href="/static/css/app.css?v=20260824-ux-polish-2">
 </head>
-<body>
+<body class="teacher-page">
   <div class="app-shell">
-    <aside class="sidebar">
-      <div class="sidebar-inner glass-strong">
-        <div class="flex items-center gap-3 px-2 mb-7">
-          <span class="brand-mark">E</span>
-          <div>
-            <p class="font-extrabold">EduAI</p>
-            <p class="text-xs muted">Учитель</p>
-          </div>
-        </div>
-
-        <nav class="grid gap-1">
-          <button class="nav-link active" data-section="overview">
-            <span>◎</span> Мои Ученики
-          </button>
-          <button class="nav-link" data-section="assistant">
-            <span>✦</span> ИИ-помощник
-          </button>
-          <button class="nav-link" data-section="task-builder">
-            <span>✓</span> Задания
-          </button>
-          <button class="nav-link" data-section="reward-manager">
-            <span>◇</span> Награды
-          </button>
-        </nav>
-
-        <div class="mt-auto">
-          <a
-            href="/admin.html"
-            data-admin-only
-            hidden
-            class="btn-secondary w-full mb-3"
-          >
-            Перейти в Admin Panel
-          </a>
-
-          <div class="rounded-2xl bg-white/[.04] p-3">
-            <p data-user-name class="truncate text-sm font-bold">Профиль</p>
-            <p class="mt-1 text-xs muted">Кабинет Учителя</p>
-            <button data-logout class="btn-secondary mt-3 w-full text-sm">
-              Выйти
-            </button>
-          </div>
-        </div>
-      </div>
-    </aside>
-
-    <div class="backdrop"></div>
-
     <main class="main-area">
       <header class="topbar glass mb-5">
         <div class="flex items-center gap-3">
-          <button class="icon-btn menu-toggle lg:hidden" aria-label="Открыть меню">
-            ☰
-          </button>
           <div>
             <p class="text-xs font-bold uppercase tracking-[.16em] muted">
               Учебное пространство
@@ -81,13 +30,29 @@
           </div>
         </div>
 
-        <div class="flex gap-2">
-          <button id="new-task-top" class="btn-primary hide-mobile">
-            + Новое задание
+        <nav class="desktop-quick-nav teacher-primary-nav" aria-label="Разделы Учителя">
+          <button type="button" class="quick-nav-link active" data-section="overview">
+            <span aria-hidden="true">◎</span><span>Мои Ученики</span>
           </button>
-          <button id="refresh-parent" class="icon-btn" aria-label="Обновить">
-            ↻
+          <button type="button" class="quick-nav-link" data-section="assistant">
+            <span aria-hidden="true">✦</span><span>ИИ-тьютор</span>
           </button>
+          <button type="button" class="quick-nav-link" data-section="task-builder">
+            <span aria-hidden="true">✓</span><span>Задания</span>
+          </button>
+          <a
+            href="/admin.html"
+            data-admin-only
+            hidden
+            class="quick-role-switch"
+            title="Перейти в режим Администратора"
+            aria-label="Перейти в режим Администратора"
+          >⇄</a>
+        </nav>
+
+        <div class="teacher-topbar-actions flex gap-2">
+          <button id="refresh-parent" class="icon-btn" aria-label="Обновить" title="Обновить">↻</button>
+          <button data-logout class="icon-btn" type="button" aria-label="Выйти" title="Выйти">↪</button>
         </div>
       </header>
 
@@ -105,10 +70,6 @@
 
         <div id="children-grid" class="grid md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
 
-        <div class="glass card mt-4">
-          <h3 class="font-extrabold">Последние покупки наград</h3>
-          <div id="family-purchases" class="mt-3 grid gap-2"></div>
-        </div>
       </section>
 
       <section id="assistant" class="page-section">
@@ -125,22 +86,19 @@
           <button class="chat-thread-backdrop" type="button" data-chat-sidebar-backdrop aria-label="Закрыть список чатов"></button>
 
           <article class="glass card min-w-0 chat-center-card">
-            <div class="border-b border-white/10 pb-4">
-              <div class="flex items-start gap-2">
+            <div class="chat-screen-header border-b border-white/10 pb-4">
+              <div class="flex items-center gap-2 chat-screen-header-row">
                 <button class="icon-btn chat-sidebar-main-toggle" type="button" data-chat-sidebar-toggle aria-expanded="true" title="Чаты">☰</button>
-                <div class="min-w-0">
-                  <span class="badge">✦ Учебный ИИ-тьютор</span>
-                </div>
+                <div class="min-w-0 chat-screen-title"><span class="badge">✦ Учебный ИИ-тьютор</span><h2 class="mt-2 text-xl font-extrabold">ИИ-тьютор</h2></div>
               </div>
             </div>
 
             <div class="chat-log-wrap">
-              <div id="parent-chat-log" class="chat-log py-3">
-                <div class="message">Здравствуйте! Можете задать учебный или обычный вопрос, выбрать учебник, прикрепить материал или попросить создать интерактивное задание.</div>
-              </div>
+              <div id="parent-chat-log" class="chat-log py-3"></div>
               <button class="chat-jump-bottom" type="button" data-chat-jump-bottom hidden aria-label="Перейти к последнему сообщению" title="К последнему сообщению">↓</button>
             </div>
 
+            <div class="chat-composer-stack">
             <div id="parent-chat-attachment-preview" class="attachment-preview" hidden>
               <span id="parent-chat-attachment-name"></span>
               <button
@@ -159,7 +117,7 @@
 
             <form
               id="parent-chat-form"
-              class="flex items-end gap-2 border-t border-white/10 pt-4"
+              class="flex items-end gap-2 chat-composer-shell"
             >
               <div class="chat-plus-wrap">
                 <button class="icon-btn chat-plus-button" type="button" data-chat-plus aria-haspopup="menu" aria-expanded="false" title="Добавить">+</button>
@@ -184,16 +142,17 @@
                 id="parent-chat-input"
                 class="input chat-composer-input flex-1 min-w-0"
                 maxlength="4000"
-                placeholder="Напишите вопрос, приложите материал или попросите создать интерактивный тест…"
+                placeholder="Спросите EduAI…"
               ></textarea>
 
               <button class="btn-primary chat-send-button shrink-0" type="submit">
                 <span class="chat-send-label">Отправить</span><span aria-hidden="true">↑</span>
               </button>
             </form>
+            </div>
           </article>
 
-          <aside class="grid content-start gap-4">
+          <aside class="grid content-start gap-4 chat-context-panel">
             <div class="glass card">
               <div class="flex items-center justify-between gap-2">
                 <h3 class="font-bold">Контекст</h3>
@@ -252,39 +211,13 @@
         <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
           <div>
             <p class="text-sm font-bold text-violet-200">Конструктор</p>
-            <h2 class="text-2xl font-extrabold">Задания Ученикам</h2>
+            <h2 class="text-2xl font-extrabold">История заданий</h2>
             <p class="mt-1 muted">
-              Создайте задание вручную или попросите ИИ подготовить его по учебнику и вложениям.
+              Здесь хранится история отправленных заданий. Новые задания создаются из карточки Ученика или из ответа ИИ.
             </p>
           </div>
-          <button id="new-task" class="btn-primary">+ Создать</button>
         </div>
 
-        <div class="glass card">
-          <div class="grid md:grid-cols-3 gap-4">
-            <div>
-              <p class="text-2xl">①</p>
-              <p class="mt-2 font-bold">Выберите Ученика</p>
-              <p class="mt-1 text-sm muted">
-                Задание попадёт только в его кабинет.
-              </p>
-            </div>
-            <div>
-              <p class="text-2xl">②</p>
-              <p class="mt-2 font-bold">Выберите учебник при необходимости</p>
-              <p class="mt-1 text-sm muted">
-                Если учебник выбран, ИИ использует его как основной материал и при необходимости дополняет объяснение.
-              </p>
-            </div>
-            <div>
-              <p class="text-2xl">③</p>
-              <p class="mt-2 font-bold">Добавьте файлы</p>
-              <p class="mt-1 text-sm muted">
-                Отдельно решите, увидит ли их ученик.
-              </p>
-            </div>
-          </div>
-        </div>
 
         <div class="mt-5">
           <div class="mb-3">
@@ -297,20 +230,6 @@
         </div>
       </section>
 
-      <section id="reward-manager" class="page-section">
-        <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
-          <div>
-            <p class="text-sm font-bold text-amber-200">Мотивация</p>
-            <h2 class="text-2xl font-extrabold">Семейные награды</h2>
-            <p class="mt-1 muted">Создавайте понятные и достижимые цели.</p>
-          </div>
-          <button id="new-reward" class="btn-primary">
-            + Добавить награду
-          </button>
-        </div>
-
-        <div id="parent-rewards" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-4"></div>
-      </section>
     </main>
   </div>
 
@@ -332,6 +251,9 @@
       </div>
 
       <form id="task-form" class="grid gap-4 mt-5">
+        <input id="task-draft-id" type="hidden">
+        <input id="task-source-message-id" type="hidden">
+        <div class="draft-steps" aria-label="Этапы задания"><span class="active">1. Черновик</span><span>2. Проверка</span><span>3. Отправка</span></div>
         <div class="field">
           <div class="flex items-center justify-between gap-3">
             <label>Ученики</label>
@@ -477,24 +399,30 @@
             </div>
 
             <div class="field">
-              <label for="task-answer">Эталонный ответ <span class="muted font-normal">(необязательно)</span></label>
+              <label for="task-answer">Приватный эталонный ответ <span class="muted font-normal">(только Учителю)</span></label>
               <textarea
                 id="task-answer"
                 class="textarea"
                 maxlength="4000"
-                placeholder="Можно оставить пустым — ИИ сформирует эталон автоматически"
+                placeholder="Можно оставить пустым — ИИ сформирует полный эталон и блок «Ответы:» автоматически"
               ></textarea>
             </div>
           </div>
         </div>
 
+        <section id="task-draft-preview" class="task-draft-preview glass" hidden aria-live="polite">
+          <div class="flex items-start justify-between gap-3">
+            <div><p class="text-xs font-bold uppercase tracking-wider muted">Предпросмотр черновика</p><h3 id="task-draft-preview-title" class="mt-1 font-extrabold">Задание</h3></div>
+            <span class="badge">Не отправлено</span>
+          </div>
+          <div id="task-draft-preview-body" class="mt-3 text-sm"></div>
+          <p class="mt-3 text-xs muted">Проверьте текст, список Учеников, комментарий и вложения. Приватный эталон Ученику не передаётся.</p>
+        </section>
+
         <div class="flex flex-col-reverse sm:flex-row justify-end gap-2">
-          <button type="button" id="generate-task" class="btn-secondary">
-            ✦ Сгенерировать и отправить
-          </button>
-          <button type="submit" class="btn-primary">
-            Создать вручную
-          </button>
+          <button type="button" id="generate-task" class="btn-secondary">✦ Сгенерировать черновик</button>
+          <button type="submit" id="save-task-draft" class="btn-secondary">Сохранить черновик</button>
+          <button type="button" id="send-task-draft" class="btn-primary" hidden>Отправить Ученикам</button>
         </div>
       </form>
     </div>
@@ -515,70 +443,10 @@
     </div>
   </div>
 
-  <div id="reward-modal" class="modal-backdrop">
-    <div class="modal-panel glass-strong">
-      <div class="flex justify-between">
-        <h2 id="reward-modal-title" class="text-xl font-extrabold">
-          Новая награда
-        </h2>
-        <button
-          class="icon-btn"
-          data-close-modal="reward-modal"
-          type="button"
-        >
-          ×
-        </button>
-      </div>
-
-      <form id="reward-form" class="grid sm:grid-cols-2 gap-4 mt-5">
-        <input id="reward-id" type="hidden">
-
-        <div class="field sm:col-span-2">
-          <label for="reward-name">Название</label>
-          <input id="reward-name" class="input" maxlength="256" required>
-        </div>
-
-        <div class="field sm:col-span-2">
-          <label for="reward-description">Описание</label>
-          <textarea
-            id="reward-description"
-            class="textarea"
-            maxlength="500"
-          ></textarea>
-        </div>
-
-        <div class="field">
-          <label for="reward-cost">Стоимость</label>
-          <input
-            id="reward-cost"
-            class="input"
-            type="number"
-            min="1"
-            required
-          >
-        </div>
-
-        <div class="field">
-          <label for="reward-category">Категория</label>
-          <select id="reward-category" class="select">
-            <option value="other">Другое</option>
-            <option value="activity">Активность</option>
-            <option value="screen">Экранное время</option>
-            <option value="treat">Угощение</option>
-          </select>
-        </div>
-
-        <button class="btn-primary sm:col-span-2" type="submit">
-          Сохранить награду
-        </button>
-      </form>
-    </div>
-  </div>
-
   <div class="toast-stack" aria-live="polite"></div>
 
-  <script src="/static/js/app.js?v=20260820-ios-1"></script>
-  <script src="/static/js/chat.js?v=20260820-ios-1"></script>
-  <script src="/static/js/parent.js?v=20260812-20-2"></script>
+  <script src="/static/js/app.js?v=20260824-ux-polish-2"></script>
+  <script src="/static/js/chat.js?v=20260824-ux-polish-2"></script>
+  <script src="/static/js/parent.js?v=20260824-ux-polish-2"></script>
 </body>
 </html>

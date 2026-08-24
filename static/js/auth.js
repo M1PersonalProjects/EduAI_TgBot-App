@@ -10,7 +10,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function route(user) { location.replace(EduAI.ROLE_PATH[user.role] || '/auth.html'); }
   function persist(data, source) {
-    EduAI.saveSession({ token: data.session_token, source, user: { tg_id: data.tg_id, username: data.username, role: data.role } });
+    const telegramPhotoUrl = window.Telegram?.WebApp?.initDataUnsafe?.user?.photo_url || data.telegram_photo_url || '';
+    EduAI.saveSession({ token: data.session_token, source, telegram_photo_url: telegramPhotoUrl, user: { tg_id: data.tg_id, username: data.username, role: data.role } });
     route(data);
   }
   async function telegramLogin(initData) {

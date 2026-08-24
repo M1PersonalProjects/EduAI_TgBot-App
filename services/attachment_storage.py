@@ -397,6 +397,226 @@ async def load_attachment_for_ai(
         ) from exc
 
 
+async def list_chat_attachment_library(owner_id: int) -> list[dict[str, Any]]:
+    """Возвращает вложения пользователя, сгруппированные по чатам WebApp и Telegram."""
+    async with db.pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+                a.attachment_id,
+                a.original_name,
+                a.mime_type,
+                a.extension,
+                a.size_bytes,
+                a.processing_status,
+                a.created_at AS attachment_created_at,
+                cm.message_id,
+                cm.message_source,
+                cm.created_at AS message_created_at,
+                s.session_id,
+                s.title AS chat_title,
+                s.chat_type,
+                s.updated_at AS chat_updated_at
+            FROM attachments a
+            JOIN chat_message_attachments cma
+              ON cma.attachment_id = a.attachment_id
+            JOIN chat_messages cm
+              ON cm.message_id = cma.message_id
+             AND cm.user_id = $1
+            JOIN chat_sessions s
+              ON s.session_id = cm.session_id
+             AND s.user_id = $1
+            WHERE a.owner_id = $1
+            ORDER BY s.updated_at DESC, cm.created_at DESC, a.attachment_id DESC
+            """,
+            owner_id,
+        )
+
+    groups: dict[str, dict[str, Any]] = {}
+    seen_by_group: dict[str, set[int]] = {}
+    for raw in rows:
+        row = dict(raw)
+        session_id = str(row["session_id"])
+        group = groups.setdefault(
+            session_id,
+            {
+                "session_id": session_id,
+                "title": row.get("chat_title") or "Новый чат",
+                "chat_type": row.get("chat_type") or "web",
+                "source": (
+                    "telegram"
+                    if row.get("chat_type") == "telegram_default"
+                    or row.get("message_source") == "telegram"
+                    else "web"
+                ),
+                "updated_at": row.get("chat_updated_at"),
+                "attachments": [],
+            },
+        )
+        attachment_id = int(row["attachment_id"])
+        seen = seen_by_group.setdefault(session_id, set())
+        if attachment_id in seen:
+            continue
+        seen.add(attachment_id)
+        group["attachments"].append(
+            {
+                "attachment_id": attachment_id,
+                "original_name": row["original_name"],
+                "mime_type": row["mime_type"],
+                "extension": row["extension"],
+                "size_bytes": row["size_bytes"],
+                "processing_status": row["processing_status"],
+                "created_at": row.get("message_created_at") or row.get("attachment_created_at"),
+                "message_id": row.get("message_id"),
+                "message_source": row.get("message_source") or "web",
+                "download_url": f"/api/v1/attachments/{attachment_id}/download",
+                "preview_url": f"/api/v1/attachments/{attachment_id}/preview",
+            }
+        )
+
+    return [group for group in groups.values() if group["attachments"]]
+
+
+async def forget_attachment_from_chat_memory(
+    attachment_id: int,
+    owner_id: int,
+) -> dict[str, Any]:
+    """Удаляет файл из памяти чатов и физически удаляет его, если он больше нигде не нужен."""
+    path_to_delete: Optional[Path] = None
+    links_removed = 0
+    retained_for_tasks = False
+
+    async with db.pool.acquire() as conn:
+        async with conn.transaction():
+            attachment = await conn.fetchrow(
+                """
+                SELECT attachment_id, storage_path
+                FROM attachments
+                WHERE attachment_id = $1 AND owner_id = $2
+                FOR UPDATE
+                """,
+                attachment_id,
+                owner_id,
+            )
+            if not attachment:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Вложение не найдено",
+                )
+
+            message_rows = await conn.fetch(
+                """
+                SELECT DISTINCT cm.message_id
+                FROM chat_message_attachments cma
+                JOIN chat_messages cm ON cm.message_id = cma.message_id
+                WHERE cma.attachment_id = $1 AND cm.user_id = $2
+                """,
+                attachment_id,
+                owner_id,
+            )
+            message_ids = [int(row["message_id"]) for row in message_rows]
+            links_removed = len(message_ids)
+
+            await conn.execute(
+                """
+                DELETE FROM chat_message_attachments cma
+                USING chat_messages cm
+                WHERE cma.message_id = cm.message_id
+                  AND cma.attachment_id = $1
+                  AND cm.user_id = $2
+                """,
+                attachment_id,
+                owner_id,
+            )
+
+            if message_ids:
+                await conn.execute(
+                    """
+                    UPDATE chat_messages
+                    SET attachment_name = NULL, attachment_type = NULL
+                    WHERE user_id = $1 AND message_id = ANY($2::bigint[])
+                    """,
+                    owner_id,
+                    message_ids,
+                )
+
+            # Если файл был активным файловым контекстом, убираем только его ID.
+            await conn.execute(
+                """
+                UPDATE chat_sessions
+                SET active_attachment_ids = array_remove(
+                        COALESCE(active_attachment_ids, '{}'::integer[]), $1
+                    ),
+                    active_context_mode = CASE
+                        WHEN active_context_mode = 'attachment'
+                         AND cardinality(array_remove(COALESCE(active_attachment_ids, '{}'::integer[]), $1)) = 0
+                        THEN 'general'
+                        ELSE active_context_mode
+                    END,
+                    memory_state = (COALESCE(memory_state, '{}'::jsonb) - 'referenced_attachment_ids')
+                        || CASE
+                            WHEN cardinality(array_remove(COALESCE(active_attachment_ids, '{}'::integer[]), $1)) > 0
+                            THEN jsonb_build_object(
+                                'referenced_attachment_ids',
+                                to_jsonb(array_remove(COALESCE(active_attachment_ids, '{}'::integer[]), $1))
+                            )
+                            ELSE '{}'::jsonb
+                           END,
+                    memory_updated_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = $2
+                  AND $1 = ANY(COALESCE(active_attachment_ids, '{}'::integer[]))
+                """,
+                attachment_id,
+                owner_id,
+            )
+
+            retained_for_tasks = bool(
+                await conn.fetchval(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1 FROM task_attachments WHERE attachment_id = $1
+                    ) OR EXISTS (
+                        SELECT 1 FROM task_submission_attachments WHERE attachment_id = $1
+                    ) OR EXISTS (
+                        SELECT 1
+                        FROM task_drafts td, jsonb_array_elements_text(td.attachment_ids) item
+                        WHERE td.status = 'draft' AND item.value = $1::text
+                    )
+                    """,
+                    attachment_id,
+                )
+            )
+
+            if not retained_for_tasks:
+                remaining_chat_links = bool(
+                    await conn.fetchval(
+                        "SELECT EXISTS(SELECT 1 FROM chat_message_attachments WHERE attachment_id = $1)",
+                        attachment_id,
+                    )
+                )
+                if not remaining_chat_links:
+                    await conn.execute(
+                        "DELETE FROM attachments WHERE attachment_id = $1 AND owner_id = $2",
+                        attachment_id,
+                        owner_id,
+                    )
+                    path_to_delete = _resolve_storage_path(attachment["storage_path"])
+
+    if path_to_delete is not None:
+        try:
+            await asyncio.to_thread(path_to_delete.unlink, missing_ok=True)
+        except OSError:
+            logger.warning("Could not delete forgotten attachment file: %s", path_to_delete)
+
+    return {
+        "attachment_id": attachment_id,
+        "chat_links_removed": links_removed,
+        "deleted_from_storage": path_to_delete is not None,
+        "retained_for_tasks": retained_for_tasks,
+    }
+
+
 async def delete_attachment(
     attachment_id: int,
     owner_id: int,

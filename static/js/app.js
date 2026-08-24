@@ -269,16 +269,33 @@
   }
   function logout() { clearSession(); location.replace('/auth.html'); }
 
-  function startThinking(label = 'ИИ обрабатывает запрос') {
-    const widget = document.createElement('div'); widget.className = 'thinking-widget glass-strong'; widget.setAttribute('role', 'status');
+  let activeThinkingWidgets = 0;
+
+  function startThinking(label = 'EduAI думает') {
+    const widget = document.createElement('div');
+    widget.className = 'thinking-widget glass-strong';
+    widget.setAttribute('role', 'status');
     widget.innerHTML = `<span class="thinking-orb"></span><div><strong>${escapeHtml(label)}</strong><p class="muted text-xs">Пожалуйста, не закрывайте страницу · <span>00:00</span></p></div>`;
     document.body.append(widget);
+    activeThinkingWidgets += 1;
+    document.body.classList.add('ai-thinking');
+
     const started = Date.now();
     const timer = setInterval(() => {
       const elapsed = Math.floor((Date.now() - started) / 1000);
-      widget.querySelector('span:last-child').textContent = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
+      const timerLabel = widget.querySelector('span:last-child');
+      if (timerLabel) timerLabel.textContent = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
     }, 1000);
-    return () => { clearInterval(timer); widget.remove(); };
+
+    let stopped = false;
+    return () => {
+      if (stopped) return;
+      stopped = true;
+      clearInterval(timer);
+      widget.remove();
+      activeThinkingWidgets = Math.max(0, activeThinkingWidgets - 1);
+      if (!activeThinkingWidgets) document.body.classList.remove('ai-thinking');
+    };
   }
 
   function initShell() {
@@ -300,9 +317,13 @@
     document.querySelectorAll('.modal-backdrop').forEach(modal => modal.addEventListener('click', event => { if (event.target === modal) { modal.classList.remove('open'); if (!document.querySelector('.modal-backdrop.open')) document.body.classList.remove('eduai-modal-open'); } }));
     document.querySelectorAll('[data-logout]').forEach(button => button.addEventListener('click', logout));
     const initialSection = document.querySelector('.page-section.active')?.id;
+    const requestedSection = new URLSearchParams(location.search).get('section');
     let savedSection = null;
     try { savedSection = localStorage.getItem(sectionStorageKey); } catch (_) {}
-    activateSection(savedSection && document.getElementById(savedSection) ? savedSection : initialSection);
+    const targetSection = requestedSection && document.getElementById(requestedSection)
+      ? requestedSection
+      : (savedSection && document.getElementById(savedSection) ? savedSection : initialSection);
+    activateSection(targetSection);
   }
 
 
@@ -523,15 +544,23 @@
   function navLabel(link) {
     const clone = link.cloneNode(true);
     clone.querySelectorAll('.badge').forEach(item => item.remove());
+    const icon = clone.querySelector(':scope > span[aria-hidden="true"], :scope > span:first-child');
+    icon?.remove();
     return clone.textContent.replace(/\s+/g, ' ').trim();
   }
 
   function navIcon(link) {
-    return link.querySelector('span')?.textContent?.trim() || '•';
+    return link.querySelector(':scope > span[aria-hidden="true"], :scope > span:first-child')?.textContent?.trim() || '•';
+  }
+
+  function navigationSources() {
+    const sidebarLinks = [...document.querySelectorAll('.sidebar nav [data-section]')];
+    if (sidebarLinks.length) return sidebarLinks;
+    return [...document.querySelectorAll('.desktop-quick-nav [data-section]')];
   }
 
   function createQuickNavigation() {
-    const sourceLinks = [...document.querySelectorAll('.sidebar nav [data-section]')];
+    const sourceLinks = navigationSources();
     const topbar = document.querySelector('.topbar');
     if (!sourceLinks.length || !topbar || topbar.querySelector('.desktop-quick-nav')) return;
     const nav = document.createElement('nav');
@@ -548,36 +577,11 @@
     topbar.insertBefore(nav, topbar.lastElementChild);
   }
 
-  function createMobileNavigation() {
-    const sourceLinks = [...document.querySelectorAll('.sidebar nav [data-section]')];
-    if (!sourceLinks.length || document.querySelector('.mobile-bottom-nav')) return;
-    const nav = document.createElement('nav');
-    nav.className = 'mobile-bottom-nav glass-strong';
-    nav.setAttribute('aria-label', 'Мобильная навигация');
-    sourceLinks.slice(0, 4).forEach(source => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = `mobile-nav-link${source.classList.contains('active') ? ' active' : ''}`;
-      button.dataset.section = source.dataset.section;
-      button.innerHTML = `<span aria-hidden="true">${navIcon(source)}</span><small>${navLabel(source)}</small>`;
-      nav.append(button);
-    });
-    if (sourceLinks.length > 4) {
-      const more = document.createElement('button');
-      more.type = 'button';
-      more.className = 'mobile-nav-link';
-      more.dataset.mobileMore = '1';
-      more.innerHTML = '<span aria-hidden="true">•••</span><small>Ещё</small>';
-      more.addEventListener('click', () => document.querySelector('.menu-toggle')?.click());
-      nav.append(more);
-    }
-    document.body.append(nav);
-  }
 
   function resetInterfaceLayout() {
     try {
       Object.keys(localStorage).forEach(key => {
-        if (key.startsWith(LAYOUT_PREFIX) || key.startsWith('eduai.ui.section:') || key === 'eduai.ui.chatSidebarCollapsed') {
+        if (key.startsWith(LAYOUT_PREFIX) || key.startsWith('eduai.ui.section:') || key.startsWith('eduai.ui.tutorSidebarCollapsed')) {
           localStorage.removeItem(key);
         }
       });
@@ -593,15 +597,13 @@
     wrap.dataset.uiSettings = '1';
     wrap.innerHTML = `
       <button class="icon-btn ui-settings-toggle" type="button" aria-label="Настройки интерфейса" aria-haspopup="dialog" aria-expanded="false">⚙</button>
-      <div class="ui-settings-popover glass-strong" role="dialog" aria-label="Настройки интерфейса" hidden>
-        <div class="ui-settings-head"><strong>Интерфейс</strong><button type="button" class="thread-action" data-ui-settings-close aria-label="Закрыть">×</button></div>
-        <p class="ui-settings-label">Тема</p>
+      <div class="ui-settings-popover glass-strong" role="dialog" aria-label="Настройка отображения темы сайта" hidden>
+        <div class="ui-settings-head"><div><strong>Тема сайта</strong><p class="ui-settings-description">Выберите отображение EduAI</p></div><button type="button" class="thread-action" data-ui-settings-close aria-label="Закрыть">×</button></div>
         <div class="theme-segmented" role="group" aria-label="Тема оформления">
           <button type="button" data-theme-choice="light">Светлая</button>
           <button type="button" data-theme-choice="dark">Тёмная</button>
-          <button type="button" data-theme-choice="system">Система</button>
+          <button type="button" data-theme-choice="system">Системная</button>
         </div>
-        <button type="button" class="btn-secondary ui-reset-layout" data-ui-reset-layout>Сбросить расположение</button>
       </div>`;
     if (host === document.body) {
       wrap.classList.add('ui-settings-floating');
@@ -611,17 +613,51 @@
     }
     const toggle = wrap.querySelector('.ui-settings-toggle');
     const popover = wrap.querySelector('.ui-settings-popover');
-    const close = () => { popover.hidden = true; toggle.setAttribute('aria-expanded', 'false'); };
+    let closeTimer = null;
+    const open = () => {
+      clearTimeout(closeTimer);
+      document.querySelectorAll('.ui-settings-popover.is-open').forEach(other => {
+        if (other !== popover) {
+          other.classList.remove('is-open');
+          other.setAttribute('aria-hidden', 'true');
+        }
+      });
+      popover.hidden = false;
+      popover.setAttribute('aria-hidden', 'false');
+      requestAnimationFrame(() => popover.classList.add('is-open'));
+      toggle.setAttribute('aria-expanded', 'true');
+      setTimeout(() => popover.querySelector('[data-theme-choice].active')?.focus({ preventScroll: true }), 40);
+    };
+    const close = () => {
+      clearTimeout(closeTimer);
+      popover.classList.remove('is-open');
+      popover.setAttribute('aria-hidden', 'true');
+      toggle.setAttribute('aria-expanded', 'false');
+      closeTimer = setTimeout(() => { if (!popover.classList.contains('is-open')) popover.hidden = true; }, 190);
+    };
     toggle.addEventListener('click', event => {
       event.stopPropagation();
-      popover.hidden = !popover.hidden;
-      toggle.setAttribute('aria-expanded', popover.hidden ? 'false' : 'true');
+      if (popover.hidden || !popover.classList.contains('is-open')) open(); else close();
     });
     wrap.querySelector('[data-ui-settings-close]').addEventListener('click', close);
     wrap.querySelectorAll('[data-theme-choice]').forEach(button => button.addEventListener('click', () => setTheme(button.dataset.themeChoice)));
-    wrap.querySelector('[data-ui-reset-layout]').addEventListener('click', resetInterfaceLayout);
     document.addEventListener('click', event => { if (!wrap.contains(event.target)) close(); });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });
     applyTheme();
+  }
+
+  function openThemeSettings() {
+    const wrap = document.querySelector('[data-ui-settings]');
+    const toggle = wrap?.querySelector('.ui-settings-toggle');
+    const popover = wrap?.querySelector('.ui-settings-popover');
+    if (!wrap || !toggle || !popover) return false;
+    applyTheme();
+    popover.hidden = false;
+    popover.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => popover.classList.add('is-open'));
+    toggle.setAttribute('aria-expanded', 'true');
+    setTimeout(() => popover.querySelector('[data-theme-choice].active')?.focus({ preventScroll: true }), 40);
+    return true;
   }
 
   function moduleKey(element, index) {
@@ -677,9 +713,114 @@
   }
 
   function enableMovableModules() {
-    enableMovableContainer(document.querySelector('.student-dashboard-stats'), 'student-stats');
     const adminOverview = document.getElementById('admin-overview');
     enableMovableContainer(adminOverview?.querySelector('.grid.grid-cols-2'), 'admin-stats');
+  }
+
+  function setupMatrixBackground() {
+    if (document.querySelector('.eduai-matrix-canvas')) return;
+    const canvas = document.createElement('canvas');
+    canvas.className = 'eduai-matrix-canvas';
+    canvas.setAttribute('aria-hidden', 'true');
+    document.body.prepend(canvas);
+
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    const tokens = [
+      'E=mc²', 'λ=h/p', '∫dx', '∑x', 'Δx·Δp≥ħ/2', 'π', 'θ', 'Ω', 'α', 'β',
+      '√x', 'x²+y²=r²', 'function()', 'const', 'let', 'AI=>', '{01}', '101101', 'learn()', 'f(x)'
+    ];
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    let streams = [];
+    let width = 0;
+    let height = 0;
+    let lastFrame = 0;
+    let frameId = null;
+
+    const createStreams = () => {
+      const columnWidth = window.innerWidth < 600 ? 54 : 44;
+      const count = Math.max(7, Math.floor(width / columnWidth));
+      streams = Array.from({ length: count }, (_, index) => ({
+        x: index * columnWidth + 10 + Math.random() * 12,
+        y: Math.random() * -height,
+        speed: 7 + Math.random() * 10,
+        token: tokens[Math.floor(Math.random() * tokens.length)],
+        size: 11 + Math.random() * 3,
+      }));
+    };
+
+    const resize = () => {
+      const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
+      width = Math.max(1, window.innerWidth);
+      height = Math.max(1, window.innerHeight);
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(height * ratio);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      createStreams();
+    };
+
+    const draw = timestamp => {
+      if (timestamp - lastFrame < 42 && !reduceMotion?.matches) {
+        frameId = requestAnimationFrame(draw);
+        return;
+      }
+      const delta = lastFrame ? Math.min(0.08, (timestamp - lastFrame) / 1000) : 0.04;
+      lastFrame = timestamp;
+      context.clearRect(0, 0, width, height);
+      const rgb = getComputedStyle(document.documentElement).getPropertyValue('--matrix-rgb').trim() || '70, 70, 78';
+      for (const stream of streams) {
+        const progress = Math.max(0, Math.min(1, stream.y / height));
+        const opacity = Math.max(0, (1 - progress) * 0.16);
+        context.font = `${stream.size}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+        context.fillStyle = `rgba(${rgb}, ${opacity})`;
+        context.fillText(stream.token, stream.x, stream.y);
+        if (!reduceMotion?.matches) stream.y += stream.speed * delta;
+        if (stream.y > height + 20) {
+          stream.y = -20 - Math.random() * height * 0.25;
+          stream.token = tokens[Math.floor(Math.random() * tokens.length)];
+        }
+      }
+      if (!reduceMotion?.matches) frameId = requestAnimationFrame(draw);
+    };
+
+    const restart = () => {
+      if (frameId) cancelAnimationFrame(frameId);
+      lastFrame = 0;
+      resize();
+      frameId = requestAnimationFrame(draw);
+    };
+
+    window.addEventListener('resize', restart, { passive: true });
+    reduceMotion?.addEventListener?.('change', restart);
+    restart();
+  }
+
+  function setupTopGlow() {
+    if (document.querySelector('.eduai-top-glow')) return;
+    const glow = document.createElement('div');
+    glow.className = 'eduai-top-glow';
+    glow.setAttribute('aria-hidden', 'true');
+    document.body.prepend(glow);
+  }
+
+  function setupMobileKeyboard() {
+    const viewport = window.visualViewport;
+    const update = () => {
+      const focused = document.activeElement?.matches?.('textarea,input:not([type="checkbox"]):not([type="radio"]),[contenteditable="true"]');
+      const referenceHeight = Math.max(window.innerHeight || 0, Number(document.documentElement.dataset.maxViewportHeight || 0));
+      if (referenceHeight) document.documentElement.dataset.maxViewportHeight = String(referenceHeight);
+      const visibleHeight = viewport?.height || window.innerHeight;
+      const keyboardOpen = Boolean(focused && referenceHeight && visibleHeight < referenceHeight * 0.82);
+      document.body.classList.toggle('keyboard-open', keyboardOpen);
+    };
+    document.addEventListener('focusin', update);
+    document.addEventListener('focusout', () => setTimeout(update, 80));
+    viewport?.addEventListener('resize', update, { passive: true });
+    window.addEventListener('resize', update, { passive: true });
+    update();
   }
 
   function setupBookModePanels() {
@@ -704,6 +845,13 @@
       backdrop.setAttribute('aria-label', 'Закрыть Book Mode');
       layout.append(backdrop);
       const close = () => { layout.classList.remove('book-panel-open'); button.setAttribute('aria-expanded', 'false'); };
+      const closeButton = document.createElement('button');
+      closeButton.type = 'button';
+      closeButton.className = 'icon-btn book-panel-close';
+      closeButton.setAttribute('aria-label', 'Закрыть Book Mode');
+      closeButton.textContent = '×';
+      panel.prepend(closeButton);
+      closeButton.addEventListener('click', close);
       button.addEventListener('click', () => {
         const open = !layout.classList.contains('book-panel-open');
         document.querySelectorAll('[data-chat-layout].book-panel-open').forEach(other => { if (other !== layout) other.classList.remove('book-panel-open'); });
@@ -711,6 +859,100 @@
         button.setAttribute('aria-expanded', open ? 'true' : 'false');
       });
       backdrop.addEventListener('click', close);
+      let startY = null;
+      let startX = null;
+      panel.addEventListener('touchstart', event => {
+        const touch = event.touches?.[0];
+        if (!touch) return;
+        startY = touch.clientY; startX = touch.clientX;
+      }, { passive: true });
+      panel.addEventListener('touchend', event => {
+        const touch = event.changedTouches?.[0];
+        if (!touch || startY === null) return;
+        const dy = touch.clientY - startY;
+        const dx = touch.clientX - startX;
+        if (window.matchMedia('(max-width: 767px)').matches && dy > 72 && Math.abs(dy) > Math.abs(dx) * 1.2) close();
+        startY = startX = null;
+      }, { passive: true });
+    });
+  }
+
+  function setupTutorMobileNavigation() {
+    document.querySelectorAll('[data-chat-layout]').forEach(layout => {
+      if (layout.dataset.mobileNavReady === '1') return;
+      const section = layout.closest('.page-section');
+      const center = layout.querySelector('.chat-center-card');
+      const headerRow = center?.querySelector('.chat-screen-header-row') || center?.querySelector(':scope > div:first-child .flex');
+      const bookButton = headerRow?.querySelector('.book-panel-toggle');
+      const primaryNav = document.querySelector('.teacher-primary-nav, .student-primary-nav');
+      if (!section || !headerRow || !primaryNav) return;
+      layout.dataset.mobileNavReady = '1';
+
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'icon-btn tutor-mobile-nav-toggle';
+      toggle.setAttribute('aria-label', 'Открыть разделы');
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.innerHTML = '<span aria-hidden="true" class="tutor-mobile-nav-arrow">↗</span>';
+
+      const sheet = document.createElement('div');
+      sheet.className = 'tutor-mobile-nav-sheet glass-strong';
+      sheet.setAttribute('role', 'dialog');
+      sheet.setAttribute('aria-label', 'Разделы кабинета');
+      sheet.setAttribute('aria-hidden', 'true');
+
+      const addSection = source => {
+        const target = source.dataset.section;
+        if (!target || target === section.id) return;
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'tutor-mobile-nav-item';
+        item.dataset.mobileNavTarget = target;
+        item.innerHTML = `<span aria-hidden="true">${navIcon(source)}</span><span>${navLabel(source)}</span>`;
+        item.addEventListener('click', () => {
+          source.click();
+          close();
+        });
+        sheet.append(item);
+      };
+      primaryNav.querySelectorAll('[data-section]').forEach(addSection);
+
+      const roleSource = primaryNav.querySelector('.quick-role-switch');
+      let roleClone = null;
+      if (roleSource) {
+        roleClone = document.createElement('a');
+        roleClone.className = 'tutor-mobile-nav-item tutor-mobile-role-switch';
+        roleClone.href = roleSource.href;
+        roleClone.innerHTML = '<span aria-hidden="true">⇄</span><span>Сменить роль</span>';
+        if (roleSource.hasAttribute('data-admin-only')) roleClone.setAttribute('data-admin-only', '');
+        roleClone.hidden = roleSource.hidden;
+        sheet.append(roleClone);
+        new MutationObserver(() => { roleClone.hidden = roleSource.hidden; }).observe(roleSource, { attributes: true, attributeFilter: ['hidden'] });
+      }
+
+      const close = () => {
+        layout.classList.remove('mobile-nav-open');
+        toggle.setAttribute('aria-expanded', 'false');
+        sheet.setAttribute('aria-hidden', 'true');
+      };
+      const open = () => {
+        layout.classList.add('mobile-nav-open');
+        toggle.setAttribute('aria-expanded', 'true');
+        sheet.setAttribute('aria-hidden', 'false');
+      };
+      toggle.addEventListener('click', event => {
+        event.stopPropagation();
+        if (layout.classList.contains('mobile-nav-open')) close(); else open();
+      });
+      sheet.addEventListener('click', event => event.stopPropagation());
+      document.addEventListener('click', event => {
+        if (layout.classList.contains('mobile-nav-open') && !sheet.contains(event.target) && event.target !== toggle) close();
+      });
+      document.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });
+
+      if (bookButton) headerRow.insertBefore(toggle, bookButton);
+      else headerRow.append(toggle);
+      layout.append(sheet);
     });
   }
 
@@ -775,10 +1017,13 @@
   function initAdaptiveUI() {
     applyTheme();
     createQuickNavigation();
-    createMobileNavigation();
     createSettingsPanel();
+    setupMatrixBackground();
+    setupTopGlow();
+    setupMobileKeyboard();
     enableMovableModules();
     setupBookModePanels();
+    setupTutorMobileNavigation();
     setupGlobalScrollControl();
     syncNavState();
   }
@@ -787,6 +1032,6 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initAdaptiveUI, { once: true });
   else initAdaptiveUI();
 
-  window.EduAIUI = { applyTheme, setTheme, resetInterfaceLayout };
+  window.EduAIUI = { applyTheme, setTheme, resetInterfaceLayout, openThemeSettings };
 })();
 /* === EDUAI IOS-INSPIRED ADAPTIVE UI END === */

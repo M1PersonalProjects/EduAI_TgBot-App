@@ -16,7 +16,7 @@ from services.educational_context import build_educational_context
 from services.task_generation import generate_exact_task_set, task_set_payload
 from services.tutor_policy import student_task_prompt
 from services.quest_generation import canonicalize_subject, parse_quest_request
-from services.gamification import infer_difficulty
+from services.assignment_source import infer_difficulty
 
 router = Router()
 
@@ -29,40 +29,6 @@ class BookFilterStates(StatesGroup):
     waiting_for_ai_question = State()
     waiting_for_quest_request = State()
 
-
-@router.message(F.text == "🏆 Мой профиль")
-async def show_real_student_profile(message: Message, state: FSMContext = None):
-    if state is not None:
-        await state.clear()
-    user_id = message.from_user.id
-    async with db.pool.acquire() as conn:
-        user = await conn.fetchrow("SELECT role FROM users WHERE tg_id = $1", user_id)
-        if not user or user["role"] != "student":
-            return 
-        stats = await conn.fetchrow(
-            "SELECT balance_coins, xp_total, streak_days, streak_saves FROM gamification WHERE user_id = $1",
-            user_id,
-        )
-
-    def stat(name, default=0):
-        if not stats:
-            return default
-        return stats.get(name, default) if hasattr(stats, "get") else stats[name]
-
-    coins = stat("balance_coins")
-    xp = stat("xp_total")
-    streak = stat("streak_days")
-    streak_saves = stat("streak_saves")
-
-    await message.answer(
-        f"🏆 Твой личный профиль EduAI:\n\n"
-        f"💰 Баланс: {coins} монет\n"
-        f"✨ Опыт: {xp} XP\n"
-        f"🔥 Учебная серия: {streak} дн.\n"
-        f"🛡 Защита серии: {streak_saves}\n\n"
-        "Серия растёт только после полезной учебной активности. "
-        "Для самостоятельной тренировки введи /quest."
-    )
 
 def quest_test_button():
     return [InlineKeyboardButton(text="🧩 Создать квест-тест", callback_data="create_quest_test")]

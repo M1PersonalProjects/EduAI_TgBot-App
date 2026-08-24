@@ -60,10 +60,16 @@ async def show_parent_monitoring(message: Message, state: FSMContext = None):
 
         children = await conn.fetch(
             """
-            SELECT u.tg_id, u.username, g.balance_coins, g.xp_total, g.streak_days
+            SELECT u.tg_id, u.username,
+                   COUNT(t.task_id) AS tasks_total,
+                   COUNT(t.task_id) FILTER (WHERE t.status IN ('completed', 'evaluated')) AS tasks_done,
+                   COALESCE(ROUND(AVG(t.score))::int, 0) AS average_score
             FROM users u
-            LEFT JOIN gamification g ON u.tg_id = g.user_id
+            LEFT JOIN tasks_history t
+              ON t.student_id = u.tg_id AND t.assignment_source = 'teacher'
             WHERE u.parent_id = $1 AND u.role = 'student'
+            GROUP BY u.tg_id, u.username
+            ORDER BY u.username NULLS LAST
             """,
             user_id
         )
@@ -79,15 +85,14 @@ async def show_parent_monitoring(message: Message, state: FSMContext = None):
     report = "📊 Мониторинг успеваемости Учеников:\n\n"
     for idx, child in enumerate(children, start=1):
         name = f"@{child['username']}" if child['username'] else f"Ученик ID: {child['tg_id']}"
-        coins = child['balance_coins'] or 0
-        xp = child['xp_total'] or 0
-        streak = child['streak_days'] or 0
-        
+        tasks_total = int(child['tasks_total'] or 0)
+        tasks_done = int(child['tasks_done'] or 0)
+        average_score = int(child['average_score'] or 0)
+
         report += (
             f"{idx}. 👤 {name}\n"
-            f"   💰 Баланс: {coins} монет\n"
-            f"   ✨ Опыт: {xp} XP\n"
-            f"   🔥 Ударный режим: {streak} дн.\n\n"
+            f"   📝 Заданий: {tasks_done}/{tasks_total} выполнено\n"
+            f"   📊 Средняя оценка: {average_score}\n\n"
         )
 
     await answer_plain(message, report)

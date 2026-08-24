@@ -65,8 +65,8 @@ async def test_show_parent_monitoring_with_children(make_message, mock_db):
     
     # Имитируем список привязанных детей из базы данных
     mock_db.mock_conn.fetch.return_value = [
-        {"tg_id": 111, "username": "alex_math", "balance_coins": 50, "xp_total": 350, "streak_days": 5},
-        {"tg_id": 222, "username": None, "balance_coins": 10, "xp_total": 60, "streak_days": 1}
+        {"tg_id": 111, "username": "alex_math", "tasks_total": 5, "tasks_done": 4, "average_score": 88},
+        {"tg_id": 222, "username": None, "tasks_total": 2, "tasks_done": 1, "average_score": 75}
     ]
     
     await show_parent_monitoring(message)
@@ -75,10 +75,8 @@ async def test_show_parent_monitoring_with_children(make_message, mock_db):
     
     # Проверяем, что в отчет попали данные по первому ребенку (с юзернеймом)
     assert "@alex_math" in response_text
-    assert "50 монет" in response_text
-    assert "350 XP" in response_text
-    assert "5 дн." in response_text
+    assert "4/5 выполнено" in response_text
+    assert "Средняя оценка: 88" in response_text
     
     # Проверяем, что в отчет попал второй ребенок (без юзернейма, по ID)
     assert "Ученик ID: 222" in response_text
-    assert "10 монет" in response_text

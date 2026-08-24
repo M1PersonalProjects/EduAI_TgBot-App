@@ -1,5 +1,4 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 from aiogram.filters import CommandObject
 from unittest.mock import ANY
 
@@ -7,7 +6,6 @@ from unittest.mock import ANY
 from config import settings
 settings.admin_ids = {999}
 
-from unittest.mock import AsyncMock, MagicMock, ANY
 from bot.handlers.start import cmd_start, callback_toggle_role, callbacks_num
 
 
@@ -45,7 +43,9 @@ async def test_cmd_start_successful_child_registration(make_message, mock_db):
 
     await cmd_start(message, command)
 
-    assert mock_db.mock_conn.execute.call_count == 2
+    # Регистрация создаёт только пользователя и связь с Учителем.
+    mock_db.mock_conn.execute.assert_awaited_once()
+    assert "INSERT INTO users" in mock_db.mock_conn.execute.call_args.args[0]
 
     answer_text = message.answer.call_args[0][0]
 
@@ -207,6 +207,7 @@ async def test_callback_set_role_student(make_callback_query, mock_db):
     
     await callbacks_num(callback)
     
-    # Проверяем запись роли и создание профиля геймификации
-    assert mock_db.mock_conn.execute.call_count == 2
+    # При выборе роли сохраняется только пользователь с выбранной ролью.
+    mock_db.mock_conn.execute.assert_awaited_once()
+    assert "INSERT INTO users" in mock_db.mock_conn.execute.call_args.args[0]
     callback.message.edit_text.assert_called_once_with("✅ Роль успешно сохранена!\n\nТы зарегистрирован как **Ученик**.", parse_mode="Markdown")

@@ -4,31 +4,20 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f6f8fc">
   <title>Кабинет ученика — EduAI</title>
   <script src="https://cdn.tailwindcss.com"></script><script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;550;650;750;850&display=swap" rel="stylesheet"><link rel="stylesheet" href="/static/css/app.css?v=20260820-ios-1">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;550;650;750;850&display=swap" rel="stylesheet"><link rel="stylesheet" href="/static/css/app.css?v=20260824-ux-polish-2">
 </head>
-<body>
+<body class="student-page">
 <div class="app-shell">
-  <aside class="sidebar"><div class="sidebar-inner glass-strong">
-    <div class="flex items-center gap-3 px-2 mb-7"><span class="brand-mark">E</span><div><p class="font-extrabold">EduAI</p><p class="text-xs muted">Ученик</p></div></div>
-    <nav class="grid gap-1" aria-label="Основная навигация">
-      <button class="nav-link active" data-section="tutor"><span>✦</span> ИИ-тьютор</button>
-      <button class="nav-link" data-section="tasks"><span>✓</span> Задания Учителя <span id="task-count-badge" class="ml-auto badge">0</span></button>
-      <button class="nav-link" data-section="practice"><span>🧩</span> ИИ-практика <span id="practice-count-badge" class="ml-auto badge">0</span></button>
-      <button class="nav-link" data-section="progress"><span>🎯</span> Цели и достижения</button>
-      <button class="nav-link" data-section="rewards"><span>◇</span> Награды</button>
-      <button class="nav-link" data-section="purchases"><span>↗</span> Мои покупки</button>
-    </nav>
-    <div class="mt-auto rounded-2xl bg-white/[.04] p-3"><div class="flex items-center gap-3"><div class="grid h-10 w-10 place-items-center rounded-xl bg-violet-400/10">👤</div><div class="min-w-0"><p data-user-name class="truncate text-sm font-bold">Профиль</p><span class="badge mt-1"><span class="status-dot"></span> В сети</span></div></div><button data-logout class="btn-secondary mt-3 w-full text-sm">Выйти</button></div>
-  </div></aside>
-  <div class="backdrop"></div>
-  <main class="main-area">
-    <header class="topbar glass mb-5"><div class="flex items-center gap-3"><button class="icon-btn menu-toggle lg:hidden" aria-label="Открыть меню">☰</button><div><p class="text-xs font-bold uppercase tracking-[.16em] muted">Учебное пространство</p><h1 class="font-extrabold" data-greeting>Добрый день!</h1></div></div><div class="flex items-center gap-2"><span class="badge hide-mobile"><span class="status-dot"></span> Синхронизировано</span><button class="icon-btn" id="refresh-dashboard" aria-label="Обновить">↻</button></div></header>
-
-    <section class="student-dashboard-stats grid grid-cols-3 gap-2 sm:gap-4 mb-5" aria-label="Показатели">
-      <article class="stat-card glass" style="--glow:rgba(255,176,84,.2)"><p class="text-xs font-bold uppercase tracking-wider muted">Монеты</p><p id="coins" class="stat-value mt-2">—</p><p class="text-xs text-amber-200">семейная валюта</p></article>
-      <article class="stat-card glass" style="--glow:rgba(139,124,255,.2)"><p class="text-xs font-bold uppercase tracking-wider muted">Опыт</p><p id="xp" class="stat-value mt-2">—</p><p class="text-xs text-violet-200">XP всего</p></article>
-      <article class="stat-card glass"><p class="text-xs font-bold uppercase tracking-wider muted">Серия</p><p id="streak" class="stat-value mt-2">—</p><p class="text-xs text-emerald-200"><span id="streak-saves">0</span> защит серии</p></article>
-    </section>
+  <main class="main-area student-main-area">
+    <header class="topbar glass student-topbar mb-5">
+      <div class="student-heading min-w-0"><p class="text-xs font-bold uppercase tracking-[.16em] muted">Учебное пространство</p><h1 class="font-extrabold" data-greeting>Добрый день!</h1></div>
+      <nav class="desktop-quick-nav student-primary-nav" aria-label="Разделы Ученика">
+        <button type="button" class="quick-nav-link active" data-section="tutor"><span aria-hidden="true">✦</span><span>ИИ-тьютор</span></button>
+        <button type="button" class="quick-nav-link" data-section="tasks"><span aria-hidden="true">✓</span><span>Задания Учителя</span><span id="task-count-badge" class="badge">0</span></button>
+        <button type="button" class="quick-nav-link" data-section="practice"><span aria-hidden="true">🧩</span><span>ИИ-практика</span><span id="practice-count-badge" class="badge">0</span></button>
+      </nav>
+      <div class="student-topbar-actions flex items-center gap-2"><span class="badge hide-mobile"><span class="status-dot"></span> Синхронизировано</span><button class="icon-btn" id="refresh-dashboard" aria-label="Обновить" title="Обновить">↻</button><button data-logout class="icon-btn" type="button" aria-label="Выйти" title="Выйти">↪</button></div>
+    </header>
 
     <section id="tutor" class="page-section active">
       <div class="tutor-chat-layout grid gap-4" data-chat-layout>
@@ -43,19 +32,20 @@
         </aside>
         <button class="chat-thread-backdrop" type="button" data-chat-sidebar-backdrop aria-label="Закрыть список чатов"></button>
         <article class="glass card min-w-0 chat-center-card">
-          <div class="border-b border-white/10 pb-4">
-            <div class="flex items-start gap-2">
+          <div class="chat-screen-header border-b border-white/10 pb-4">
+            <div class="flex items-center gap-2 chat-screen-header-row">
               <button class="icon-btn chat-sidebar-main-toggle" type="button" data-chat-sidebar-toggle aria-expanded="true" title="Чаты">☰</button>
-              <div class="min-w-0"><span class="badge">✦ Контекст определяется автоматически</span><h2 class="mt-3 text-xl font-extrabold">Спросите ИИ-тьютора</h2><p class="mt-1 text-sm muted">Можно сразу написать вопрос или заранее выбрать учебник.</p></div>
+              <div class="min-w-0 chat-screen-title"><span class="badge">✦ Контекст определяется автоматически</span><h2 class="mt-2 text-xl font-extrabold">ИИ-тьютор</h2><p class="mt-1 text-sm muted">Спросите по теме, задаче или материалу.</p></div>
             </div>
           </div>
           <div class="chat-log-wrap">
-            <div id="chat-log" class="chat-log py-3" aria-live="polite"><div class="message"><strong>Привет! Я твой ИИ-тьютор.</strong><br>Расскажи, какая тема или шаг в задаче вызывает трудность.</div></div>
+            <div id="chat-log" class="chat-log py-3" aria-live="polite"></div>
             <button class="chat-jump-bottom" type="button" data-chat-jump-bottom hidden aria-label="Перейти к последнему сообщению" title="К последнему сообщению">↓</button>
           </div>
+          <div class="chat-composer-stack">
           <div id="chat-attachment-preview" class="attachment-preview" hidden><span id="chat-attachment-name"></span><button id="chat-remove-attachment" class="thread-action" type="button">×</button></div>
           <div class="chat-compose-mode" data-chat-compose-mode hidden><span data-chat-compose-mode-label>🧩 Интерактивное приложение</span><button class="thread-action" type="button" data-chat-compose-mode-clear aria-label="Отменить режим">×</button></div>
-          <form id="chat-form" class="flex items-end gap-2 border-t border-white/10 pt-4">
+          <form id="chat-form" class="flex items-end gap-2 chat-composer-shell">
             <div class="chat-plus-wrap">
               <button class="icon-btn chat-plus-button" type="button" data-chat-plus aria-haspopup="menu" aria-expanded="false" title="Добавить">+</button>
               <div class="chat-plus-menu" data-chat-plus-menu role="menu" hidden>
@@ -65,20 +55,19 @@
               <input id="chat-attachment" class="sr-only" type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.docx,.xlsx,.pptx,.odt,.ods,.odp,.epub,.djvu,.txt,.md,.csv,.json,.rtf,.html,.xml,.yaml,.yml">
               <input type="hidden" data-chat-interactive-action value="">
             </div>
-            <label class="sr-only" for="chat-input">Сообщение тьютору</label><textarea id="chat-input" class="input chat-composer-input flex-1 min-w-0" rows="1" maxlength="4000" placeholder="Например: объясни упражнение 3 из учебника Виленкина для 6 класса…"></textarea><button class="btn-primary chat-send-button shrink-0" type="submit"><span class="chat-send-label">Отправить</span><span aria-hidden="true">↑</span></button>
+            <label class="sr-only" for="chat-input">Сообщение тьютору</label><textarea id="chat-input" class="input chat-composer-input flex-1 min-w-0" rows="1" maxlength="4000" placeholder="Спросите EduAI…"></textarea><button class="btn-primary chat-send-button shrink-0" type="submit"><span class="chat-send-label">Отправить</span><span aria-hidden="true">↑</span></button>
           </form>
+          </div>
         </article>
-        <aside class="grid content-start gap-4"><div class="glass card"><div class="flex items-center justify-between gap-2"><p class="text-sm font-bold">Контекст учебника</p><span id="chat-context-status" class="text-[.68rem] muted text-right">Автопоиск</span></div><div class="context-grid mt-3"><select id="chat-class" class="select"><option>Загрузка…</option></select><select id="chat-subject" class="select"><option value="">Предмет</option></select><select id="chat-book" class="select"><option value="">Учебник</option></select><select id="chat-page" class="select"><option value="">Страница / параграф</option></select><button id="chat-lock-context" class="btn-secondary text-sm">🔒 Закрепить Book Mode</button><button id="chat-exit-context" class="btn-danger text-sm" hidden>Выйти из Book Mode</button></div><p class="mt-3 text-xs muted">Выбор необязателен: класс, автор, учебник и страница распознаются в тексте вопроса.</p></div></aside>
+        <aside class="grid content-start gap-4 chat-context-panel"><div class="glass card"><div class="flex items-center justify-between gap-2"><p class="text-sm font-bold">Контекст учебника</p><span id="chat-context-status" class="text-[.68rem] muted text-right">Автопоиск</span></div><div class="context-grid mt-3"><select id="chat-class" class="select"><option>Загрузка…</option></select><select id="chat-subject" class="select"><option value="">Предмет</option></select><select id="chat-book" class="select"><option value="">Учебник</option></select><select id="chat-page" class="select"><option value="">Страница / параграф</option></select><button id="chat-lock-context" class="btn-secondary text-sm">🔒 Закрепить Book Mode</button><button id="chat-exit-context" class="btn-danger text-sm" hidden>Выйти из Book Mode</button></div><p class="mt-3 text-xs muted">Выбор необязателен: класс, автор, учебник и страница распознаются в тексте вопроса.</p></div></aside>
       </div>
     </section>
 
     <section id="tasks" class="page-section"><div class="flex flex-wrap items-end justify-between gap-3 mb-4"><div><p class="text-sm font-bold text-emerald-200">Назначено Учителем</p><h2 class="text-2xl font-extrabold">Задания Учителя</h2><p class="mt-1 muted">Только официально назначенные работы. Результаты доступны Учителю.</p></div><button id="refresh-tasks" class="btn-secondary">Обновить</button></div><div id="tasks-list" class="grid lg:grid-cols-2 gap-4"></div></section>
-    <section id="practice" class="page-section"><div class="mb-4"><p class="text-sm font-bold text-cyan-200">Личная тренировка</p><h2 class="text-2xl font-extrabold">ИИ-практика</h2><p class="mt-1 muted">Самостоятельные квесты не отправляются Учителю и используют анти-фарм награды.</p></div><div id="practice-list" class="grid lg:grid-cols-2 gap-4"></div></section>
-    <section id="progress" class="page-section"><div class="mb-4"><p class="text-sm font-bold text-violet-200">Мотивация за прогресс</p><h2 class="text-2xl font-extrabold">Цели и достижения</h2><p class="mt-1 muted">Серия растёт только после полезной учебной активности.</p></div><div id="goals-list" class="grid md:grid-cols-2 gap-4"></div><h3 class="mt-7 mb-3 text-lg font-extrabold">Достижения</h3><div id="achievements-list" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3"></div></section>
-    <section id="rewards" class="page-section"><div class="mb-4"><p class="text-sm font-bold text-amber-200">Семейный магазин</p><h2 class="text-2xl font-extrabold">Награды</h2><p class="mt-1 muted">Копите монеты и выбирайте то, что вас мотивирует.</p></div><div id="rewards-list" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-4"></div></section>
-    <section id="purchases" class="page-section"><div class="mb-4"><p class="text-sm font-bold text-violet-200">История</p><h2 class="text-2xl font-extrabold">Мои покупки</h2></div><div id="purchases-list" class="grid gap-3"></div></section>
+    <section id="practice" class="page-section"><div class="mb-4"><p class="text-sm font-bold text-cyan-200">Личная тренировка</p><h2 class="text-2xl font-extrabold">ИИ-практика</h2><p class="mt-1 muted">Самостоятельные квесты не отправляются Учителю и помогают безопасно тренироваться.</p></div><div id="practice-list" class="grid lg:grid-cols-2 gap-4"></div></section>
+
   </main>
 </div>
 <div class="toast-stack" aria-live="polite"></div>
-<script src="/static/js/app.js?v=20260820-ios-1"></script><script src="/static/js/chat.js?v=20260820-ios-1"></script><script src="/static/js/student.js?v=20260819-gamification-1"></script>
+<script src="/static/js/app.js?v=20260824-ux-polish-2"></script><script src="/static/js/chat.js?v=20260824-ux-polish-2"></script><script src="/static/js/student.js?v=20260824-ux-polish-2"></script>
 </body></html>

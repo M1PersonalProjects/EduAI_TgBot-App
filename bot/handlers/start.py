@@ -27,7 +27,7 @@ STUDENT_START_TEXT = (
     "🌐 *В EduAI WebApp доступно больше:*\n"
     "• полноценный чат и история диалогов;\n"
     "• удобная работа с заданиями и результатами;\n"
-    "• учебники, награды и подробный прогресс.\n\n"
+    "• учебники, задания, история диалогов и подробные результаты.\n\n"
     "Для полного интерфейса нажмите *«🌐 Открыть EduAI»*."
 )
 
@@ -130,14 +130,6 @@ async def cmd_start(message: Message, command: CommandObject, state: FSMContext 
                     SET parent_id = $3, role = 'student'::user_role, username = EXCLUDED.username
                     """,
                     user_id, username, parent_id
-                )
-                await conn.execute(
-                    """
-                    INSERT INTO gamification (user_id, balance_coins, xp_total, streak_days)
-                    VALUES ($1, 0, 0, 0)
-                    ON CONFLICT (user_id) DO NOTHING
-                    """,
-                    user_id
                 )
 
         await message.answer(
@@ -295,16 +287,6 @@ async def callbacks_num(callback: CallbackQuery):
                 """,
                 user_id, username, selected_role
             )
-
-            if selected_role == 'student':
-                await conn.execute(
-                    """
-                    INSERT INTO gamification (user_id, balance_coins, xp_total, streak_days)
-                    VALUES ($1, 0, 0, 0)
-                    ON CONFLICT (user_id) DO NOTHING
-                    """,
-                    user_id
-                )
 
     if selected_role == 'student':
         await callback.message.edit_text("✅ Роль успешно сохранена!\n\nТы зарегистрирован как **Ученик**.", parse_mode="Markdown")
