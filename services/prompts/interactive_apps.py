@@ -42,6 +42,7 @@ VISUAL / 3D
 - Draw coherent faces/edges with depth-aware ordering or hidden-edge treatment so the solid reads as a solid,
   not a wireframe icon. Keep the model centered, bounded and visually large enough to inspect.
 - Geometry must match the requested solid or problem figure exactly.
+- When the request specifically calls for a hexagonal prism, its topology must be exact: 12 vertices, 18 edges, and 8 faces (2 hexagonal bases + 6 lateral faces). Treat this as a shape-specific correctness example, not as a template for unrelated subjects or figures.
 - Provide visible reset controls, dimension labels, and REAL adjustable dimension controls (range/number inputs)
   that actively redraw the figure when modified.
 - Do not create a single giant static SVG and claim it is interactive.

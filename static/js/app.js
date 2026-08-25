@@ -257,6 +257,14 @@
 
   function formatDate(value) { if (!value) return '—'; return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)); }
   function setBusy(button, busy, label = 'Подождите…') { if (!button) return; if (busy) { button.dataset.label = button.innerHTML; button.disabled = true; button.textContent = label; } else { button.disabled = false; if (button.dataset.label) button.innerHTML = button.dataset.label; } }
+  function setFormDisabled(form, disabled) {
+    if (!form) return;
+    form.classList.toggle('is-submitting', Boolean(disabled));
+    form.querySelectorAll('input, textarea, select, button').forEach(element => {
+      if (element.closest('[data-thinking-cancel]')) return;
+      element.disabled = Boolean(disabled);
+    });
+  }
   function openModal(id) {
     const modal = document.getElementById(id);
     if (!modal) return;
@@ -271,19 +279,27 @@
 
   let activeThinkingWidgets = 0;
 
-  function startThinking(label = 'EduAI думает') {
+  function startThinking(label = 'EduAI думает', options = {}) {
     const widget = document.createElement('div');
     widget.className = 'thinking-widget glass-strong';
     widget.setAttribute('role', 'status');
-    widget.innerHTML = `<span class="thinking-orb"></span><div><strong>${escapeHtml(label)}</strong><p class="muted text-xs">Пожалуйста, не закрывайте страницу · <span>00:00</span></p></div>`;
+    const canCancel = typeof options.onCancel === 'function';
+    widget.innerHTML = `<span class="thinking-orb"></span><div><strong>${escapeHtml(label)}</strong><p class="muted text-xs">Пожалуйста, не закрывайте страницу · <span data-thinking-timer>00:00</span></p></div>${canCancel ? '<button type="button" class="btn-secondary thinking-cancel" data-thinking-cancel>Остановить</button>' : ''}`;
     document.body.append(widget);
     activeThinkingWidgets += 1;
     document.body.classList.add('ai-thinking');
 
+    const cancelButton = widget.querySelector('[data-thinking-cancel]');
+    cancelButton?.addEventListener('click', () => {
+      cancelButton.disabled = true;
+      cancelButton.textContent = 'Останавливаем…';
+      try { options.onCancel(); } catch (_) {}
+    });
+
     const started = Date.now();
     const timer = setInterval(() => {
       const elapsed = Math.floor((Date.now() - started) / 1000);
-      const timerLabel = widget.querySelector('span:last-child');
+      const timerLabel = widget.querySelector('[data-thinking-timer]');
       if (timerLabel) timerLabel.textContent = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
     }, 1000);
 
@@ -359,7 +375,7 @@
   window.EduAI = {
     api, guard, readSession, saveSession, clearSession, escapeHtml,
     markdown, renderMath, toast, formatDate, setBusy, openModal, closeModal,
-    logout, startThinking, initShell, ROLE_PATH, ROLE_LABELS, roleLabel, MATH_RENDERER_VERSION,
+    logout, startThinking, setFormDisabled, initShell, ROLE_PATH, ROLE_LABELS, roleLabel, MATH_RENDERER_VERSION,
     mathDebug: { normalizeLatexTransport, latexFallback }
   };
 })();

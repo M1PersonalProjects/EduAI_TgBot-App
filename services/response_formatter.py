@@ -79,7 +79,7 @@ def normalize_latex_transport(value: object) -> str:
 
 
 def _replace_nested_frac(text: str) -> str:
-    """
+    r"""
     Замените вложенные \frac, \dfrac и \tfrac на простую форму (числитель)/(знаменатель).
     """
     pattern = re.compile(r"\\(?:dfrac|tfrac|frac)\{([^{}]*)\}\{([^{}]*)\}")

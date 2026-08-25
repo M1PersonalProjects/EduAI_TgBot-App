@@ -1159,7 +1159,129 @@ def interactive_quality_issues(request: str, html: str) -> List[str]:
     return list(dict.fromkeys(issues))
 
 
+
+def _normalize_heading_text(value: str) -> str:
+    text = re.sub(r"<[^>]+>", " ", str(value or ""))
+    text = re.sub(r"[^A-Za-zА-Яа-яЁё0-9]+", " ", text).strip().casefold().replace("ё", "е")
+    return text
+
+
+def _strip_duplicate_section_heading(html: str, *, label: str, title: str) -> str:
+    """Remove leading h1/h2/h3 that repeats the trusted section tab/title."""
+    value = str(html or "")
+    expected = {_normalize_heading_text(label), _normalize_heading_text(title)}
+    for _ in range(3):
+        match = re.match(r"(?is)^\s*<h[1-3][^>]*>(.*?)</h[1-3]>\s*", value)
+        if not match:
+            match = re.match(r"(?is)^\s*<p[^>]*>\s*<strong[^>]*>(.*?)</strong>\s*</p>\s*", value)
+        if not match:
+            break
+        if _normalize_heading_text(match.group(1)) in expected:
+            value = value[match.end():]
+        else:
+            break
+    return value.strip() or html
+
+
+def _dedupe_spec_titles(spec: InteractiveAppSpec) -> InteractiveAppSpec:
+    sections = []
+    for section in spec.sections:
+        sections.append(
+            InteractiveSection(
+                id=section.id,
+                label=section.label,
+                html=_strip_duplicate_section_heading(section.html, label=section.label, title=spec.title),
+            )
+        )
+    return InteractiveAppSpec(
+        title=spec.title,
+        app_type=spec.app_type,
+        question_count=spec.question_count,
+        sections=sections,
+        interaction_js=spec.interaction_js,
+        custom_css=spec.custom_css,
+    )
+
+
+def _generic_fallback_generation(request: str, title: str = "", question_count: Optional[int] = None) -> InteractiveGeneration:
+    """Safe EduAI fallback for broad non-3D requests when the model misses required visuals/interactions."""
+    count = max(3, min(int(question_count or find_requested_task_count(request, maximum=500) or 6), 500))
+    raw_title = (title or "EduAI интерактивный тренажёр").strip()[:160]
+    safe_request = re.sub(r"<[^>]+>", "", str(request or "учебная тема")).strip()[:500]
+    topic_label = safe_request or "выбранная тема"
+    sections = [
+        InteractiveSection(
+            id="overview",
+            label="Обзор",
+            html=f"""
+<div class="fallback-hero">
+  <div class="fallback-visual" aria-hidden="true">
+    <svg viewBox="0 0 420 220" role="img" aria-label="Учебная схема EduAI">
+      <defs><linearGradient id="g" x1="0" x2="1"><stop stop-color="#1687ff"/><stop offset=".55" stop-color="#7c5cff"/><stop offset="1" stop-color="#06a5c9"/></linearGradient></defs>
+      <rect x="18" y="22" width="384" height="176" rx="30" fill="url(#g)" opacity=".16"/>
+      <circle cx="98" cy="110" r="44" fill="url(#g)" opacity=".85"/>
+      <path d="M171 68h168M171 110h132M171 152h184" stroke="url(#g)" stroke-width="16" stroke-linecap="round" opacity=".88"/>
+      <path d="M88 111l18 18 36-48" fill="none" stroke="#fff" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+  <p>Интерактивное приложение создано по запросу: <strong>{topic_label}</strong>.</p>
+  <p>Оно объединяет краткое объяснение, визуальную схему и тренировочные задания. Если нужен более точный формат, уточните предмет, класс, тип упражнений или приложите исходный файл.</p>
+</div>""",
+        ),
+        InteractiveSection(
+            id="theory",
+            label="Теория",
+            html=f"""
+<p>Сначала изучите ключевые идеи темы «{topic_label}». Обращайте внимание на определения, признаки, примеры и типичные ошибки.</p>
+<div class="fallback-grid">
+  <article class="eduai-card"><strong>1. Понять</strong><span>Выделите главные понятия и связи между ними.</span></article>
+  <article class="eduai-card"><strong>2. Применить</strong><span>Потренируйтесь на коротких заданиях разного формата.</span></article>
+  <article class="eduai-card"><strong>3. Проверить</strong><span>Отметьте уверенность и завершите тренировку.</span></article>
+</div>""",
+        ),
+        InteractiveSection(
+            id="practice",
+            label="Практика",
+            html=f"""
+<div class="trainer-head"><p>Заданий: <strong>{count}</strong>. Используйте навигацию, чтобы не перегружать страницу.</p><div><button type="button" id="prevTask">Назад</button><button type="button" id="nextTask">Далее</button></div></div>
+<div id="taskHost" class="eduai-card fallback-task" aria-live="polite"></div>
+<div class="trainer-actions"><button type="button" id="markDone">Завершить тренировку</button><span id="progressLabel" class="muted"></span></div>""",
+        ),
+    ]
+    custom_css = """
+.fallback-hero{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1fr);gap:18px;align-items:center}.fallback-visual svg{display:block;width:100%;max-height:260px}.fallback-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:12px}.fallback-grid .eduai-card{display:grid;gap:6px}.fallback-grid span,.trainer-head p,.trainer-actions .muted{color:var(--eduai-muted)}.trainer-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.trainer-head div,.trainer-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.fallback-task{min-height:150px;display:grid;gap:12px}.fallback-task textarea{min-height:90px}.task-index{color:var(--eduai-accent);font-weight:800}@media(max-width:680px){.fallback-hero{grid-template-columns:1fr}.trainer-head,.trainer-actions{align-items:stretch}.trainer-head div,.trainer-actions{width:100%}.trainer-head button,.trainer-actions button{flex:1 1 auto}}
+"""
+    interaction_js = f"""
+(() => {{
+  const total = {count};
+  const baseTopic = {json.dumps(topic_label, ensure_ascii=False)};
+  const host = document.getElementById('taskHost');
+  const progress = document.getElementById('progressLabel');
+  let index = 1;
+  const answers = {{}};
+  const render = () => {{
+    const qid = `q${{index}}`;
+    host.innerHTML = `<p class="task-index">Задание ${{index}} из ${{total}}</p><p>Сформулируйте ответ, пример, классификацию или мини-вывод по теме: <strong>${{baseTopic}}</strong>.</p><textarea id="answerBox" placeholder="Ваш ответ или заметки..."></textarea>`;
+    const box = document.getElementById('answerBox');
+    box.value = answers[qid] || '';
+    box.addEventListener('input', () => {{ answers[qid] = box.value; update(); }});
+    update();
+  }};
+  const update = () => {{
+    const done = Object.values(answers).filter(value => String(value || '').trim()).length;
+    progress.textContent = `Заполнено: ${{done}}/${{total}}`;
+  }};
+  document.getElementById('prevTask')?.addEventListener('click', () => {{ index = Math.max(1, index - 1); render(); }});
+  document.getElementById('nextTask')?.addEventListener('click', () => {{ index = Math.min(total, index + 1); render(); }});
+  document.getElementById('markDone')?.addEventListener('click', () => {{ EduAIInteractive.complete({{ score:Object.values(answers).filter(v => String(v || '').trim()).length, max_score: total, completed:true, answers }}); }});
+  render();
+}})();
+"""
+    spec = InteractiveAppSpec(title=raw_title, app_type="interactive_trainer", question_count=count, sections=sections, interaction_js=interaction_js, custom_css=custom_css)
+    return _render_spec(spec)
+
 def _render_spec(spec: InteractiveAppSpec) -> InteractiveGeneration:
+    spec = _dedupe_spec_titles(spec)
     # Ask the trusted shared shell for structure only. Its legacy CSS/JS slices are
     # intentionally conservative, so parsed/validated assets are restored below.
     document = render_interactive_shell(
@@ -1299,6 +1421,21 @@ async def _generate(
             logger.warning("Model failed interactive validation; using trusted stereometry fallback")
             return fallback
         issues = fallback_issues
+
+    generic_fallback = _generic_fallback_generation(request, candidate.title, requested_count)
+    generic_issues = interactive_quality_issues(request, generic_fallback.html_document)
+    if requested_count is not None:
+        if generic_fallback.question_count != requested_count:
+            generic_issues.append(
+                f"question_count mismatch: requested {requested_count}, generated {generic_fallback.question_count}"
+            )
+        if len(_distinct_question_ids(generic_fallback.html_document)) < requested_count and not _uses_dynamic_question_ids(generic_fallback.html_document):
+            generic_issues.append(
+                f"task bank mismatch: requested {requested_count}, found only {len(_distinct_question_ids(generic_fallback.html_document))} distinct q1..qN ids"
+            )
+    if not generic_issues:
+        logger.warning("Model failed interactive validation; using generic EduAI fallback: %s", "; ".join(issues))
+        return generic_fallback
 
     raise ValueError("Interactive app failed quality validation: " + "; ".join(issues))
 
@@ -1594,7 +1731,7 @@ def card_text(app: Dict[str, Any]) -> str:
 async def set_source_message(app_id: str, message_id: int) -> None:
     async with db.pool.acquire() as conn:
         await conn.execute(
-            "UPDATE interactive_apps SET source_message_id=COALESCE(source_message_id,$1) WHERE app_id=$2",
+            "UPDATE interactive_apps SET source_message_id=$1 WHERE app_id=$2",
             message_id,
             uuid.UUID(str(app_id)),
         )

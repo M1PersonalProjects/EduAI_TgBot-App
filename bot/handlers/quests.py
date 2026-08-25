@@ -308,17 +308,15 @@ async def enter_quest_request_mode(target_message: Message, state: FSMContext):
     )
 
 
-@router.message(BookFilterStates.waiting_for_quest_request, Command("cancel"))
-async def cancel_quest_builder(message: Message, state: FSMContext):
-    await state.clear()
-    await message.answer("Создание квест-теста отменено.")
-
-
-@router.message(BookFilterStates.waiting_for_quest_request, F.text)
+@router.message(BookFilterStates.waiting_for_quest_request, F.text | F.photo | F.document)
 async def generate_quest_test_from_request(message: Message, state: FSMContext):
-    request_text = (message.text or "").strip()
+    request_text = (message.text or message.caption or "").strip()
+    attachment = None
+    attachment_text = ""
+    if not request_text and (message.photo or message.document):
+        request_text = "Создай квест-тест по прикреплённому учебному материалу"
     if not request_text:
-        await message.answer("Опишите класс, предмет и тему квеста.")
+        await message.answer("Опишите квест свободным сообщением или приложите учебный материал.")
         return
 
     data = await state.get_data()
@@ -329,28 +327,19 @@ async def generate_quest_test_from_request(message: Message, state: FSMContext):
         topic=data.get("chosen_topic") or "",
         default_count=5,
     )
-    can_fill_from_book = bool(data.get("chosen_book_id"))
-    if (draft.grade is None or not draft.subject) and not can_fill_from_book:
-        missing = []
-        if draft.grade is None:
-            missing.append("класс")
-        if not draft.subject:
-            missing.append("предмет")
-        await message.answer(
-            "Не хватает данных для квеста: " + ", ".join(missing) + ".\n"
-            "Напишите, например: «7 класс, математика, дроби, 5 вопросов»."
-        )
-        return
-    if not draft.topic and not data.get("chosen_page_id"):
-        await message.answer(
-            "Не хватает темы квеста. Напишите тему, например: «обыкновенные дроби, 5 вопросов»."
-        )
-        return
 
     indicator = await TelegramThinkingIndicator(
         message, "ИИ создаёт квест-тест и подбирает учебный контекст"
     ).start()
     try:
+        try:
+            attachment = await parse_telegram_attachment(message)
+            attachment_text = (getattr(attachment, "text", "") or getattr(attachment, "content", "") or "")[:24000]
+        except AttachmentError as exc:
+            await indicator.stop(delete=False)
+            await indicator.status_message.edit_text(f"❌ {exc}")
+            return
+
         async with db.pool.acquire() as conn:
             student = await conn.fetchrow(
                 "SELECT role, parent_id FROM users WHERE tg_id = $1",
@@ -362,7 +351,7 @@ async def generate_quest_test_from_request(message: Message, state: FSMContext):
                 return
 
             canonical_subject = draft.subject
-            if draft.subject and not data.get("chosen_subject"):
+            if draft.subject and draft.grade and not data.get("chosen_subject"):
                 subject_rows = await conn.fetch(
                     "SELECT DISTINCT book_program FROM book WHERE book_class = $1 ORDER BY book_program",
                     draft.grade,
@@ -388,7 +377,7 @@ async def generate_quest_test_from_request(message: Message, state: FSMContext):
             }
             bundle = await build_educational_context(
                 conn,
-                request_text,
+                request_text + ("\n" + attachment_text[:4000] if attachment_text else ""),
                 manual=manual,
                 allow_context_resolution=True,
                 allow_web=True,
@@ -397,21 +386,33 @@ async def generate_quest_test_from_request(message: Message, state: FSMContext):
             )
 
         primary = bundle.primary
+        inferred_grade = draft.grade or (primary.book_class if primary else None) or data.get("chosen_grade")
+        inferred_subject = draft.subject or (primary.book_program if primary else "") or data.get("chosen_subject") or ""
+        inferred_topic = (
+            draft.topic
+            or data.get("chosen_topic")
+            or ((primary.page_title or primary.page_paragraph or "") if primary else "")
+            or ("по прикреплённому материалу" if attachment_text else "")
+        )
         spec = parse_quest_request(
             request_text,
-            grade=draft.grade or (primary.book_class if primary else None),
-            subject=draft.subject or (primary.book_program if primary else ""),
-            topic=draft.topic or (
-                (primary.page_title or primary.page_paragraph or "") if primary else ""
-            ),
+            grade=inferred_grade,
+            subject=inferred_subject,
+            topic=inferred_topic,
             default_count=draft.requested_count,
         )
         if spec.missing_fields:
             await indicator.stop(delete=False)
             missing = ", ".join(spec.missing_fields)
+            hint = ""
+            if spec.missing_fields == ("класс",):
+                hint = "\nНапишите только класс, например: «1 класс» или «7 класс»."
+            elif spec.missing_fields == ("предмет",):
+                hint = "\nНапишите только предмет, например: «математика» или «биология»."
+            elif spec.missing_fields == ("тема",):
+                hint = "\nНапишите только тему квеста."
             await indicator.status_message.edit_text(
-                "Не хватает данных для квеста: " + missing + ".\n"
-                "Напишите, например: «7 класс, математика, дроби, 5 вопросов»."
+                "Не хватает данных для квеста: " + missing + "." + hint
             )
             return
 
@@ -420,11 +421,12 @@ async def generate_quest_test_from_request(message: Message, state: FSMContext):
             openai_client,
             system_prompt=student_task_prompt(),
             user_content=(
-                "Create a Telegram quest-test for a Student.\n"
+                "Create a Telegram quest-test for a Student. Infer wording, level and examples from the request, attachment and sources.\n"
                 f"Grade: {spec.grade}\n"
                 f"Subject: {spec.subject}\n"
                 f"Topic: {spec.topic}\n"
                 f"Student request: {spec.raw_request}\n\n"
+                f"ATTACHED MATERIAL:\n{attachment_text or 'none'}\n\n"
                 f"PRIMARY TEXTBOOK CONTEXT:\n{primary_text}\n\n"
                 f"RANKED EDUAI SUPPLEMENTS:\n{bundle.database_context or 'none'}\n\n"
                 f"WEB FALLBACK:\n{bundle.web_context or 'none'}"
@@ -439,6 +441,7 @@ async def generate_quest_test_from_request(message: Message, state: FSMContext):
         topic_context = {
             "source": "telegram_quest_test",
             "request": spec.raw_request,
+            "attachment_used": bool(attachment_text),
             "book_id": primary.book_id if primary else data.get("chosen_book_id"),
             "page_id": primary.page_id if primary else data.get("chosen_page_id"),
             "book_title": primary.book_title if primary else data.get("chosen_book_label"),
@@ -503,7 +506,7 @@ async def generate_quest_test_from_request(message: Message, state: FSMContext):
         logger.exception("Ошибка генерации квест-теста в Telegram: %s", exc)
         await indicator.stop(delete=False)
         await indicator.status_message.edit_text(
-            "❌ Не удалось создать квест-тест. Попробуйте уточнить класс, предмет и тему."
+            "❌ Не удалось создать квест-тест. Попробуйте уточнить запрос или приложенный материал."
         )
 
 

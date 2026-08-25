@@ -1780,3 +1780,30 @@ body.admin-page .admin-main-area {
   .ui-settings-popover { transition: none !important; }
 }
 /* === /2026-08-24 UX POLISH === */
+
+/* === 2026-08-24 request lifecycle polish === */
+#chat-form.is-submitting,
+#parent-chat-form.is-submitting {
+  opacity: .78;
+  pointer-events: none;
+}
+#chat-form.is-submitting .chat-composer-input,
+#parent-chat-form.is-submitting .chat-composer-input {
+  cursor: wait;
+}
+.thinking-widget {
+  width: min(30rem, calc(100vw - 2rem));
+  flex-wrap: wrap;
+}
+.thinking-widget > div { flex: 1 1 13rem; min-width: 0; }
+.thinking-cancel {
+  flex: 0 0 auto;
+  min-height: 2.35rem;
+  border-radius: 999px !important;
+  padding: .5rem .85rem !important;
+  font-size: .82rem;
+}
+@media (max-width: 560px) {
+  .thinking-widget { right: .65rem; bottom: max(.65rem, env(safe-area-inset-bottom)); }
+  .thinking-cancel { width: 100%; }
+}

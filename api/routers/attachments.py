@@ -16,6 +16,8 @@ from database import db
 from services.attachment_storage import (
     delete_attachment,
     ensure_attachment_access,
+    forget_attachment_from_chat_memory,
+    list_chat_attachment_library,
     save_upload,
 )
 
@@ -99,6 +101,38 @@ async def list_my_attachments(
         }
         for row in rows
     ]
+
+
+@router.get("/library")
+async def attachment_library(
+    user=Depends(get_current_user),
+):
+    """Return chat attachments grouped by WebApp/Telegram chat session.
+
+    This is the data source for the dedicated file-library page.  Task-owned
+    files remain protected by the storage service and are not detached by
+    merely browsing the library.
+    """
+    groups = await list_chat_attachment_library(int(user["tg_id"]))
+    return {"groups": groups}
+
+
+@router.delete("/{attachment_id}/memory")
+async def forget_attachment_memory(
+    attachment_id: int,
+    user=Depends(get_current_user),
+):
+    """Forget a file from tutor/chat memory without breaking task history.
+
+    The storage service removes chat-message links and active chat context. If
+    the attachment is still referenced by an assignment/submission/draft it is
+    retained physically; otherwise it may be deleted from storage as well.
+    """
+    result = await forget_attachment_from_chat_memory(
+        attachment_id=attachment_id,
+        owner_id=int(user["tg_id"]),
+    )
+    return result
 
 
 @router.get("/{attachment_id}/download")

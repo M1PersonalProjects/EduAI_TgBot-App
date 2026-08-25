@@ -2,7 +2,7 @@
   class ChatUI {
     constructor(options) {
       this.options = options;
-      this.state = { sessions: [], activeId: null, editingInteractiveId: null, interactiveAction: null, profile: null, threadQuery: '' };
+      this.state = { sessions: [], activeId: null, editingInteractiveId: null, interactiveAction: null, profile: null, threadQuery: '', pendingRequest: null };
       this.$ = name => document.getElementById(options[name]);
       this.layout = null;
       this.jumpButton = null;
@@ -714,9 +714,17 @@
 
     async send(event) {
       event.preventDefault();
-      const button = event.submitter || this.$('formId').querySelector('button[type="submit"], button:not([type])');
-      let stopThinking = () => {};
+      const formElement = this.$('formId');
+      const button = event.submitter || formElement.querySelector('button[type="submit"], button:not([type])');
       const input = this.$('inputId');
+      if (this.state.pendingRequest) {
+        EduAI.toast('Дождитесь ответа EduAI или нажмите «Остановить».', 'info');
+        return;
+      }
+      let stopThinking = () => {};
+      let abortedByUser = false;
+      const controller = new AbortController();
+      this.state.pendingRequest = controller;
       const originalText = input.value;
       const text = originalText.trim();
       const file = this.$('attachId').files[0];
@@ -731,7 +739,14 @@
         const isPdf = file && (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'));
         const sizeLimit = isPdf ? 100 * 1024 * 1024 : 15 * 1024 * 1024;
         if (file && file.size > sizeLimit) throw new Error(`Максимальный размер ${isPdf ? 'PDF' : 'файла'} — ${isPdf ? 100 : 15} МБ`);
+
+        // Clear the composer immediately after the user sends the request. This
+        // prevents repeated accidental submits while the AI is still working.
+        input.value = '';
+        this.resizeComposer();
+        EduAI.setFormDisabled?.(formElement, true);
         this.append('user', text || 'Проанализируй вложение', file ? [{ original_name: file.name, mime_type: file.type, size_bytes: file.size }] : [], null, null, { forceScroll: true, senderName: this.state.profile?.display_name });
+
         const form = new FormData();
         form.append('session_id', this.state.activeId);
         form.append('message_text', text);
@@ -744,28 +759,41 @@
         stopThinking = EduAI.startThinking(
           interactiveAction === 'edit' ? 'EduAI думает · изменяет приложение' :
           interactiveAction === 'create' ? 'EduAI думает · создаёт приложение' :
-          file ? 'EduAI думает · анализирует вложение' : 'EduAI думает · формулирует ответ'
+          file ? 'EduAI думает · анализирует вложение' : 'EduAI думает · формулирует ответ',
+          { onCancel: () => { abortedByUser = true; controller.abort(); } }
         );
-        const result = await EduAI.api('/api/v1/tutor/messages', { method: 'POST', body: form });
+        const result = await EduAI.api('/api/v1/tutor/messages', { method: 'POST', body: form, signal: controller.signal });
         this.append('ai', result.message_text, [], null, result.interactive_app || null, { senderName: result.sender_name || 'EduAI', messageId: result.message_id });
         if (!result.interactive_error) {
-          input.value = '';
-          this.resizeComposer();
           this.clearAttachment();
           this.clearInteractiveCompose();
         } else {
+          // Keep the failed request editable, but do not leave it in the box while
+          // the request is in flight.
           input.value = originalText;
           this.resizeComposer();
-          EduAI.toast('Интерактивное приложение не создано. Запрос оставлен в поле — можно повторить.', 'error');
+          EduAI.toast('Интерактивное приложение не создано. Запрос возвращён в поле — можно уточнить.', 'error');
         }
-        this.resizeComposer();
         await this.loadSessions(result.session_id, { loadMessages: false });
       } catch (error) {
-        console.error('EduAI tutor submit failed', error);
-        input.value = originalText;
-        this.resizeComposer();
-        EduAI.toast(error.message || 'Не удалось отправить сообщение', 'error');
-      } finally { stopThinking(); EduAI.setBusy(button, false); input.focus(); }
+        const aborted = error?.name === 'AbortError' || abortedByUser || controller.signal.aborted;
+        if (aborted) {
+          input.value = originalText;
+          this.resizeComposer();
+          EduAI.toast('Запрос остановлен. Текст возвращён в поле ввода.', 'info');
+        } else {
+          console.error('EduAI tutor submit failed', error);
+          input.value = originalText;
+          this.resizeComposer();
+          EduAI.toast(error.message || 'Не удалось отправить сообщение', 'error');
+        }
+      } finally {
+        stopThinking();
+        this.state.pendingRequest = null;
+        EduAI.setBusy(button, false);
+        EduAI.setFormDisabled?.(formElement, false);
+        input.focus();
+      }
     }
 
     previewAttachment() {
