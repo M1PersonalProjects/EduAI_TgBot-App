@@ -1,6 +1,6 @@
-# EduAI
+# Umnix
 
-EduAI — единая образовательная платформа с WebApp, FastAPI backend, Telegram-ботом и AI-тьютором. Проект поддерживает роли **Ученик**, **Учитель** (техническое значение роли в БД/API — `parent`) и **Администратор**, работу с учебниками и Book Mode, задания, интерактивные приложения, вложения и учебный прогресс.
+Umnix — единая образовательная платформа с WebApp, FastAPI backend, Telegram-ботом и AI-тьютором. Проект поддерживает роли **Ученик**, **Учитель**, **Родитель** и **Администратор**. Учитель и Родитель имеют одинаковый функционал наставника; в БД/API обе публичные роли используют техническую роль `parent`, а различие интерфейса хранится в `mentor_kind`, работу с учебниками и Book Mode, задания, интерактивные приложения, вложения и учебный прогресс.
 
 ## Архитектура
 
@@ -49,8 +49,8 @@ PostgreSQL / filesystem / external AI
 ## Установка с нуля
 
 ```bash
-git clone <repository-url> eduai
-cd eduai
+git clone <repository-url> umnix
+cd umnix
 python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 python -m pip install --upgrade pip
@@ -62,7 +62,7 @@ python -m pip install -r requirements.txt
 
 ## База данных и актуализация схемы
 
-Приложение ожидает существующую базовую схему EduAI. Минимальные совместимые изменения, необходимые текущему коду (`assignment_source`, draft-first задания и `pending_review`), проверяются и идемпотентно применяются при старте через `services/schema_migrations.py`. Runtime не зависит от одноразовых `.sql`-файлов.
+Приложение ожидает существующую базовую схему Umnix. Минимальные совместимые изменения, необходимые текущему коду (`assignment_source`, draft-first задания и `pending_review`), проверяются и идемпотентно применяются при старте через `services/schema_migrations.py`. Runtime не зависит от одноразовых `.sql`-файлов.
 
 Перед любыми ручными изменениями production-БД делайте резервную копию.
 
@@ -96,7 +96,7 @@ uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 
 Legacy `.html` URL сохранены как совместимые UI-адаптеры.
 
-Frontend использует единый iOS-inspired design system в `static/css/app.css`: режимы Light/Dark/System, мягкий EduAI glow, glass-панели, компактную desktop navigation, bottom navigation на mobile, swipe-drawer списка чатов, Book Mode sheet, `visualViewport` для экранной клавиатуры, сохранение layout/theme в `localStorage`, единый Markdown/Math renderer и `prefers-reduced-motion`. Интерфейс вдохновлён iOS/iPadOS/macOS, но не копирует системные приложения Apple.
+Frontend использует единый iOS-inspired design system в `static/css/app.css`: режимы Light/Dark/System, мягкий Umnix glow, glass-панели, компактную desktop navigation, compact mobile section sheet, swipe-drawer списка чатов, Book Mode sheet, `visualViewport` для экранной клавиатуры, сохранение layout/theme в `localStorage`, единый Markdown/Math renderer и `prefers-reduced-motion`. Интерфейс вдохновлён iOS/iPadOS/macOS, но не копирует системные приложения Apple.
 
 ### Задания Учителя
 
@@ -153,7 +153,7 @@ storage/attachments/      runtime user files (ignored by Git)
 
 **`ModuleNotFoundError`** — активируйте созданный `.venv` и повторите `pip install -r requirements.txt`.
 
-**Не подключается PostgreSQL** — проверьте `DATABASE_URL`, доступность сервера и существование базовой схемы EduAI.
+**Не подключается PostgreSQL** — проверьте `DATABASE_URL`, доступность сервера и существование базовой схемы Umnix.
 
 **Telegram WebApp не авторизуется** — проверьте `BOT_TOKEN`, `WEBAPP_BASE_URL`, HTTPS и запуск страницы именно внутри Telegram.
 

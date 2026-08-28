@@ -19,6 +19,7 @@ def _auth_response(user, telegram_photo_url: Optional[str] = None) -> dict:
         "tg_id": user["tg_id"],
         "username": user["username"],
         "role": user["role"],
+        "mentor_kind": user.get("mentor_kind") if hasattr(user, "get") else user["mentor_kind"],
         "session_token": create_session_token(user["tg_id"]),
         "telegram_photo_url": telegram_photo_url or None,
     }
@@ -30,7 +31,7 @@ async def _find_user(tg_id: int):
     """
     async with db.pool.acquire() as conn:
         user = await conn.fetchrow(
-            "SELECT tg_id, username, role, parent_id FROM users WHERE tg_id = $1",
+            "SELECT tg_id, username, role, parent_id, mentor_kind FROM users WHERE tg_id = $1",
             tg_id,
         )
     if not user:
@@ -72,6 +73,7 @@ async def validate_session(user=Depends(get_current_user)):
         "tg_id": user["tg_id"],
         "username": user["username"],
         "role": user["role"],
+        "mentor_kind": user.get("mentor_kind") if hasattr(user, "get") else user["mentor_kind"],
         "parent_id": user["parent_id"],
         "is_admin": user["is_admin"],
     }

@@ -67,4 +67,4 @@ async def test_legacy_telegram_task_button_redirects_to_webapp(make_message, moc
     text = message.answer.call_args.args[0]
     assert "перенесено в WebApp" in text
     markup = message.answer.call_args.kwargs["reply_markup"]
-    assert markup.inline_keyboard[0][0].text == "🌐 Открыть EduAI"
+    assert markup.inline_keyboard[0][0].text == "🌐 Открыть Umnix"

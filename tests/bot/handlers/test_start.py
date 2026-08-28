@@ -49,17 +49,15 @@ async def test_cmd_start_successful_child_registration(make_message, mock_db):
 
     answer_text = message.answer.call_args[0][0]
 
-    assert "Аккаунт успешно связан с Учителем!" in answer_text
+    assert "Аккаунт успешно связан" in answer_text
+    assert "Учитель" in answer_text
     assert "В Telegram можно:" in answer_text
-    assert "В EduAI WebApp доступно больше:" in answer_text
-    assert "🌐 Открыть EduAI" in answer_text
+    assert "В Umnix WebApp доступно больше:" in answer_text
+    assert "🌐 Открыть Umnix" in answer_text
 
     message.bot.send_message.assert_called_once_with(
         chat_id=parent_id,
-        text=(
-            "🔔 Ученик (@young_genius) успешно привязал "
-            "свой аккаунт к вашему профилю!"
-        ),
+        text="🔔 Ученик (@young_genius) успешно привязал аккаунт. Теперь вы указаны как его Учитель."
     )
 
 
@@ -124,8 +122,8 @@ async def test_cmd_start_admin_first_time(make_message, mock_db):
 
     assert "режим Администратора" in answer_text
     assert "В Telegram" in answer_text
-    assert "В EduAI WebApp:" in answer_text
-    assert "🌐 Открыть EduAI" in answer_text
+    assert "В Umnix WebApp:" in answer_text
+    assert "🌐 Открыть Umnix" in answer_text
 
     markup = message.answer.call_args.kwargs["reply_markup"]
     texts = [
@@ -134,8 +132,8 @@ async def test_cmd_start_admin_first_time(make_message, mock_db):
         for button in row
     ]
 
-    assert "🌐 Открыть EduAI" in texts
-    assert "👩‍🏫 Переключиться на Учителя" in texts
+    assert "🌐 Открыть Umnix" in texts
+    assert "⇄ Обычный режим" in texts
 
 
 @pytest.mark.asyncio
@@ -156,10 +154,10 @@ async def test_cmd_start_existing_parent(make_message, mock_db):
     answer_text = message.answer.call_args.args[0]
     kwargs = message.answer.call_args.kwargs
 
-    assert "Добро пожаловать в EduAI!" in answer_text
+    assert "Добро пожаловать в Umnix, Учитель!" in answer_text
     assert "В Telegram можно:" in answer_text
-    assert "В EduAI WebApp доступно больше:" in answer_text
-    assert "🌐 Открыть EduAI" in answer_text
+    assert "В Umnix WebApp доступно больше:" in answer_text
+    assert "🌐 Открыть Umnix" in answer_text
 
     assert kwargs["parse_mode"] == "Markdown"
 
@@ -173,7 +171,7 @@ async def test_cmd_start_existing_parent(make_message, mock_db):
     assert "➕ Привязать Ученика" in texts
     assert "📊 Мониторинг в чате" in texts
     assert "📚 Учебники" in texts
-    assert "🌐 Открыть EduAI" in texts
+    assert "🌐 Открыть Umnix" in texts
 
     assert "📊 Панель Родителя (Web App)" not in texts
     assert "📝 Создать ИИ-тест (Web App)" not in texts
@@ -194,7 +192,7 @@ async def test_cmd_start_new_user_role_selection(make_message, mock_db):
     
     answer_text = message.answer.call_args[0][0]
 
-    assert "Добро пожаловать в EduAI!" in answer_text
+    assert "Добро пожаловать в Umnix!" in answer_text
     assert "Telegram" in answer_text
     assert "WebApp" in answer_text
     assert "выберите свою роль:" in answer_text

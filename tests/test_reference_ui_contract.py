@@ -54,6 +54,6 @@ def test_chat_matches_reference_message_and_composer_geometry():
 def test_templates_bust_old_frontend_cache():
     for name in ("auth.html", "student.html", "parent.html", "admin.html", "interactive.html"):
         source = text(f"templates/{name}")
-        assert "app.css?v=20260824-ux-polish-2" in source
-        assert "app.js?v=20260824-ux-polish-2" in source
+        assert "app.css?v=20260825-umnix-2" in source
+        assert "app.js?v=20260825-umnix-2" in source
         assert "20260823-tz-2" not in source

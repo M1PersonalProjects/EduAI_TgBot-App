@@ -1,4 +1,4 @@
-"""Общий слой доступа EduAI к OpenAI."""
+"""Общий слой доступа Umnix к OpenAI."""
 
 from .client import (
     AIUpstreamError,
@@ -7,6 +7,7 @@ from .client import (
     get_openai_client,
     openai_client,
     parse_chat_completion,
+    transcribe_audio,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "get_openai_client",
     "openai_client",
     "parse_chat_completion",
+    "transcribe_audio",
 ]

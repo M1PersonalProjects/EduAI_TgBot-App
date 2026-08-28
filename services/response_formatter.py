@@ -1,4 +1,4 @@
-"""Canonical Markdown+LaTeX formatting helpers for EduAI clients.
+"""Canonical Markdown+LaTeX formatting helpers for umnix.ai clients.
 
 The database/API keeps canonical Markdown + LaTeX so WebApp clients can render
 mathematics properly. Telegram is the exception: raw TeX must never be sent to

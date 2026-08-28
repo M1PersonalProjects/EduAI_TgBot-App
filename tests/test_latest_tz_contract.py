@@ -82,7 +82,7 @@ def test_ios_chat_adaptation_profile_search_swipes_keyboard_and_book_sheet():
     assert "visualViewport" in app
     assert "keyboard-open" in app
     assert "setupBookModePanels" in app
-    assert "EduAI думает" in app
+    assert "Umnix думает" in app
     assert ".eduai-top-glow" in css
     assert "prefers-reduced-motion: reduce" in css
 

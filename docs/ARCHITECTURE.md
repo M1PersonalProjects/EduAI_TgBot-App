@@ -1,4 +1,4 @@
-# Архитектура EduAI
+# Архитектура Umnix
 
 ## Главный поток зависимостей
 
@@ -126,7 +126,7 @@ Student DTO удаляет private answer keys и internal metadata рекурс
 ```text
 chat request
   → structured app spec
-  → trusted EduAI shell
+  → trusted Umnix shell
   → sanitizer + quality validation
   → sandboxed iframe
   → learner answers

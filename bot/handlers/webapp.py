@@ -5,24 +5,26 @@ from database import db
 from bot.keyboards import get_parent_menu, get_student_menu
 from bot.messages import answer_plain
 from urllib.parse import quote
+from services.mentor_identity import mentor_label, normalize_mentor_kind
 
 router = Router()
 
 
 @router.message(F.text == "➕ Привязать Ученика")
-@router.message(F.text == "➕ Привязать ребенка")
 async def generate_child_link(message: Message, state: FSMContext = None):
     if state is not None:
         await state.clear()
     user_id = message.from_user.id
 
     async with db.pool.acquire() as conn:
-        user = await conn.fetchrow("SELECT role FROM users WHERE tg_id = $1", user_id)
+        user = await conn.fetchrow("SELECT role, mentor_kind FROM users WHERE tg_id = $1", user_id)
         
     if not user or user['role'] not in ['parent', 'admin']:
-        await message.answer("Эта команда доступна только Учителю или Администратору.")
+        await message.answer("Эта команда доступна Учителю, Родителю или Администратору.")
         return
         
+    mentor_kind = normalize_mentor_kind(user.get('mentor_kind'))
+    role_label = mentor_label(mentor_kind)
     bot_user = await message.bot.get_me()
     link = f"https://t.me/{bot_user.username}?start=reg_{user_id}"
 
@@ -30,12 +32,12 @@ async def generate_child_link(message: Message, state: FSMContext = None):
         "https://t.me/share/url?url="
         + quote(link, safe="")
         + "&text="
-        + quote("Присоединяйся к EduAI как Ученик", safe="")
+        + quote(f"{role_label} приглашает тебя присоединиться к Umnix как Ученик", safe="")
     )
     await message.answer(
-        "👩‍🏫 *Привязка Ученика*\n\n"
-        "Отправьте эту ссылку своему Ученику. После перехода по ней и нажатия *Старт* "
-        "его аккаунт будет связан с вашим профилем EduAI.\n\n"
+        f"👤 *Приглашение от роли «{role_label}»*\n\n"
+        f"Отправьте эту ссылку Ученику. После перехода и нажатия *Старт* бот покажет, "
+        f"что приглашение отправил именно {role_label}, и свяжет аккаунт с вашим профилем Umnix.\n\n"
         f"`{link}`",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(
@@ -53,9 +55,9 @@ async def show_parent_monitoring(message: Message, state: FSMContext = None):
     user_id = message.from_user.id
 
     async with db.pool.acquire() as conn:
-        user = await conn.fetchrow("SELECT role FROM users WHERE tg_id = $1", user_id)
+        user = await conn.fetchrow("SELECT role, mentor_kind FROM users WHERE tg_id = $1", user_id)
         if not user or user['role'] not in ['parent', 'admin']:
-            await message.answer("Эта статистика доступна только Учителям и Администраторам.")
+            await message.answer("Эта статистика доступна Учителям, Родителям и Администраторам.")
             return
 
         children = await conn.fetch(

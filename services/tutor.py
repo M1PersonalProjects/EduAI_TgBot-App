@@ -72,12 +72,8 @@ def _session_field(session: Any, key: str, default: Any = None) -> Any:
 
 
 def clean_ai_text(value: Optional[str]) -> str:
-    """Return a plain-text fallback for prompts and legacy clients.
-
-    Canonical assistant messages are preserved separately with
-    ``canonicalize_message`` before they are stored in ``chat_messages``.
-    This helper intentionally keeps the historical plain-text contract used
-    by tests and non-LaTeX contexts.
+    """
+    Убирает LaTeX-формулы и лишние спецсимволы из текста, оставляя только чистый текст.
     """
     text = str(value or "").replace("$", "")
     text = text.replace("\\(", "").replace("\\)", "")
@@ -91,7 +87,7 @@ def clean_ai_text(value: Optional[str]) -> str:
 def book_mode_footer(context: ResolvedContext) -> str:
     return (
         f"\n\n---\n📘 Основной учебный контекст: «{context.label}». "
-        "Сначала использован выбранный учебник; при нехватке материала EduAI может "
+        "Сначала использован выбранный учебник; при нехватке материала Umnix может "
         "добавить релевантное внешнее пояснение. Чтобы выйти из Book Mode, используйте /exit_book."
     )
 
@@ -287,7 +283,7 @@ async def get_messages(user_id: int, session_id: str) -> List[Dict[str, Any]]:
     result = []
     for row in rows:
         item = dict(row)
-        item["sender_name"] = display_name if row["sender"] == "user" else "EduAI"
+        item["sender_name"] = display_name if row["sender"] == "user" else "Umnix"
         item["attachments"] = attachments.get(row["message_id"], [])
         item["interactive_app"] = app_by_message.get(row["message_id"])
         result.append(item)

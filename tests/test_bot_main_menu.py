@@ -6,7 +6,7 @@ from bot.keyboards import get_admin_menu, get_parent_menu, get_student_menu
 OLD_WEBAPP_BUTTONS = (
     "📊 Панель Родителя (Web App)",
     "📝 Создать ИИ-тест (Web App)",
-    "🚀 Открыть EduAI (Web App)",
+    "🚀 Открыть Umnix (Web App)",
 )
 
 
@@ -32,7 +32,7 @@ def _webapp_buttons(markup):
 def test_parent_menu_has_one_universal_webapp_button():
     menu = get_parent_menu()
     texts = _button_texts(menu)
-    assert "🌐 Открыть EduAI" in texts
+    assert "🌐 Открыть Umnix" in texts
     assert len(_webapp_buttons(menu)) == 1
     for old in OLD_WEBAPP_BUTTONS:
         assert old not in texts
@@ -41,7 +41,7 @@ def test_parent_menu_has_one_universal_webapp_button():
 def test_student_menu_uses_same_webapp_label():
     menu = get_student_menu()
     texts = _button_texts(menu)
-    assert "🌐 Открыть EduAI" in texts
+    assert "🌐 Открыть Umnix" in texts
     assert len(_webapp_buttons(menu)) == 1
     for old in OLD_WEBAPP_BUTTONS:
         assert old not in texts
@@ -50,8 +50,8 @@ def test_student_menu_uses_same_webapp_label():
 def test_admin_menu_has_webapp_and_role_toggle():
     menu = get_admin_menu()
     texts = _button_texts(menu)
-    assert "🌐 Открыть EduAI" in texts
-    assert "👩‍🏫 Переключиться на Учителя" in texts
+    assert "🌐 Открыть Umnix" in texts
+    assert "⇄ Обычный режим" in texts
     assert len(_webapp_buttons(menu)) == 1
 
 
@@ -67,12 +67,12 @@ def test_old_main_menu_webapp_buttons_do_not_exist_in_bot_source():
 def test_start_has_role_specific_telegram_and_webapp_copy():
     source = Path("bot/handlers/start.py").read_text(encoding="utf-8")
     assert "STUDENT_START_TEXT" in source
-    assert "PARENT_START_TEXT" in source
+    assert "parent_start_text" in source
     assert "ADMIN_START_TEXT" in source
     assert "NEW_USER_START_TEXT" in source
     assert "В Telegram" in source
     assert "WebApp" in source
-    assert "🌐 Открыть EduAI" in source
+    assert "🌐 Открыть Umnix" in source
 
 
 def test_student_and_teacher_menus_separate_books_and_free_ai_helper():

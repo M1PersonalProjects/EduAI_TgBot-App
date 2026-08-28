@@ -4,11 +4,8 @@ from aiogram.types import BufferedInputFile
 
 from services.response_formatter import format_for_telegram
 
-# Telegram text messages are physically limited by the platform. Keep a little
-# headroom below the documented 4096-character ceiling so entity/counting edge
-# cases cannot turn a valid tutor reply into BadRequest: message is too long.
 TELEGRAM_TEXT_LIMIT = 4000
-LONG_ANSWER_FILENAME = "eduai-answer.txt"
+LONG_ANSWER_FILENAME = "umnix-answer.txt"
 LONG_ANSWER_CAPTION = (
     "📄 Ответ ИИ-тьютора не помещается в одно текстовое сообщение Telegram. "
     "Полный ответ — в этом файле."
@@ -20,11 +17,8 @@ EMPTY_ANSWER_FALLBACK = (
 
 
 def split_telegram_text(text: str, limit: int = TELEGRAM_TEXT_LIMIT) -> List[str]:
-    """Legacy utility kept for compatibility.
-
-    AI-tutor delivery no longer uses this function: one user request must map to
-    one Telegram object. Callers that explicitly need chunks for non-tutor UI
-    may still use it.
+    """
+    Разбивает текстовый ответ на части, которые помещаются в одно Telegram-сообщение.
     """
     remaining = str(text or "")
     chunks: List[str] = []
@@ -45,21 +39,23 @@ def split_telegram_text(text: str, limit: int = TELEGRAM_TEXT_LIMIT) -> List[str
 
 
 def _safe_telegram_payload(text: str) -> str:
+    """
+    Формирует безопасный текст для отправки в Telegram, удаляя LaTeX и обрезая пустые строки.
+    """
     raw = str(text or "").strip() or EMPTY_ANSWER_FALLBACK
     return format_for_telegram(raw).strip() or EMPTY_ANSWER_FALLBACK
 
 
 def _text_document(text: str) -> BufferedInputFile:
+    """
+    Создаёт BufferedInputFile из текстового ответа для отправки в Telegram как документа.
+    """
     return BufferedInputFile(text.encode("utf-8"), filename=LONG_ANSWER_FILENAME)
 
 
 async def answer_plain(message, text: str, reply_markup: Optional[object] = None):
-    """Send one logical tutor response as exactly one Telegram object.
-
-    Short answers are one text message. If the safe Telegram representation is
-    too long, the full answer is sent once as a UTF-8 text document instead of
-    being fragmented into multiple sequential messages. Raw LaTeX is removed at
-    this final boundary by ``format_for_telegram``.
+    """
+    Отправляет текстовый ответ в чат Telegram, безопасно разбивая его на части, если он слишком длинный.
     """
     safe_text = _safe_telegram_payload(text)
     if len(safe_text) <= TELEGRAM_TEXT_LIMIT:
@@ -85,7 +81,9 @@ async def send_plain_to_chat(
     text: str,
     reply_markup: Optional[object] = None,
 ):
-    """Safe one-object delivery to an arbitrary Telegram chat."""
+    """
+    Отправляет текстовый ответ в чат Telegram, безопасно разбивая его на части, если он слишком длинный.
+    """
     safe_text = _safe_telegram_payload(text)
     if len(safe_text) <= TELEGRAM_TEXT_LIMIT:
         kwargs = {

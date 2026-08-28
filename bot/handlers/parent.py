@@ -9,10 +9,14 @@ from services.ai import create_chat_completion, openai_client
 from config import settings
 from bot.messages import answer_plain
 from services.tutor_policy import teacher_analytics_prompt
+from services.mentor_identity import mentor_label, normalize_mentor_kind
 
 router = Router()
 
 class ParentStates(StatesGroup):
+    """
+    Состояния для взаимодействия Учителя/Родителя с ИИ-аналитикой и генерацией тестов.
+    """
     waiting_for_analytics_question = State()
 
 
@@ -23,11 +27,11 @@ async def ask_ai_parent_start(message: Message, state: FSMContext):
     user_id = message.from_user.id
     
     async with db.pool.acquire() as conn:
-        user = await conn.fetchrow("SELECT role FROM users WHERE tg_id = $1", user_id)
+        user = await conn.fetchrow("SELECT role, mentor_kind FROM users WHERE tg_id = $1", user_id)
         child = await conn.fetchrow("SELECT tg_id FROM users WHERE parent_id = $1 AND role = 'student' LIMIT 1", user_id)
     
     if not user or user["role"] not in ["parent", "admin"]:
-        await message.answer("Эта функция доступна только для пользователей с ролью Учитель.")
+        await message.answer("Эта функция доступна только для Учителей и Родителей.")
         return
 
     if not child:
@@ -35,8 +39,9 @@ async def ask_ai_parent_start(message: Message, state: FSMContext):
         return
 
     await state.set_state(ParentStates.waiting_for_analytics_question)
+    public_role = mentor_label(normalize_mentor_kind(user.get("mentor_kind")))
     await message.answer(
-        "🤖 *ИИ-консультант для Учителя*\n\n"
+        f"🤖 *ИИ-консультант для {public_role}*\n\n"
         "Я проанализирую все квесты, которые решал ваш Ученик, его ответы и ошибки.\n"
         "Задайте любой интересующий вас вопрос (например: _«В каких темах мой Ученик чаще всего ошибается?»_).\n"
         "Напишите **Отмена** в чате для выхода.",
@@ -46,6 +51,9 @@ async def ask_ai_parent_start(message: Message, state: FSMContext):
 
 @router.message(ParentStates.waiting_for_analytics_question)
 async def process_parent_analytics_query(message: Message, state: FSMContext):
+    """
+    Обрабатывает вопрос Родителя/Учителя и строит отчет по успеваемости ученика с помощью ИИ.
+    """
     if message.text.lower() == "отмена":
         await state.clear()
         await message.answer("Выход из режима аналитики.")
@@ -108,7 +116,7 @@ async def process_parent_analytics_query(message: Message, state: FSMContext):
         await answer_plain(message, response.choices[0].message.content)
     
     except Exception as e:
-        logger.error(f"Ошибка ИИ-аналитики для Учителя: {e}")
+        logger.error(f"Ошибка ИИ-аналитики для наставника: {e}")
         await status_msg.edit_text("❌ Не удалось построить отчет аналитики. Попробуйте позже.")
     
     await state.clear()
@@ -124,11 +132,11 @@ async def parent_create_test_start(message: Message, state: FSMContext):
     async with db.pool.acquire() as conn:
         user = await conn.fetchrow("SELECT role FROM users WHERE tg_id = $1", message.from_user.id)
     if not user or user["role"] not in ["parent", "admin"]:
-        await message.answer("Эта функция доступна только Учителям.")
+        await message.answer("Эта функция доступна Учителям и Родителям.")
         return
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
-            text="🌐 Открыть EduAI",
+            text="🌐 Открыть Umnix",
             web_app=WebAppInfo(url=settings.webapp_base_url),
         )
     ]])

@@ -4,7 +4,9 @@ from pathlib import Path
 def test_frontend_role_labels_do_not_change_technical_role_values():
     source = Path("static/js/app.js").read_text(encoding="utf-8")
     assert "student: 'Ученик'" in source
-    assert "parent: 'Учитель'" in source
+    assert "parent: 'Учитель / Родитель'" in source
+    assert "mentor_kind" in source
+    assert "Родитель" in source
     assert "admin: 'Администратор'" in source
     assert "parent: '/parent.html'" in source
 

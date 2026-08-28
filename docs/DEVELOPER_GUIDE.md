@@ -1,4 +1,4 @@
-# Руководство разработчика EduAI
+# Руководство разработчика Umnix
 
 ## 1. Принципы
 
@@ -115,7 +115,7 @@ python -m compileall -q api bot services tests main.py config.py database.py
 
 ## Общий принцип
 
-Интерфейс — iOS-inspired, но с собственной идентичностью EduAI: контент важнее декора, панели компактны, постоянное занятие пространства сведено к минимуму. Основная реализация находится в `static/css/app.css`, а адаптивное UI-поведение — в `static/js/app.js`.
+Интерфейс — iOS-inspired, но с собственной идентичностью Umnix: контент важнее декора, панели компактны, постоянное занятие пространства сведено к минимуму. Основная реализация находится в `static/css/app.css`, а адаптивное UI-поведение — в `static/js/app.js`.
 
 ## Theme tokens
 
@@ -165,4 +165,4 @@ Desktop использует floating modal/popover. На ширине до 767p
 
 ## Math
 
-Не реализуйте новый renderer в role-specific JS. Используйте `EduAI.renderRichContent` / `EduAI.markdown` и общий Math pipeline из `static/js/app.js`.
+Не реализуйте новый renderer в role-specific JS. Используйте `Umnix.renderRichContent` / `Umnix.markdown` и общий Math pipeline из `static/js/app.js`.

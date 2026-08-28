@@ -23,7 +23,9 @@ def render_interactive_shell(
     interaction_js: str = "",
     custom_css: str = "",
 ) -> str:
-    """Render generated content inside the trusted, reusable EduAI application shell."""
+    """
+    Генерирует HTML-страницу с интерактивным учебным модулем.
+    """
     normalized = []
     seen = set()
     for index, section in enumerate(sections, start=1):
@@ -52,12 +54,12 @@ def render_interactive_shell(
     panels = "".join(
         f'<section class="eduai-panel" id="panel-{section["id"]}" role="tabpanel" '
         f'data-eduai-panel="{section["id"]}" {"" if i == 0 else "hidden"}>'
-        f'<div class="eduai-panel__heading"><span class="eduai-kicker">EduAI</span>'
+        f'<div class="eduai-panel__heading"><span class="eduai-kicker">Umnix</span>'
         f'<h2>{html.escape(section["label"])}</h2></div>'
         f'<div class="eduai-content">{section["html"]}</div></section>'
         for i, section in enumerate(normalized)
     )
-    safe_title = html.escape(str(title or "EduAI Interactive")[:180])
+    safe_title = html.escape(str(title or "Umnix Interactive")[:180])
 
     return f'''<!doctype html>
 <html lang="ru" data-eduai-shell="1">
@@ -82,10 +84,10 @@ button,input,select,textarea{{font:inherit}}button{{cursor:pointer}}a{{color:inh
 </head>
 <body>
 <div class="eduai-app">
-<header class="eduai-header"><div class="eduai-brand"><div class="eduai-logo" aria-hidden="true">E</div><div><p class="eduai-subtitle">Интерактивный учебный модуль</p><h1>{safe_title}</h1></div></div></header>
+<header class="eduai-header"><div class="eduai-brand"><div class="eduai-logo" aria-hidden="true">u</div><div><p class="eduai-subtitle">Интерактивный учебный модуль</p><h1>{safe_title}</h1></div></div></header>
 <nav class="eduai-nav" aria-label="Разделы приложения" role="tablist">{nav}</nav>
 <main>{panels}</main>
-<footer class="eduai-footer">EduAI · интерактивное обучение</footer>
+<footer class="eduai-footer">Umnix · интерактивное обучение</footer>
 </div>
 <div class="eduai-modal" id="eduai-modal" aria-hidden="true"><div class="eduai-modal__dialog" role="dialog" aria-modal="true"><div id="eduai-modal-content"></div><p><button type="button" data-eduai-modal-close>Закрыть</button></p></div></div>
 <script data-eduai-shell-script>

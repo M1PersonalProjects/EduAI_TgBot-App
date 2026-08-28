@@ -185,7 +185,7 @@ async def search_eduai_materials(
     limit: int = SOURCE_LIMIT,
     max_chars: int = MAX_SUPPLEMENTAL_CHARS,
 ) -> List[EducationalSource]:
-    """Search other EduAI books and rank them by the TOR source hierarchy."""
+    """Search other umnix.ai books and rank them by the TOR source hierarchy."""
     tokens = _tokens(query)
     patterns = [f"%{token}%" for token in tokens]
     params: List[Any] = []
@@ -278,7 +278,7 @@ def render_sources(sources: List[EducationalSource], *, max_chars: int = MAX_SUP
         "peer_textbook": "OTHER TEXTBOOK (same subject/level)",
         "problem_collection": "PROBLEM COLLECTION / WORKBOOK",
         "solution_book": "SOLUTION / ANSWER BOOK (examples only; do not copy sequentially)",
-        "eduai_material": "OTHER EDUAI MATERIAL",
+        "eduai_material": "OTHER UMNIX.AI MATERIAL",
     }
     blocks = [f"[{labels.get(source.kind, source.kind.upper())}] {source.label}\n{source.content}" for source in sources]
     return "\n\n".join(blocks)[:max_chars]
@@ -305,7 +305,7 @@ async def build_educational_context(
     try:
         sources = await search_eduai_materials(conn, query, primary=primary)
     except Exception as exc:
-        logger.warning("Supplemental EduAI context search failed: %s", exc)
+        logger.warning("Supplemental umnix.ai context search failed: %s", exc)
         sources = []
     bundle = EducationalContextBundle(
         primary=primary,

@@ -29,6 +29,9 @@ async def digitize_pdf_path(
     progress_callback: Optional[ProgressCallback] = None,
     reset_pages: bool = True,
 ) -> dict:
+    """
+    Оцифровывает PDF-файл и сохраняет распознанные страницы учебника.
+    """
     callback = progress_callback or _noop_progress
     doc = None
     try:
@@ -130,7 +133,9 @@ async def digitize_pdf_bytes(
     *,
     client=None,
 ) -> dict:
-    """Оцифровывает PDF из памяти и сохраняет распознанные страницы учебника."""
+    """
+    Оцифровывает PDF из памяти и сохраняет распознанные страницы учебника.
+    """
     if not pdf_bytes:
         raise ValueError("PDF пуст")
     if len(pdf_bytes) > 100 * 1024 * 1024:

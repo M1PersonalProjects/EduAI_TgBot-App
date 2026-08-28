@@ -37,11 +37,9 @@ class GenerateTaskRequest(BaseModel):
 
 @router.get("/generate/{tg_id}", response_model=TaskGenerationResponse)
 async def generate_task_legacy(tg_id: int):
-    """Генерация квестов с обратной совместимостью, используемая клиентом/тестами Telegram. 
-
-    Эта конечная точка намеренно оставлена с методом GET, поскольку её используют существующие клиенты. Новое
-    при родительском управлении с явным указанием книги/темы используется конечная точка POST,
-    описанная ниже, и контекстный преобразователь для всей книги.
+    """
+    Генерация случайного задания для ученика с указанным tg_id.
+    Использует случайную страницу из базы знаний для создания задания.
     """
     async with db.pool.acquire() as conn:
         student = await conn.fetchrow(
@@ -92,7 +90,7 @@ async def generate_task_legacy(tg_id: int):
             )
         source_text = (
             f"PRIMARY TEXTBOOK:\n{page_content}\n\n"
-            f"RANKED EDUAI SUPPLEMENTS:\n{bundle.database_context or 'none'}\n\n"
+            f"RANKED UMNIX.AI SUPPLEMENTS:\n{bundle.database_context or 'none'}\n\n"
             f"WEB FALLBACK:\n{bundle.web_context or 'none'}"
         )
         ai_task = await generate_exact_task_set(
@@ -151,6 +149,9 @@ async def generate_task_legacy(tg_id: int):
 
 @router.post("/generate/{tg_id}", response_model=TaskGenerationResponse)
 async def generate_task(tg_id: int, payload: GenerateTaskRequest):
+    """
+    Генерация задания для ученика с указанным tg_id.
+    """
     query_text = f"{payload.topic or ''}\n{payload.instructions or ''}".strip()
     requested_count = (
         payload.task_count
@@ -198,7 +199,7 @@ async def generate_task(tg_id: int, payload: GenerateTaskRequest):
                 f"Topic: {payload.topic or ''}\n"
                 f"Teacher instructions: {payload.instructions or ''}\n"
                 f"PRIMARY TEXTBOOK CONTEXT:\n{context.content}\n\n"
-                f"RANKED EDUAI SUPPLEMENTS:\n{bundle.database_context or 'none'}\n\n"
+                f"RANKED UMNIX.AI SUPPLEMENTS:\n{bundle.database_context or 'none'}\n\n"
                 f"WEB FALLBACK:\n{bundle.web_context or 'none'}"
             ),
             requested_count=requested_count,
@@ -252,6 +253,9 @@ async def generate_task(tg_id: int, payload: GenerateTaskRequest):
 
 @router.post("/submit", response_model=SubmitAnswerResponse)
 async def submit_task_answer(payload: SubmitAnswerRequest):
+    """
+    Отправка ответа ученика на задание.
+    """
     async with db.pool.acquire() as conn:
         task = await conn.fetchrow(
             """
@@ -336,7 +340,7 @@ async def submit_task_answer(payload: SubmitAnswerRequest):
                         f"Reference Answer: {correct_answer}\n"
                         f"Student's Answer: {payload.student_answer}\n\n"
                         f"PRIMARY EDUCATIONAL CONTEXT:\n{grading_context.primary.content if grading_context.primary else 'none'}\n\n"
-                        f"RANKED EDUAI SUPPLEMENTS:\n{grading_context.database_context or 'none'}"
+                        f"RANKED UMNIX.AI SUPPLEMENTS:\n{grading_context.database_context or 'none'}"
                     ),
                 },
             ],

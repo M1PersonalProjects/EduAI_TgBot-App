@@ -17,14 +17,23 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def _encode(value: bytes) -> str:
+    """
+    Кодирует байты в безопасную для URL строку Base64 без символов '=' в конце.
+    """
     return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
 
 
 def _decode(value: str) -> bytes:
+    """
+    Декодирует безопасную для URL строку Base64 обратно в байты.
+    """
     return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
 
 
 def create_session_token(tg_id: int) -> str:
+    """
+    Создаёт токен сессии для пользователя с указанным tg_id.
+    """
     payload = {
         "tg_id": int(tg_id),
         "exp": int(time.time()) + SESSION_TTL_SECONDS,
@@ -39,6 +48,9 @@ def create_session_token(tg_id: int) -> str:
 
 
 def decode_session_token(token: str) -> Dict[str, int]:
+    """
+    Декодирует токен сессии и проверяет его подпись и срок действия.
+    """
     try:
         body, supplied_signature = token.split(".", 1)
         expected_signature = hmac.new(
@@ -63,6 +75,9 @@ def decode_session_token(token: str) -> Dict[str, int]:
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ) -> Dict[str, object]:
+    """
+    Получает текущего пользователя из токена сессии.
+    """
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -73,7 +88,7 @@ async def get_current_user(
     session = decode_session_token(credentials.credentials)
     async with db.pool.acquire() as conn:
         user = await conn.fetchrow(
-            "SELECT tg_id, username, role, parent_id FROM users WHERE tg_id = $1",
+            "SELECT tg_id, username, role, parent_id, mentor_kind FROM users WHERE tg_id = $1",
             session["tg_id"],
         )
     if not user:
@@ -85,6 +100,9 @@ async def get_current_user(
 
 
 def require_roles(*allowed_roles: str) -> Callable:
+    """
+    Декоратор для проверки роли пользователя.
+    """
     allowed: Iterable[str] = set(allowed_roles)
 
     async def dependency(user: Dict[str, object] = Depends(get_current_user)) -> Dict[str, object]:
@@ -96,7 +114,9 @@ def require_roles(*allowed_roles: str) -> Callable:
 
 
 def verify_telegram_webapp_data(init_data_raw: str) -> dict:
-    """Проверяет подпись и срок действия Telegram WebApp initData."""
+    """
+    Проверяет подпись и срок действия Telegram WebApp initData.
+    """
     import urllib.parse
 
     try:

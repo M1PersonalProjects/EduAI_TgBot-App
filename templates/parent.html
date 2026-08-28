@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#f6f8fc">
-  <title>Кабинет Учителя — EduAI</title>
+  <title>Кабинет Учителя — Umnix</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -15,17 +15,16 @@
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;550;650;750;850&display=swap"
     rel="stylesheet"
   >
-  <link rel="stylesheet" href="/static/css/app.css?v=20260824-ux-polish-2">
+  <link rel="stylesheet" href="/static/css/app.css?v=20260825-umnix-2">
 </head>
 <body class="teacher-page">
   <div class="app-shell">
     <main class="main-area">
       <header class="topbar glass mb-5">
-        <div class="flex items-center gap-3">
-          <div>
-            <p class="text-xs font-bold uppercase tracking-[.16em] muted">
-              Учебное пространство
-            </p>
+        <div class="topbar-identity min-w-0">
+          <a class="umnix-brand" href="/parent.html" aria-label="Umnix — кабинет Учителя"><span class="umnix-logo" aria-hidden="true"><span>u</span></span><span class="umnix-wordmark">Umnix</span></a>
+          <div class="topbar-page-copy min-w-0">
+            <p class="text-xs font-bold uppercase tracking-[.16em] muted">Учебное пространство</p>
             <h1 class="font-extrabold">Прогресс без давления</h1>
           </div>
         </div>
@@ -39,6 +38,9 @@
           </button>
           <button type="button" class="quick-nav-link" data-section="task-builder">
             <span aria-hidden="true">✓</span><span>Задания</span>
+          </button>
+          <button type="button" class="quick-nav-link" data-section="about">
+            <span aria-hidden="true">♡</span><span>О нашем приложении</span>
           </button>
           <a
             href="/admin.html"
@@ -88,7 +90,7 @@
           <article class="glass card min-w-0 chat-center-card">
             <div class="chat-screen-header border-b border-white/10 pb-4">
               <div class="flex items-center gap-2 chat-screen-header-row">
-                <button class="icon-btn chat-sidebar-main-toggle" type="button" data-chat-sidebar-toggle aria-expanded="true" title="Чаты">☰</button>
+                <button class="icon-btn chat-sidebar-main-toggle" type="button" data-chat-sidebar-toggle aria-expanded="true" title="Чаты">☰</button><a class="umnix-brand chat-screen-brand" href="/parent.html" aria-label="Umnix — ИИ-тьютор"><span class="umnix-logo" aria-hidden="true"><span>u</span></span><span class="umnix-wordmark">Umnix</span></a>
                 <div class="min-w-0 chat-screen-title"><span class="badge">✦ Учебный ИИ-тьютор</span><h2 class="mt-2 text-xl font-extrabold">ИИ-тьютор</h2></div>
               </div>
             </div>
@@ -142,9 +144,10 @@
                 id="parent-chat-input"
                 class="input chat-composer-input flex-1 min-w-0"
                 maxlength="4000"
-                placeholder="Спросите EduAI…"
+                placeholder="Спросите Umnix…"
               ></textarea>
 
+              <button class="icon-btn chat-voice-button shrink-0" type="button" data-chat-voice aria-pressed="false" aria-label="Голосовое сообщение" title="Голосовое сообщение"><span aria-hidden="true">🎙</span></button>
               <button class="btn-primary chat-send-button shrink-0" type="submit">
                 <span class="chat-send-label">Отправить</span><span aria-hidden="true">↑</span>
               </button>
@@ -179,19 +182,19 @@
                 </select>
 
                 <button id="parent-chat-lock-context" class="btn-secondary text-sm">
-                  🔒 Закрепить Book Mode
+                  🔒 Закрепить учебник
                 </button>
                 <button
                   id="parent-chat-exit-context"
                   class="btn-danger text-sm"
                   hidden
                 >
-                  Выйти из Book Mode
+                  Открепить учебник
                 </button>
               </div>
 
               <p class="mt-3 text-xs muted">
-                Учебник выбирать необязательно. В Book Mode выбранный учебник становится основным источником, а при нехватке материала тьютор может дополнить объяснение.
+                Учебник выбирать необязательно. При закреплённом учебнике он становится основным источником, а при нехватке материала тьютор может дополнить объяснение.
               </p>
             </div>
 
@@ -210,7 +213,7 @@
       <section id="task-builder" class="page-section">
         <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
           <div>
-            <p class="text-sm font-bold text-violet-200">Конструктор</p>
+            <p class="text-sm font-bold text-violet-200">Задания</p>
             <h2 class="text-2xl font-extrabold">История заданий</h2>
             <p class="mt-1 muted">
               Здесь хранится история отправленных заданий. Новые задания создаются из карточки Ученика или из ответа ИИ.
@@ -226,10 +229,20 @@
               История заданий и прикреплённых материалов.
             </p>
           </div>
-          <div id="sent-tasks-list" class="grid md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+          <div id="sent-tasks-list" class="compact-record-grid"></div>
         </div>
       </section>
 
+
+      <section id="about" class="page-section">
+        <article class="glass card about-hero"><span class="badge">♡ Umnix</span><h2 class="mt-4 text-3xl font-extrabold">Помощник для совместной учёбы</h2><p class="mt-3 max-w-3xl muted">Umnix помогает Учителю организовать понятную практику: назначать задания, использовать материалы и учебники, видеть попытки и обсуждать сложные темы вместе с ИИ-тьютором.</p></article>
+        <div class="about-benefit-grid mt-4">
+          <article class="glass card about-benefit"><div class="text-2xl">✓</div><h3 class="mt-3 font-extrabold">Задания без рутины</h3><p class="mt-2 text-sm muted">Создавайте свои задания или просите ИИ подготовить черновик, а перед отправкой всегда проверяйте содержание.</p></article>
+          <article class="glass card about-benefit"><div class="text-2xl">📈</div><h3 class="mt-3 font-extrabold">Понятный прогресс</h3><p class="mt-2 text-sm muted">История попыток и результатов помогает заметить рост и темы, которым стоит уделить больше внимания.</p></article>
+          <article class="glass card about-benefit"><div class="text-2xl">📚</div><h3 class="mt-3 font-extrabold">Опора на учебный контекст</h3><p class="mt-2 text-sm muted">Учебники, страницы и прикреплённые материалы становятся основой для объяснений и заданий.</p></article>
+          <article class="glass card about-benefit"><div class="text-2xl">✦</div><h3 class="mt-3 font-extrabold">Больше, чем обычный чат с ИИ</h3><p class="mt-2 text-sm muted">В одном месте связаны чат, учебные материалы, задания, интерактивная практика и результаты конкретного Ученика.</p></article>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -238,7 +251,7 @@
       <div class="flex justify-between gap-3">
         <div>
           <p class="text-sm font-bold text-violet-200">Новое задание</p>
-          <h2 class="text-xl font-extrabold">Конструктор практики</h2>
+          <h2 class="text-xl font-extrabold">Новое задание</h2>
         </div>
         <button
           class="icon-btn"
@@ -439,13 +452,13 @@
         <button class="icon-btn" data-close-modal="task-history-modal" aria-label="Закрыть" type="button">×</button>
       </div>
       <div id="task-history-summary" class="mt-4 grid grid-cols-2 sm:grid-cols-5 gap-2"></div>
-      <div id="task-history-list" class="mt-4 grid gap-3"></div>
+      <div id="task-history-list" class="mt-4 compact-record-grid"></div>
     </div>
   </div>
 
   <div class="toast-stack" aria-live="polite"></div>
 
-  <script src="/static/js/app.js?v=20260824-ux-polish-2"></script>
+  <script src="/static/js/app.js?v=20260825-umnix-2"></script>
   <script src="/static/js/chat.js?v=20260824-ux-polish-2"></script>
   <script src="/static/js/parent.js?v=20260824-ux-polish-2"></script>
 </body>

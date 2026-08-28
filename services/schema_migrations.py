@@ -117,7 +117,41 @@ ALTER TABLE task_submissions
 """
 
 
+BRAND_TITLE_SCHEMA_SQL = r"""
+UPDATE chat_sessions
+SET title = 'Чат Telegram · Umnix'
+WHERE title IN ('Чат_Tg-Bot-EduAI', 'Чат_Tg-Bot-Umnix', 'Чат Telegram · umnix.ai');
+"""
+
+
+MENTOR_KIND_SCHEMA_SQL = r"""
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS mentor_kind TEXT;
+
+UPDATE users
+SET mentor_kind = 'teacher'
+WHERE role = 'parent'
+  AND (mentor_kind IS NULL OR mentor_kind NOT IN ('teacher', 'parent'));
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'users_mentor_kind_check'
+    ) THEN
+        ALTER TABLE users
+            ADD CONSTRAINT users_mentor_kind_check
+            CHECK (mentor_kind IS NULL OR mentor_kind IN ('teacher', 'parent'));
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_users_role_mentor_kind
+    ON users(role, mentor_kind);
+"""
+
+
 RUNTIME_SCHEMA_STATEMENTS = (
+    ("brand_titles", BRAND_TITLE_SCHEMA_SQL),
+    ("mentor_kind", MENTOR_KIND_SCHEMA_SQL),
     ("assignment_source", ASSIGNMENT_SOURCE_SCHEMA_SQL),
     ("task_drafts_and_review", TASK_DRAFTS_AND_REVIEW_SCHEMA_SQL),
 )

@@ -13,7 +13,7 @@ async def test_generate_child_link_not_parent(make_message, mock_db):
     
     await generate_child_link(message)
     
-    message.answer.assert_called_once_with("Эта команда доступна только Учителю или Администратору.")
+    message.answer.assert_called_once_with("Эта команда доступна Учителю, Родителю или Администратору.")
 
 
 @pytest.mark.asyncio

@@ -21,5 +21,8 @@ def test_referral_flow_keeps_existing_reg_deep_link_and_guards_reassignment():
 
     assert '?start=reg_{user_id}' in webapp
     assert 'inviter["role"] not in ("parent", "admin")' in start
-    assert 'уже привязан к другому Учителю' in start
-    assert 'уже привязан к этому Учителю' in start
+    assert 'уже привязан к другому' in start
+    assert 'mentor_label' in start
+    assert 'mentor_kind' in start
+    assert 'уже привязан к этому' in start
+    assert 'mentor_label(inviter_kind' in start

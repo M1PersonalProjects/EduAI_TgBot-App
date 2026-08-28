@@ -13,14 +13,21 @@ from services.file_parser import AttachmentError
 from services.thinking import TelegramThinkingIndicator
 from services.tutor import exit_book_mode, openai_client, respond, ensure_telegram_session, search_web_for_education
 from services.educational_context import build_educational_context
-from services.task_generation import generate_exact_task_set, task_set_payload
 from services.tutor_policy import student_task_prompt
-from services.quest_generation import canonicalize_subject, parse_quest_request
+from services.quest_generation import (
+    canonicalize_subject,
+    format_quest_question,
+    generate_quest_task_set,
+    parse_quest_request,
+)
 from services.assignment_source import infer_difficulty
 
 router = Router()
 
 class BookFilterStates(StatesGroup):
+    """
+    Состояния для выбора учебного контекста и создания квест-теста.
+    """
     choosing_grade = State()
     choosing_subject = State()
     choosing_book = State()
@@ -31,10 +38,16 @@ class BookFilterStates(StatesGroup):
 
 
 def quest_test_button():
-    return [InlineKeyboardButton(text="🧩 Создать квест-тест", callback_data="create_quest_test")]
+    """
+    Возвращает кнопку для создания квест-теста.
+    """
+    return [InlineKeyboardButton(text="🧩 Создать Квест-Тест", callback_data="create_quest_test")]
 
 
 def quest_entry_keyboard() -> InlineKeyboardMarkup:
+    """
+    Возвращает клавиатуру с кнопками для выбора учебного контекста и создания квест-теста.
+    """
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📚 Выбрать учебник / тему", callback_data="quest_choose_context")],
         [InlineKeyboardButton(text="✍️ Создать по запросу", callback_data="create_quest_test")],
@@ -43,13 +56,16 @@ def quest_entry_keyboard() -> InlineKeyboardMarkup:
 
 @router.message(F.text.in_({"📚 Учебники", "📚 Каталог учебников"}))
 async def start_book_filter(message: Message, state: FSMContext):
+    """
+    Начинает процесс выбора учебного контекста для создания квест-теста.
+    """
     await state.clear()
     
     user_id = message.from_user.id
     async with db.pool.acquire() as conn:
         user = await conn.fetchrow("SELECT role FROM users WHERE tg_id = $1", user_id)
         if not user:
-            await message.answer("Пожалуйста, сначала зарегистрируйтесь в системе.")
+            await message.answer("Пожалуйста, сначала зарегистрируйтесь.")
             return
     await state.update_data(user_role=user["role"])
 
@@ -74,6 +90,9 @@ async def start_book_filter(message: Message, state: FSMContext):
 
 @router.callback_query(BookFilterStates.choosing_grade, F.data.startswith("grade_"))
 async def handle_grade_choice(call: CallbackQuery, state: FSMContext):
+    """
+    Обрабатывает выбор класса пользователем и предлагает выбрать предмет.
+    """
     grade = int(call.data.split("_")[1])
     await state.update_data(chosen_grade=grade)
     
@@ -110,6 +129,9 @@ async def handle_grade_choice(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(BookFilterStates.choosing_subject, F.data.startswith("subject_"))
 async def handle_subject_choice(call: CallbackQuery, state: FSMContext):
+    """
+    Обрабатывает выбор предмета пользователем и предлагает выбрать учебник.
+    """
     data = await state.get_data()
     subject_token = call.data.split("_", 1)[1]
     available_subjects = data.get("available_subjects", [])
@@ -153,6 +175,9 @@ async def handle_subject_choice(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(BookFilterStates.choosing_book, F.data.startswith("book_"))
 async def handle_book_choice(call: CallbackQuery, state: FSMContext):
+    """
+    Обрабатывает выбор учебника пользователем.
+    """
     book_id = int(call.data.split("_")[1])
     
     async with db.pool.acquire() as conn:
@@ -198,19 +223,27 @@ async def handle_book_choice(call: CallbackQuery, state: FSMContext):
 
 @router.message(BookFilterStates.choosing_topic, F.text)
 async def handle_topic_text(message: Message, state: FSMContext):
+    """
+    Обрабатывает ввод темы пользователем.
+    """
     await state.update_data(chosen_topic=message.text.strip())
     await show_context_actions(message, state)
 
 
 @router.message(BookFilterStates.choosing_topic, F.photo | F.document)
 async def handle_topic_attachment(message: Message, state: FSMContext):
-    """A file can be the first question immediately after book selection."""
+    """
+    Обрабатывает прикрепленный файл (фото или документ) как первый вопрос ИИ после выбора учебника.
+    """
     await state.set_state(BookFilterStates.waiting_for_ai_question)
     await accept_final_ai_question(message, state)
 
 
 @router.callback_query(BookFilterStates.choosing_topic, F.data.startswith("ctxpage_"))
 async def handle_page_choice(call: CallbackQuery, state: FSMContext):
+    """
+    Обрабатывает выбор страницы пользователем.
+    """
     page_id = int(call.data.split("_")[1])
     await state.update_data(chosen_page_id=page_id)
     await call.answer("Страница выбрана")
@@ -218,6 +251,9 @@ async def handle_page_choice(call: CallbackQuery, state: FSMContext):
 
 
 async def show_context_actions(target_message: Message, state: FSMContext):
+    """
+    Показывает действия для выбранного учебного контекста.
+    """
     data = await state.get_data()
     await state.set_state(BookFilterStates.context_ready)
     topic_label = data.get("chosen_topic") or (
@@ -237,11 +273,17 @@ async def show_context_actions(target_message: Message, state: FSMContext):
 
 @router.callback_query(F.data.in_({"skip_to_question", "ask_ai_with_context"}))
 async def handle_skip_callback(call: CallbackQuery, state: FSMContext):
+    """
+    Обрабатывает переход к вопросу ИИ или пропуск выбора контекста.
+    """
     await call.answer()
     await enter_ai_question_mode(call.message, state)
 
 @router.callback_query(F.data == "quest_choose_context")
 async def handle_quest_choose_context(call: CallbackQuery, state: FSMContext):
+    """
+    Обрабатывает выбор контекста для квест-теста.
+    """
     await state.clear()
     async with db.pool.acquire() as conn:
         user = await conn.fetchrow("SELECT role FROM users WHERE tg_id = $1", call.from_user.id)
@@ -260,7 +302,7 @@ async def handle_quest_choose_context(call: CallbackQuery, state: FSMContext):
     await state.set_state(BookFilterStates.choosing_grade)
     await call.answer()
     await call.message.edit_text(
-        "🧩 Создание квест-теста\n\n"
+        "🧩 Создание Квест-теста\n\n"
         "Выберите класс и при желании учебник/страницу. "
         "Либо нажмите «Создать квест-тест» и опишите класс, предмет и тему текстом.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard_buttons),
@@ -269,6 +311,9 @@ async def handle_quest_choose_context(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "create_quest_test")
 async def handle_create_quest_test(call: CallbackQuery, state: FSMContext):
+    """
+    Обрабатывает запрос на создание квест-теста.
+    """
     async with db.pool.acquire() as conn:
         user = await conn.fetchrow("SELECT role FROM users WHERE tg_id = $1", call.from_user.id)
     if not user or user["role"] != "student":
@@ -280,6 +325,9 @@ async def handle_create_quest_test(call: CallbackQuery, state: FSMContext):
 
 
 async def enter_quest_request_mode(target_message: Message, state: FSMContext):
+    """
+    Переводит пользователя в режим ввода запроса на создание квест-теста.
+    """
     data = await state.get_data()
     selected = []
     if data.get("chosen_grade"):
@@ -296,20 +344,23 @@ async def enter_quest_request_mode(target_message: Message, state: FSMContext):
     await state.set_state(BookFilterStates.waiting_for_quest_request)
     context_text = ", ".join(selected) if selected else "учебник не выбран"
     await target_message.answer(
-        "🧩 Создание квест-теста\n\n"
+        "🧩 Создание Квест-теста\n\n"
         f"Текущий контекст: {context_text}.\n\n"
         "Напишите параметры квеста. Минимально нужны класс, предмет и тема; "
-        "уже выбранные параметры повторять не нужно. Количество вопросов необязательно — по умолчанию 5.\n\n"
+        "уже выбранные параметры повторять не нужно. Количество вопросов по умолчанию = 5.\n\n"
         "Примеры:\n"
         "• 7 класс, математика, обыкновенные дроби, 5 вопросов\n"
-        "• Предмет: физика; тема: давление; 8 вопросов\n"
-        "• 10 вопросов повышенной сложности\n\n"
+        "• 9 класс, физика; тема: давление; 8 вопросов\n"
+        "• 10 вопросов повышенной сложности (заранее указан Учебник)\n\n"
         "Для отмены: /cancel"
     )
 
 
 @router.message(BookFilterStates.waiting_for_quest_request, F.text | F.photo | F.document)
 async def generate_quest_test_from_request(message: Message, state: FSMContext):
+    """
+    Обрабатывает запрос пользователя на создание квест-теста и генерирует его с помощью ИИ.
+    """
     request_text = (message.text or message.caption or "").strip()
     attachment = None
     attachment_text = ""
@@ -417,23 +468,22 @@ async def generate_quest_test_from_request(message: Message, state: FSMContext):
             return
 
         primary_text = primary.content if primary else "none"
-        ai_task = await generate_exact_task_set(
+        ai_task, questions_json = await generate_quest_task_set(
             openai_client,
             system_prompt=student_task_prompt(),
             user_content=(
-                "Create a Telegram quest-test for a Student. Infer wording, level and examples from the request, attachment and sources.\n"
+                "Create an engaging Telegram quest-test for a Student. Infer wording, level and examples from the request, attachment and sources.\n"
                 f"Grade: {spec.grade}\n"
                 f"Subject: {spec.subject}\n"
                 f"Topic: {spec.topic}\n"
                 f"Student request: {spec.raw_request}\n\n"
                 f"ATTACHED MATERIAL:\n{attachment_text or 'none'}\n\n"
                 f"PRIMARY TEXTBOOK CONTEXT:\n{primary_text}\n\n"
-                f"RANKED EDUAI SUPPLEMENTS:\n{bundle.database_context or 'none'}\n\n"
+                f"RANKED UMNIX KNOWLEDGE-BASE SUPPLEMENTS:\n{bundle.database_context or 'none'}\n\n"
                 f"WEB FALLBACK:\n{bundle.web_context or 'none'}"
             ),
             requested_count=spec.requested_count,
         )
-        questions_json = task_set_payload(ai_task)
         items = questions_json.get("items") or []
         if not items:
             raise ValueError("Quest generator returned no task items")
@@ -497,10 +547,11 @@ async def generate_quest_test_from_request(message: Message, state: FSMContext):
             message,
             f"🏆 Квест-тест: {ai_task.title}\n"
             f"📚 {spec.grade} класс · {spec.subject}\n"
-            f"🎯 Тема: {spec.topic}\n"
-            f"❓ Вопрос 1 из {len(items)}\n\n"
-            f"{first.get('question_text', '')}\n\n"
-            "Напиши ответ в чат (или /cancel для отмены)."
+            f"🎯 Тема: {spec.topic}\n\n"
+            "В квесте встречаются вопросы с одним и с несколькими правильными вариантами. "
+            "Отвечай только цифрами выбранных вариантов.\n\n"
+            + format_quest_question(first, 1, len(items))
+            + "\n\n/cancel — остановить квест."
         )
     except Exception as exc:
         logger.exception("Ошибка генерации квест-теста в Telegram: %s", exc)
@@ -512,7 +563,7 @@ async def generate_quest_test_from_request(message: Message, state: FSMContext):
 
 async def enter_ai_question_mode(target_message: Message, state: FSMContext):
     data = await state.get_data()
-    summary = "📚 Book Mode EduAI\n\n"
+    summary = "📚 Режим учебника Umnix\n\n"
     if data.get("chosen_grade"):
         summary += f"📍 Контекст: {data.get('chosen_grade')} класс, {data.get('chosen_subject')}"
         if data.get('chosen_book_label'):
@@ -535,11 +586,14 @@ async def exit_selected_book(message: Message, state: FSMContext):
     except LookupError:
         pass
     await state.clear()
-    await message.answer("✅ Book Mode выключен. Для свободного чата нажмите «🤖 ИИ-помощник».")
+    await message.answer("✅ Учебник откреплён. Для начала чата с ИИ нажмите «🤖 ИИ-помощник».")
 
 
 @router.message(BookFilterStates.waiting_for_ai_question)
 async def accept_final_ai_question(message: Message, state: FSMContext):
+    """
+    Обрабатывает вопрос пользователя к ИИ с учетом выбранного учебного контекста.
+    """
     question_text = message.text or message.caption or ""
     question_text = question_text.strip()
     if not question_text and not message.photo and not message.document:

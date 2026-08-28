@@ -17,19 +17,26 @@ router = Router()
 
 
 class AIChatStates(StatesGroup):
-    """Постоянный режим свободного чата для Telegram."""
-
+    """
+    Постоянный режим свободного чата для Telegram.
+    """
     active = State()
 
 
 def exit_book_keyboard() -> InlineKeyboardMarkup:
+    """
+    Возвращает клавиатуру с кнопкой для выхода из режима учебника.
+    """
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="Выйти из Book Mode", callback_data="exit_book_mode")
+        InlineKeyboardButton(text="Открепить учебник", callback_data="exit_book_mode")
     ]])
 
 
 @router.message(Command("exit_book"))
 async def exit_book_command(message: Message, state: FSMContext):
+    """
+    Команда для выхода из режима учебника и очистки контекста.
+    """
     try:
         session = await ensure_telegram_session(message.from_user.id)
         await exit_book_mode(message.from_user.id, str(session["session_id"]))
@@ -37,28 +44,33 @@ async def exit_book_command(message: Message, state: FSMContext):
         pass
     await state.clear()
     await message.answer(
-        "✅ Book Mode выключен. Чтобы снова открыть свободный чат, "
+        "✅ Учебник откреплён. Чтобы снова начать чат с ИИ, "
         "нажмите «🤖 ИИ-помощник»."
     )
 
 
 @router.callback_query(F.data == "exit_book_mode")
 async def exit_book_callback(callback: CallbackQuery, state: FSMContext):
+    """
+    Обработчик нажатия кнопки для выхода из режима учебника.
+    """
     try:
         session = await ensure_telegram_session(callback.from_user.id)
         await exit_book_mode(callback.from_user.id, str(session["session_id"]))
     except LookupError:
         pass
     await state.clear()
-    await callback.answer("Book Mode выключен")
+    await callback.answer("Учебник откреплён")
     await callback.message.answer(
-        "✅ Контекст учебника очищен. Для свободного чата нажмите «🤖 ИИ-помощник»."
+        "✅ Контекст учебника очищен. Для начала чата нажмите «🤖 ИИ-помощник»."
     )
 
 
 @router.message(F.text == "🤖 ИИ-помощник")
 async def enter_general_ai_helper(message: Message, state: FSMContext):
-    """Enable persistent free tutor mode until another workflow replaces it."""
+    """
+    Включает постоянный режим свободного чата с ИИ до тех пор, пока другой workflow не заменит его.
+    """
     try:
         session = await ensure_telegram_session(message.from_user.id)
         await exit_book_mode(message.from_user.id, str(session["session_id"]))
@@ -75,14 +87,20 @@ async def enter_general_ai_helper(message: Message, state: FSMContext):
 
 @router.message(Command("new_chat"))
 async def new_bot_chat(message: Message):
+    """
+    Создаёт новый чат с ИИ-тьютором для пользователя.
+    """
     session = await ensure_telegram_session(message.from_user.id)
     await message.answer(
         "📱 Telegram использует один постоянный чат "
-        f"«{session['title']}». Дополнительные чаты создаются в EduAI WebApp."
+        f"«{session['title']}». Дополнительные чаты создаются в Umnix WebApp."
     )
 
 
 async def _handle_ai_message(message: Message):
+    """
+    Обрабатывает сообщение от пользователя в постоянном режиме чата с ИИ.
+    """
     user_text = (message.text or message.caption or "").strip()
     if user_text.startswith("/"):
         return
@@ -147,5 +165,7 @@ async def _handle_ai_message(message: Message):
 
 @router.message(AIChatStates.active, F.text | F.photo | F.document)
 async def quick_ai_chat_fallback(message: Message):
-    """Persistent AI mode: every ordinary message/file is sent to TutorService."""
+    """
+    Обрабатывает сообщения от пользователя в постоянном режиме чата с ИИ.
+    """
     await _handle_ai_message(message)

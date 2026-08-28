@@ -2,7 +2,7 @@
   class ChatUI {
     constructor(options) {
       this.options = options;
-      this.state = { sessions: [], activeId: null, editingInteractiveId: null, interactiveAction: null, profile: null, threadQuery: '', pendingRequest: null };
+      this.state = { sessions: [], activeId: null, editingInteractiveId: null, interactiveAction: null, profile: null, threadQuery: '', pendingRequest: null, voiceRecorder: null, voiceStream: null, voiceChunks: [], voiceStopTimer: null };
       this.$ = name => document.getElementById(options[name]);
       this.layout = null;
       this.jumpButton = null;
@@ -19,6 +19,7 @@
       this.$('newChatId').addEventListener('click', () => this.newChat());
       this.$('threadsId').addEventListener('click', event => this.threadAction(event));
       this.$('formId').addEventListener('submit', event => this.send(event));
+      this.$('formId').querySelector('[data-chat-voice]')?.addEventListener('click', () => this.toggleVoiceRecording());
       this.$('logId').addEventListener('click', event => this.messageAction(event));
       this.$('logId').addEventListener('scroll', () => this.updateJumpButton(), { passive: true });
       this.installChatChrome();
@@ -169,7 +170,7 @@
         this.state.profile = this.decorateProfile(await EduAI.api('/api/v1/tutor/profile'));
         this.installProfileButton();
       } catch (error) {
-        console.warn('EduAI profile is unavailable', error);
+        console.warn('Umnix profile is unavailable', error);
       }
     }
 
@@ -200,7 +201,7 @@
         modal = document.createElement('div');
         modal.id = 'chat-profile-modal';
         modal.className = 'modal-backdrop';
-        modal.innerHTML = `<div class="modal-panel glass-strong profile-sheet"><div class="flex items-start justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-wider muted">EduAI</p><h2 class="text-xl font-extrabold">Личный кабинет</h2></div><button class="icon-btn" type="button" data-profile-close aria-label="Закрыть">×</button></div><div data-profile-body class="mt-5"></div></div>`;
+        modal.innerHTML = `<div class="modal-panel glass-strong profile-sheet"><div class="flex items-start justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-wider muted">Umnix</p><h2 class="text-xl font-extrabold">Личный кабинет</h2></div><button class="icon-btn" type="button" data-profile-close aria-label="Закрыть">×</button></div><div data-profile-body class="mt-5"></div></div>`;
         document.body.appendChild(modal);
         modal.addEventListener('click', event => { if (event.target === modal || event.target.closest('[data-profile-close]')) EduAI.closeModal('chat-profile-modal'); });
       }
@@ -452,7 +453,7 @@
         const active = id === this.state.activeId;
         const telegramDefault = item.chat_type === 'telegram_default';
         const context = item.context_locked
-          ? `${item.book_title || 'Book Mode'}${item.page_number ? ', стр. ' + item.page_number : ''}`
+          ? `${item.book_title || 'Учебник'}${item.page_number ? ', стр. ' + item.page_number : ''}`
           : item.active_context_mode === 'attachment'
             ? 'Файловый контекст'
             : `${item.message_count} сообщ.`;
@@ -712,13 +713,131 @@
       } catch (error) { EduAI.toast(error.message, 'error'); }
     }
 
+    voiceButton() {
+      return this.$('formId')?.querySelector('[data-chat-voice]') || null;
+    }
+
+    preferredVoiceMimeType() {
+      if (!window.MediaRecorder?.isTypeSupported) return '';
+      return [
+        'audio/webm;codecs=opus',
+        'audio/ogg;codecs=opus',
+        'audio/mp4',
+        'audio/webm',
+      ].find(type => MediaRecorder.isTypeSupported(type)) || '';
+    }
+
+    async toggleVoiceRecording() {
+      const recorder = this.state.voiceRecorder;
+      if (recorder && recorder.state === 'recording') {
+        recorder.stop();
+        return;
+      }
+      if (this.state.pendingRequest) {
+        EduAI.toast('Дождитесь ответа Umnix или остановите текущий запрос.', 'info');
+        return;
+      }
+      if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+        EduAI.toast('Этот браузер не поддерживает запись голосовых сообщений.', 'error');
+        return;
+      }
+
+      const button = this.voiceButton();
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mimeType = this.preferredVoiceMimeType();
+        const recorderOptions = mimeType ? { mimeType } : undefined;
+        const nextRecorder = new MediaRecorder(stream, recorderOptions);
+        this.state.voiceStream = stream;
+        this.state.voiceRecorder = nextRecorder;
+        this.state.voiceChunks = [];
+
+        nextRecorder.addEventListener('dataavailable', event => {
+          if (event.data?.size) this.state.voiceChunks.push(event.data);
+        });
+        nextRecorder.addEventListener('stop', () => this.finishVoiceRecording(), { once: true });
+        nextRecorder.start(250);
+        button?.classList.add('is-recording');
+        button?.setAttribute('aria-pressed', 'true');
+        button?.setAttribute('aria-label', 'Остановить запись и отправить голосовое сообщение');
+        button?.setAttribute('title', 'Остановить и отправить');
+        if (button) button.innerHTML = '<span aria-hidden="true">■</span>';
+        this.state.voiceStopTimer = window.setTimeout(() => {
+          if (nextRecorder.state === 'recording') nextRecorder.stop();
+        }, 120000);
+        EduAI.toast('Запись началась. Нажмите ещё раз, чтобы остановить и отправить.', 'info');
+      } catch (error) {
+        this.releaseVoiceStream();
+        if (error?.name === 'NotAllowedError') {
+          EduAI.toast('Разрешите доступ к микрофону в настройках браузера.', 'error');
+        } else {
+          EduAI.toast('Не удалось начать запись голоса.', 'error');
+        }
+      }
+    }
+
+    releaseVoiceStream() {
+      if (this.state.voiceStopTimer) window.clearTimeout(this.state.voiceStopTimer);
+      this.state.voiceStopTimer = null;
+      this.state.voiceStream?.getTracks?.().forEach(track => track.stop());
+      this.state.voiceStream = null;
+    }
+
+    async finishVoiceRecording() {
+      const button = this.voiceButton();
+      const recorder = this.state.voiceRecorder;
+      const chunks = this.state.voiceChunks.slice();
+      const mimeType = recorder?.mimeType || chunks[0]?.type || 'audio/webm';
+      this.state.voiceRecorder = null;
+      this.state.voiceChunks = [];
+      this.releaseVoiceStream();
+      button?.classList.remove('is-recording');
+      button?.classList.add('is-transcribing');
+      button?.setAttribute('aria-pressed', 'false');
+      button?.setAttribute('aria-label', 'Голосовое сообщение');
+      button?.setAttribute('title', 'Голосовое сообщение');
+      if (button) {
+        button.disabled = true;
+        button.innerHTML = '<span class="voice-spinner" aria-hidden="true"></span>';
+      }
+
+      try {
+        const blob = new Blob(chunks, { type: mimeType });
+        if (!blob.size) throw new Error('Запись получилась пустой');
+        const extension = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'm4a' : 'webm';
+        const form = new FormData();
+        form.append('audio', blob, `voice.${extension}`);
+        const result = await EduAI.api('/api/v1/tutor/transcribe', { method: 'POST', body: form });
+        const text = String(result?.text || '').trim();
+        if (!text) throw new Error('Не удалось распознать речь');
+        const input = this.$('inputId');
+        input.value = text;
+        this.resizeComposer();
+        const chatForm = this.$('formId');
+        if (typeof chatForm.requestSubmit === 'function') chatForm.requestSubmit();
+        else chatForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      } catch (error) {
+        EduAI.toast(error.message || 'Не удалось отправить голосовое сообщение', 'error');
+      } finally {
+        button?.classList.remove('is-transcribing');
+        if (button) {
+          button.disabled = false;
+          button.innerHTML = '<span aria-hidden="true">🎙</span>';
+        }
+      }
+    }
+
     async send(event) {
       event.preventDefault();
       const formElement = this.$('formId');
       const button = event.submitter || formElement.querySelector('button[type="submit"], button:not([type])');
       const input = this.$('inputId');
+      if (this.state.voiceRecorder?.state === 'recording') {
+        EduAI.toast('Сначала остановите запись голосового сообщения.', 'info');
+        return;
+      }
       if (this.state.pendingRequest) {
-        EduAI.toast('Дождитесь ответа EduAI или нажмите «Остановить».', 'info');
+        EduAI.toast('Дождитесь ответа Umnix или нажмите «Остановить».', 'info');
         return;
       }
       let stopThinking = () => {};
@@ -757,13 +876,13 @@
         mapping.forEach(([id,key]) => { const element = this.$(id); if (element && element.value) form.append(key, element.value); });
         EduAI.setBusy(button, true, interactiveAction ? 'Создаём…' : 'Отправляем…');
         stopThinking = EduAI.startThinking(
-          interactiveAction === 'edit' ? 'EduAI думает · изменяет приложение' :
-          interactiveAction === 'create' ? 'EduAI думает · создаёт приложение' :
-          file ? 'EduAI думает · анализирует вложение' : 'EduAI думает · формулирует ответ',
+          interactiveAction === 'edit' ? 'Umnix думает · изменяет приложение' :
+          interactiveAction === 'create' ? 'Umnix думает · создаёт приложение' :
+          file ? 'Umnix думает · анализирует вложение' : 'Umnix думает · формулирует ответ',
           { onCancel: () => { abortedByUser = true; controller.abort(); } }
         );
         const result = await EduAI.api('/api/v1/tutor/messages', { method: 'POST', body: form, signal: controller.signal });
-        this.append('ai', result.message_text, [], null, result.interactive_app || null, { senderName: result.sender_name || 'EduAI', messageId: result.message_id });
+        this.append('ai', result.message_text, [], null, result.interactive_app || null, { senderName: result.sender_name || 'Umnix', messageId: result.message_id });
         if (!result.interactive_error) {
           this.clearAttachment();
           this.clearInteractiveCompose();
@@ -782,7 +901,7 @@
           this.resizeComposer();
           EduAI.toast('Запрос остановлен. Текст возвращён в поле ввода.', 'info');
         } else {
-          console.error('EduAI tutor submit failed', error);
+          console.error('Umnix tutor submit failed', error);
           input.value = originalText;
           this.resizeComposer();
           EduAI.toast(error.message || 'Не удалось отправить сообщение', 'error');
@@ -830,11 +949,11 @@
       if (!this.$('bookId').value) { EduAI.toast('Выберите учебник', 'error'); return; }
       const payload = { book_id: Number(this.$('bookId').value) };
       if (this.$('pageId').value) payload.page_id = Number(this.$('pageId').value);
-      try { await EduAI.api(`/api/v1/tutor/sessions/${this.state.activeId}/context`, { method: 'PUT', body: JSON.stringify(payload) }); this.layout?.classList.remove('book-panel-open'); EduAI.toast('Book Mode включён', 'success'); await this.loadSessions(this.state.activeId); }
+      try { await EduAI.api(`/api/v1/tutor/sessions/${this.state.activeId}/context`, { method: 'PUT', body: JSON.stringify(payload) }); this.layout?.classList.remove('book-panel-open'); EduAI.toast('Учебник закреплён', 'success'); await this.loadSessions(this.state.activeId); }
       catch (error) { EduAI.toast(error.message, 'error'); }
     }
     async exitContext() {
-      try { await EduAI.api(`/api/v1/tutor/sessions/${this.state.activeId}/context`, { method: 'DELETE' }); EduAI.toast('Book Mode выключен', 'success'); await this.loadSessions(this.state.activeId); }
+      try { await EduAI.api(`/api/v1/tutor/sessions/${this.state.activeId}/context`, { method: 'DELETE' }); EduAI.toast('Учебник откреплён', 'success'); await this.loadSessions(this.state.activeId); }
       catch (error) { EduAI.toast(error.message, 'error'); }
     }
     renderContextState(session) {

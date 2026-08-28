@@ -132,42 +132,89 @@ document.addEventListener('DOMContentLoaded', async () => {
     `;
   }
 
+  function taskMentorLabel(task) {
+    return task?.mentor_kind === 'parent' ? 'Родителя' : 'Учителя';
+  }
+
+  function taskStatusLabel(status, task = null) {
+    if (status === 'pending_review' && task?.assignment_source === 'teacher') return `Ожидает проверки ${taskMentorLabel(task)}`;
+    return ({ created: 'Новое', in_progress: 'В процессе', pending_review: 'На проверке', completed: 'Выполнено', evaluated: 'Проверено' })[status] || 'Задание';
+  }
+
+  function taskPreviewText(task) {
+    const questions = task.questions_json || {};
+    const items = Array.isArray(questions.items) ? questions.items : [];
+    return questions.question_text || items[0]?.question_text || items[0]?.question || task.topic || 'Откройте карточку, чтобы посмотреть условие.';
+  }
+
   function renderTaskCards(tasks) {
     return tasks.length
       ? tasks.map(task => {
           const questions = task.questions_json || {};
           const context = task.topic_context || {};
           const title = task.title || questions.title || `Задание №${task.task_id}`;
-          const subject = task.subject || context.subject || 'Задание';
+          const subject = task.subject || context.subject || 'Учёба';
           const teacherTask = task.assignment_source === 'teacher';
+          const sourceLabel = teacherTask ? `От ${taskMentorLabel(task)}` : 'Квест';
           return `
-            <article class="glass card" data-task-card="${task.task_id}">
+            <article class="glass compact-record-card" data-task-summary="${task.task_id}" tabindex="0" role="button" aria-label="Открыть ${EduAI.escapeHtml(title)}">
               <div class="flex items-center justify-between gap-2">
-                <span class="badge">${teacherTask ? 'От Учителя' : 'Личная ИИ-практика'}</span>
-                <span class="text-xs muted">${EduAI.escapeHtml(subject)}</span>
+                <span class="badge">${sourceLabel}</span>
+                <span class="text-xs muted">${EduAI.escapeHtml(taskStatusLabel(task.status, task))}</span>
               </div>
-              <h3 class="mt-4 text-lg font-extrabold">${EduAI.escapeHtml(title)}</h3>
-              ${task.topic ? `<p class="mt-1 text-xs muted">Тема: ${EduAI.escapeHtml(task.topic)}</p>` : ''}
-              <div class="mt-2 text-sm leading-6 text-slate-300">${EduAI.markdown(questions.question_text || '')}</div>
-              ${teacherTask && task.parent_comment ? `
-                <div class="mt-3 rounded-xl bg-violet-300/10 p-3 text-sm">
-                  <p class="text-xs font-bold text-violet-200">Комментарий Учителя</p>
-                  <p class="mt-1 text-slate-300">${EduAI.escapeHtml(task.parent_comment)}</p>
-                </div>` : ''}
-              ${renderTaskAttachments(task)}
-              ${questions.interactive_app_id ? `<a class="btn-primary mt-4 inline-flex" href="/interactive/${encodeURIComponent(questions.interactive_app_id)}" target="_blank" rel="noopener noreferrer">Открыть интерактивное задание</a>` : ''}
-              ${task.student_answers_json?.verification_feedback ? `<p class="mt-3 rounded-xl bg-white/[.04] p-3 text-sm muted">${EduAI.markdown(task.student_answers_json.verification_feedback)}</p>` : ''}
-              <form class="task-form mt-4 grid gap-2" data-task-id="${task.task_id}" ${questions.interactive_app_id ? 'hidden' : ''}>
-                <label class="text-xs font-bold muted" for="answer-${task.task_id}">Ваш ответ</label>
-                <div class="flex flex-col sm:flex-row gap-2">
-                  <input id="answer-${task.task_id}" class="input flex-1" maxlength="4000" required placeholder="Введите ответ">
-                  <button class="btn-primary shrink-0" type="submit">${teacherTask ? 'Отправить Учителю' : 'Проверить'}</button>
-                </div>
-              </form>
+              <h3 class="record-title mt-3 text-base font-extrabold">${EduAI.escapeHtml(title)}</h3>
+              <p class="mt-1 text-xs muted">${EduAI.escapeHtml(subject)}${task.topic ? ` · ${EduAI.escapeHtml(task.topic)}` : ''}</p>
+              <div class="record-preview mt-2 text-sm muted">${EduAI.escapeHtml(String(taskPreviewText(task)).replace(/[#*_`]/g, ''))}</div>
+              <div class="record-footer flex items-center justify-between gap-2 text-xs muted"><span>${EduAI.formatDate(task.created_at)}</span><span>Открыть →</span></div>
             </article>`;
         }).join('')
-      : empty('Активных заданий этого типа пока нет.');
+      : empty('Здесь пока ничего нет.');
   }
+
+  function ensureTaskDetailModal() {
+    let modal = document.getElementById('student-task-detail-modal');
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.id = 'student-task-detail-modal';
+    modal.className = 'modal-backdrop record-detail-modal';
+    modal.innerHTML = `<div class="modal-panel glass-strong"><div class="flex items-start justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-wider muted">Подробности</p><h2 data-student-task-title class="text-xl font-extrabold">Задание</h2></div><button class="icon-btn" type="button" data-close-modal="student-task-detail-modal" aria-label="Закрыть">×</button></div><div data-student-task-body class="mt-5"></div></div>`;
+    document.body.append(modal);
+    modal.querySelector('[data-close-modal]')?.addEventListener('click', () => EduAI.closeModal('student-task-detail-modal'));
+    modal.addEventListener('click', event => { if (event.target === modal) EduAI.closeModal('student-task-detail-modal'); });
+    return modal;
+  }
+
+  function renderTaskDetail(task) {
+    const questions = task.questions_json || {};
+    const context = task.topic_context || {};
+    const teacherTask = task.assignment_source === 'teacher';
+    const items = Array.isArray(questions.items) ? questions.items : [];
+    const body = questions.question_text || (items.length ? items.map((item, index) => `${index + 1}. ${item.question_text || item.question || ''}`).join('\n\n') : 'Условие не указано.');
+    return `
+      <div class="grid gap-4">
+        <div class="flex flex-wrap gap-2"><span class="badge">${teacherTask ? `От ${taskMentorLabel(task)}` : 'Самостоятельный квест'}</span><span class="badge">${EduAI.escapeHtml(taskStatusLabel(task.status, task))}</span>${task.subject ? `<span class="badge">${EduAI.escapeHtml(task.subject)}</span>` : ''}</div>
+        ${task.topic ? `<p class="text-sm"><span class="muted">Тема:</span> ${EduAI.escapeHtml(task.topic)}</p>` : ''}
+        <section class="rounded-2xl bg-white/[.035] p-4"><h3 class="font-extrabold">Условие</h3><div class="mt-3 leading-7">${EduAI.markdown(body)}</div></section>
+        ${teacherTask && task.parent_comment ? `<section class="rounded-2xl bg-violet-300/[.07] p-4"><p class="text-xs font-bold text-violet-200">Комментарий ${taskMentorLabel(task)}</p><p class="mt-2">${EduAI.escapeHtml(task.parent_comment)}</p></section>` : ''}
+        ${renderTaskAttachments(task)}
+        ${questions.interactive_app_id ? `<a class="btn-primary" href="/interactive/${encodeURIComponent(questions.interactive_app_id)}" target="_blank" rel="noopener noreferrer">Открыть интерактивное задание</a>` : ''}
+        ${task.student_answers_json?.verification_feedback ? `<section class="rounded-2xl bg-white/[.04] p-4"><h3 class="font-extrabold">Последняя проверка</h3><div class="mt-2 text-sm muted">${EduAI.markdown(task.student_answers_json.verification_feedback)}</div></section>` : ''}
+        <form class="task-form grid gap-2" data-task-id="${task.task_id}" ${questions.interactive_app_id ? 'hidden' : ''}>
+          <label class="text-xs font-bold muted" for="answer-${task.task_id}">Ваш ответ</label>
+          <div class="flex flex-col sm:flex-row gap-2"><input id="answer-${task.task_id}" class="input flex-1" maxlength="4000" required placeholder="Введите ответ"><button class="btn-primary shrink-0" type="submit">${teacherTask ? `Отправить ${taskMentorLabel(task)}` : 'Проверить'}</button></div>
+        </form>
+      </div>`;
+  }
+
+  function openTaskDetail(taskId) {
+    const task = [...(state.dashboard?.tasks || []), ...(state.dashboard?.practice_tasks || [])].find(item => String(item.task_id) === String(taskId));
+    if (!task) return;
+    const modal = ensureTaskDetailModal();
+    modal.querySelector('[data-student-task-title]').textContent = task.title || task.questions_json?.title || `Задание №${task.task_id}`;
+    modal.querySelector('[data-student-task-body]').innerHTML = renderTaskDetail(task);
+    EduAI.openModal('student-task-detail-modal');
+  }
+
 
   function renderDashboard(data) {
     state.dashboard = data;
@@ -232,6 +279,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   document.addEventListener('click', async event => {
+    const summary = event.target.closest('[data-task-summary]');
+    if (summary && !event.target.closest('button,a,input,form')) { openTaskDetail(summary.dataset.taskSummary); return; }
     const previewButton = event.target.closest('.task-file-preview');
     const downloadButton = event.target.closest('.task-file-download');
 
@@ -256,6 +305,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  document.addEventListener('keydown', event => {
+    const summary = event.target.closest?.('[data-task-summary]');
+    if (summary && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); openTaskDetail(summary.dataset.taskSummary); }
+  });
 
   byId('refresh-dashboard').addEventListener('click', loadDashboard);
   byId('refresh-tasks').addEventListener('click', loadDashboard);

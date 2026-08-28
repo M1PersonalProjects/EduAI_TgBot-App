@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
     logger.info(" 🗄  Пул базы данных закрыт.")
 
 app = FastAPI(
-    title="EduAI API Platform", 
+    title="Umnix API Platform",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -178,7 +178,7 @@ async def main():
     logger.info(" 🚀  Веб-сервер FastAPI успешно запущен на http://localhost:8000")
 
     try:
-        logger.info(" 🤖  Бот EduAI успешно запущен и слушает серверы Telegram (Polling)...")
+        logger.info(" 🤖  Бот Umnix успешно запущен и слушает серверы Telegram (Polling)...")
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
     except Exception as e:
@@ -196,7 +196,7 @@ async def main():
                 await api_task
             except asyncio.CancelledError:
                 pass
-        logger.info(" 👋  Все системы EduAI успешно остановлены.")
+        logger.info(" 👋  Все системы Umnix успешно остановлены.")
 
 if __name__ == "__main__":
     if sys.platform == "win32":

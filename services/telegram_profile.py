@@ -24,7 +24,9 @@ _avatar_cache: dict[int, tuple[float, Optional[TelegramAvatar]]] = {}
 
 
 async def get_telegram_avatar(tg_id: int) -> Optional[TelegramAvatar]:
-    """Безопасно получает аватар через Bot API и не раскрывает токен клиенту."""
+    """
+    Безопасно получает аватар через Bot API и не раскрывает токен клиенту.
+    """
 
     now = time.monotonic()
     cached = _avatar_cache.get(int(tg_id))

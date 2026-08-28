@@ -16,6 +16,9 @@ from services.file_parser import (
 
 
 async def _parse_safely(data: bytes, filename: str, mime_type: str) -> ParsedAttachment:
+    """
+    Безопасно парсит вложение, перехватывая ошибки и преобразуя их в AttachmentError.
+    """
     try:
         return await asyncio.to_thread(parse_attachment, data, filename, mime_type)
     except AttachmentError:
@@ -27,7 +30,9 @@ async def _parse_safely(data: bytes, filename: str, mime_type: str) -> ParsedAtt
 
 
 async def _store_for_chat(data: bytes, filename: str, mime_type: str, owner_id: int) -> Optional[ParsedAttachment]:
-    """Persist a Telegram file through the common attachment_storage layer."""
+    """
+    Сохраняет вложение в хранилище и возвращает объект ParsedAttachment.
+    """
     try:
         upload = UploadFile(
             file=io.BytesIO(data),
@@ -49,6 +54,9 @@ async def _store_for_chat(data: bytes, filename: str, mime_type: str, owner_id: 
 
 
 async def parse_telegram_attachment(message: Message) -> Optional[ParsedAttachment]:
+    """
+    Парсит вложение из Telegram-сообщения, сохраняя его в хранилище и возвращая объект ParsedAttachment.
+    """
     if not message.photo and not message.document:
         return None
 

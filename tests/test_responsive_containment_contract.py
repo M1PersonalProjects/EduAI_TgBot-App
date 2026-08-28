@@ -37,4 +37,4 @@ def test_mobile_controls_and_chat_are_viewport_safe():
 def test_all_primary_templates_bust_responsive_css_cache():
     for name in ("auth.html", "student.html", "parent.html", "admin.html", "interactive.html", "files.html"):
         source = _read(f"templates/{name}")
-        assert "app.css?v=20260824-ux-polish-2" in source
+        assert "app.css?v=20260825-umnix-2" in source

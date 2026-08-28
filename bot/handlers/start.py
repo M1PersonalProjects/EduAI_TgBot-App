@@ -13,53 +13,57 @@ from bot.keyboards import (
     get_student_menu,
 )
 from logger_config import logger
+from services.mentor_identity import mentor_label, normalize_mentor_kind
 
 router = Router()
 
 STUDENT_START_TEXT = (
-    "👋 *Добро пожаловать в EduAI!*\n\n"
-    "🤖 *В Telegram можно:*\n"
+    "👋 *Добро пожаловать в Umnix!*\n\n"
+    "🤖 *В Telegram-Bot можно:*\n"
     "• общаться с ИИ-тьютором и разбирать учебные темы;\n"
     "• отправлять фотографии и учебные файлы;\n"
     "• выбирать учебник в разделе «📚 Учебники» или спрашивать свободно через «🤖 ИИ-помощник»;\n"
     "• получать задания и отправлять решения;\n"
     "• следить за своим учебным прогрессом.\n\n"
-    "🌐 *В EduAI WebApp доступно больше:*\n"
+    "🌐 *В Umnix WebApp доступно больше:*\n"
     "• полноценный чат и история диалогов;\n"
     "• удобная работа с заданиями и результатами;\n"
     "• учебники, задания, история диалогов и подробные результаты.\n\n"
-    "Для полного интерфейса нажмите *«🌐 Открыть EduAI»*."
+    "Для полного интерфейса нажмите *«🌐 Открыть Umnix»*."
 )
 
-PARENT_START_TEXT = (
-    "👋 *Добро пожаловать в EduAI!*\n\n"
-    "🤖 *В Telegram можно:*\n"
-    "• привязать Ученика;\n"
-    "• быстро посмотреть учебную активность;\n"
-    "• выбирать учебник для вопроса или использовать свободный «🤖 ИИ-помощник»;\n"
-    "• получать важные уведомления о заданиях и результатах.\n\n"
-    "🌐 *В EduAI WebApp доступно больше:*\n"
-    "• создавать задания вручную или с помощью ИИ;\n"
-    "• прикреплять учебные материалы;\n"
-    "• просматривать историю заданий, попытки и результаты;\n"
-    "• управлять Учениками и учебным процессом.\n\n"
-    "Для полного интерфейса нажмите *«🌐 Открыть EduAI»*."
-)
+def parent_start_text(mentor_kind: str = "teacher") -> str:
+    role = mentor_label(mentor_kind)
+    return (
+        f"👋 *Добро пожаловать в Umnix, {role}!*\n\n"
+        "🤖 *В Telegram можно:*\n"
+        "• привязать Ученика;\n"
+        "• быстро посмотреть учебную активность;\n"
+        "• выбирать учебник для вопроса или использовать свободный «🤖 ИИ-помощник»;\n"
+        "• получать важные уведомления о заданиях и результатах.\n\n"
+        "🌐 *В Umnix WebApp доступно больше:*\n"
+        "• создавать задания вручную или с помощью ИИ;\n"
+        "• прикреплять учебные материалы;\n"
+        "• просматривать историю заданий, попытки и результаты;\n"
+        "• управлять Учениками и учебным процессом.\n\n"
+        "Для полного интерфейса нажмите *«🌐 Открыть Umnix»*."
+    )
+
 
 ADMIN_START_TEXT = (
-    "👑 *EduAI · режим Администратора*\n\n"
+    "👑 *Umnix · режим Администратора*\n\n"
     "🤖 В Telegram доступны быстрые действия и переключение роли.\n\n"
-    "🌐 *В EduAI WebApp:*\n"
+    "🌐 *В Umnix WebApp:*\n"
     "• управление учебниками и страницами;\n"
     "• пакетная оцифровка;\n"
     "• пользователи и активности;\n"
     "• административные инструменты.\n\n"
-    "Откройте полный интерфейс кнопкой *«🌐 Открыть EduAI»*."
+    "Откройте полный интерфейс кнопкой *«🌐 Открыть Umnix»*."
 )
 
 NEW_USER_START_TEXT = (
-    "👋 *Добро пожаловать в EduAI!*\n\n"
-    "EduAI — образовательный помощник для Учеников и Учителей.\n\n"
+    "👋 *Добро пожаловать в Umnix!*\n\n"
+    "Umnix — образовательный помощник для Учеников, Учителей и Родителей.\n\n"
     "🤖 Telegram подходит для быстрых действий, общения, уведомлений "
     "и работы с учебными заданиями.\n"
     "🌐 WebApp открывает полный интерфейс и расширенные возможности.\n\n"
@@ -90,12 +94,14 @@ async def cmd_start(message: Message, command: CommandObject, state: FSMContext 
 
         async with db.pool.acquire() as conn:
             inviter = await conn.fetchrow(
-                "SELECT role FROM users WHERE tg_id = $1",
+                "SELECT role, mentor_kind FROM users WHERE tg_id = $1",
                 parent_id,
             )
             if not inviter or inviter["role"] not in ("parent", "admin"):
-                await message.answer("Эта ссылка привязки недействительна или её Учитель больше недоступен.")
+                await message.answer("Эта ссылка привязки недействительна или отправитель больше недоступен.")
                 return
+            inviter_kind = normalize_mentor_kind(inviter.get("mentor_kind"))
+            inviter_label = mentor_label(inviter_kind)
 
             existing = await conn.fetchrow(
                 "SELECT role, parent_id FROM users WHERE tg_id = $1",
@@ -103,20 +109,20 @@ async def cmd_start(message: Message, command: CommandObject, state: FSMContext 
             )
             if existing and existing["role"] in ("parent", "admin"):
                 await message.answer(
-                    "Аккаунт Учителя или Администратора нельзя перепривязать как Ученика по реферальной ссылке."
+                    "Аккаунт Учителя, Родителя или Администратора нельзя перепривязать как Ученика по ссылке-приглашению."
                 )
                 return
             if existing and existing["role"] == "student":
                 current_parent = existing.get("parent_id")
                 if current_parent and int(current_parent) != parent_id:
                     await message.answer(
-                        "Этот аккаунт Ученика уже привязан к другому Учителю. "
-                        "Сначала отвяжите существующую связь в EduAI."
+                        f"Этот аккаунт Ученика уже привязан к другому {mentor_label(inviter_kind, 'dative')}. "
+                        "Сначала отвяжите существующую связь в Umnix."
                     )
                     return
                 if current_parent and int(current_parent) == parent_id:
                     await message.answer(
-                        "✅ Ваш аккаунт уже привязан к этому Учителю.",
+                        f"✅ Ваш аккаунт уже привязан к этому {mentor_label(inviter_kind, 'dative')}.",
                         reply_markup=get_student_menu(),
                     )
                     return
@@ -133,7 +139,7 @@ async def cmd_start(message: Message, command: CommandObject, state: FSMContext 
                 )
 
         await message.answer(
-            "🎉 Аккаунт успешно связан с Учителем!\n\n" + STUDENT_START_TEXT,
+            f"🎉 Аккаунт успешно связан: ваш {inviter_label} теперь видит назначенные задания и результаты.\n\n" + STUDENT_START_TEXT,
             reply_markup=get_student_menu()
         )
 
@@ -141,16 +147,16 @@ async def cmd_start(message: Message, command: CommandObject, state: FSMContext 
         try:
             await message.bot.send_message(
                 chat_id=parent_id,
-                text=f"🔔 Ученик ({student_label}) успешно привязал свой аккаунт к вашему профилю!"
+                text=f"🔔 Ученик ({student_label}) успешно привязал аккаунт. Теперь вы указаны как его {inviter_label}."
             )
         except Exception as e:
-            logger.warning(f"Не удалось отправить уведомление Учителю {parent_id}: {e}")
+            logger.warning(f"Не удалось отправить уведомление наставнику {parent_id}: {e}")
         return
 
     # --- СЦЕНАРИЙ 2: Вход или первичная инициализация Администратора ---
     if user_id in settings.admin_ids:
         async with db.pool.acquire() as conn:
-            user = await conn.fetchrow("SELECT role FROM users WHERE tg_id = $1", user_id)
+            user = await conn.fetchrow("SELECT role, mentor_kind FROM users WHERE tg_id = $1", user_id)
             if not user or user["role"] not in ["admin", "parent"]:
                 await conn.execute(
                     """
@@ -171,22 +177,22 @@ async def cmd_start(message: Message, command: CommandObject, state: FSMContext 
             )
         else:
             await message.answer(
-                PARENT_START_TEXT + "\n\nИспользуйте /toggle, чтобы вернуться в режим Администратора.",
-                reply_markup=get_parent_menu(),
+                parent_start_text(user.get("mentor_kind")) + "\n\nИспользуйте /toggle, чтобы вернуться в режим Администратора.",
+                reply_markup=get_parent_menu(normalize_mentor_kind(user.get("mentor_kind"))),
                 parse_mode="Markdown"
             )
         return
 
     # --- СЦЕНАРИЙ 3: Обычный авторизованный пользователь (Учитель / Ученик) ---
     async with db.pool.acquire() as conn:
-        user = await conn.fetchrow("SELECT role FROM users WHERE tg_id = $1", user_id)
+        user = await conn.fetchrow("SELECT role, mentor_kind FROM users WHERE tg_id = $1", user_id)
 
     if user:
         role = user['role']
         if role == 'parent':
             await message.answer(
-                PARENT_START_TEXT,
-                reply_markup=get_parent_menu(),
+                parent_start_text(user.get("mentor_kind")),
+                reply_markup=get_parent_menu(normalize_mentor_kind(user.get("mentor_kind"))),
                 parse_mode="Markdown",
             )
         elif role == 'student':
@@ -211,14 +217,14 @@ async def toggle_admin_role_logic(user_id: int, message_or_call) -> None:
         return
 
     async with db.pool.acquire() as conn:
-        user = await conn.fetchrow("SELECT role FROM users WHERE tg_id = $1", user_id)
+        user = await conn.fetchrow("SELECT role, mentor_kind FROM users WHERE tg_id = $1", user_id)
         if not user:
             return
 
         current_role = user["role"]
         new_role = "parent" if current_role == "admin" else "admin"
 
-        await conn.execute("UPDATE users SET role = $1::user_role WHERE tg_id = $2", new_role, user_id)
+        await conn.execute("UPDATE users SET role = $1::user_role, mentor_kind = CASE WHEN $1 = 'parent' THEN COALESCE(mentor_kind, 'teacher') ELSE mentor_kind END WHERE tg_id = $2", new_role, user_id)
 
     text_msg = ""
     reply_kb = None
@@ -231,12 +237,14 @@ async def toggle_admin_role_logic(user_id: int, message_or_call) -> None:
         )
         inline_kb = get_admin_menu()
     else:
+        mentor_kind = normalize_mentor_kind(user.get("mentor_kind"))
+        role_label = mentor_label(mentor_kind)
         text_msg = (
-            "👨‍👩‍👦 *Режим Учителя активирован!*\n\n"
-            "Теперь бот отображает для вас меню Учителя. "
+            f"👨‍👩‍👦 *Режим {role_label} активирован!*\n\n"
+            f"Теперь бот отображает для вас меню роли «{role_label}». "
             "Чтобы вернуться в режим администрирования, используйте команду /toggle."
         )
-        reply_kb = get_parent_menu()
+        reply_kb = get_parent_menu(mentor_kind)
 
     if isinstance(message_or_call, CallbackQuery):
         try:
@@ -272,6 +280,8 @@ async def callbacks_num(callback: CallbackQuery):
     user_id = callback.from_user.id
     username = callback.from_user.username
     selected_role = callback.data.split("_")[2]
+    db_role = "parent" if selected_role in {"teacher", "parent"} else selected_role
+    mentor_kind = selected_role if selected_role in {"teacher", "parent"} else None
 
     if user_id in settings.admin_ids:
         await callback.answer("У вас максимальный уровень прав. Используйте переключатель!", show_alert=True)
@@ -281,11 +291,11 @@ async def callbacks_num(callback: CallbackQuery):
         async with conn.transaction():
             await conn.execute(
                 """
-                INSERT INTO users (tg_id, username, role)
-                VALUES ($1, $2, $3::user_role)
-                ON CONFLICT (tg_id) DO UPDATE SET role = $3::user_role
+                INSERT INTO users (tg_id, username, role, mentor_kind)
+                VALUES ($1, $2, $3::user_role, $4)
+                ON CONFLICT (tg_id) DO UPDATE SET role = $3::user_role, mentor_kind = $4
                 """,
-                user_id, username, selected_role
+                user_id, username, db_role, mentor_kind
             )
 
     if selected_role == 'student':
@@ -295,11 +305,12 @@ async def callbacks_num(callback: CallbackQuery):
             reply_markup=get_student_menu(),
             parse_mode="Markdown",
         )
-    elif selected_role == 'parent':
-        await callback.message.edit_text("✅ Роль успешно сохранена!\n\nВы зарегистрированы как **Учитель**.", parse_mode="Markdown")
+    elif selected_role in {"teacher", "parent"}:
+        label = mentor_label(mentor_kind)
+        await callback.message.edit_text(f"✅ Роль успешно сохранена!\n\nВы зарегистрированы как **{label}**.", parse_mode="Markdown")
         await callback.message.answer(
-            PARENT_START_TEXT,
-            reply_markup=get_parent_menu(),
+            parent_start_text(mentor_kind),
+            reply_markup=get_parent_menu(mentor_kind),
             parse_mode="Markdown",
         )
 

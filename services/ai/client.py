@@ -1,4 +1,4 @@
-"""Единая конфигурация и вызовы OpenAI для всех функций EduAI."""
+"""Единая конфигурация и вызовы OpenAI для всех функций Umnix."""
 
 from __future__ import annotations
 
@@ -72,3 +72,30 @@ async def parse_chat_completion(
     except Exception as exc:
         logger.error("Ошибка OpenAI Structured Output: %s", type(exc).__name__)
         raise
+
+
+async def transcribe_audio(
+    *,
+    data: bytes,
+    filename: str = "voice.webm",
+    content_type: str = "audio/webm",
+    model: str = "gpt-4o-mini-transcribe",
+) -> str:
+    """Транскрибирует короткое голосовое сообщение без сохранения временного файла."""
+    if not data:
+        raise ValueError("Пустое голосовое сообщение")
+    try:
+        response = await openai_client.audio.transcriptions.create(
+            model=model,
+            file=(filename or "voice.webm", data, content_type or "application/octet-stream"),
+        )
+    except (APITimeoutError, APIConnectionError) as exc:
+        logger.warning("Временная ошибка распознавания голоса OpenAI: %s", type(exc).__name__)
+        raise AIUpstreamError("Voice transcription service is temporarily unavailable") from exc
+    except Exception as exc:
+        logger.error("Ошибка распознавания голоса OpenAI: %s", type(exc).__name__)
+        raise
+    text = str(getattr(response, "text", "") or "").strip()
+    if not text:
+        raise ValueError("Не удалось распознать речь")
+    return text

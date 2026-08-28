@@ -3,9 +3,14 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Optional
+from typing import Any, Optional
 
-from services.task_generation import extract_requested_task_count
+from services.task_generation import (
+    GeneratedTaskSet,
+    extract_requested_task_count,
+    generate_exact_task_set,
+    task_set_payload,
+)
 
 
 _GRADE_RE = re.compile(
@@ -291,7 +296,7 @@ class QuestRequestSpec:
         """Return only information that is still genuinely needed.
 
         The Telegram handler resolves the request against the selected catalog,
-        attachments, EduAI textbooks and web context before reading this property.
+        attachments, Umnix textbooks and web context before reading this property.
         Therefore this deliberately reports missing educational anchors rather
         than enforcing a rigid input template.
         """
@@ -374,7 +379,7 @@ def parse_quest_request(
 
     This function intentionally performs tolerant local inference first. The caller
     can then enrich unresolved values from the selected textbook/page, attachments,
-    the EduAI knowledge base and web context. A clarification is only necessary if
+    the Umnix knowledge base and web context. A clarification is only necessary if
     an educational anchor is still missing after that enrichment.
     """
     raw = _clean(text)
@@ -464,8 +469,185 @@ def parse_quest_request(
     )
 
 
+
+QUEST_CHOICE_RULES = r"""
+UMNIX QUEST-TEST RULES
+The output is a Telegram multiple-choice learning quest, not a free-text worksheet.
+
+QUESTION FORMAT
+- Every generated item MUST contain between 2 and 6 learner-visible `options`.
+- Every item MUST contain `correct_option_numbers` with 1-based option numbers.
+- Use exactly one correct option when the task naturally has one answer.
+- Use two or more correct options when classification, selection of properties, matching facts, causes/effects or another learning goal benefits from multiple selection.
+- In a quest of 6 or more questions, include BOTH single-choice and multiple-choice items unless the source material makes multiple selection objectively impossible. Do not make every item the same format.
+- For a simple recognition question use 2-3 options; for an ordinary question use 3-4; for a difficult or multi-step question use 4-6. Across a quest of 4+ questions, vary the option count instead of using the same number on every card.
+- Distractors must be plausible and topic-specific. Never use filler such as "другой вариант", "не знаю", or repeated wording unless it is genuinely part of the learning objective.
+- `answer` is a private teacher/system explanation of why the selected option(s) are correct. It is not shown before checking.
+- `short_answer` may contain a compact factual answer, but `correct_option_numbers` is the source of truth for Telegram checking.
+
+PEDAGOGY
+- Build an interesting progression from easier orientation to application and challenge questions.
+- Vary cognitive operations: recognition, comparison, ordering, calculation, interpretation, cause/effect, source analysis, diagram/file understanding, code reasoning, vocabulary/grammar, etc. Choose formats appropriate to the subject.
+- Use the selected textbook/page and attachments as primary material. Use the digitized Umnix knowledge base as supplement and web educational context only when supplied by the caller and still needed.
+- Keep wording age-appropriate for the inferred grade. Do not demand that the learner supplied grade/subject/topic in a rigid form if context already makes them clear.
+"""
+
+
+def quest_choice_rules() -> str:
+    """Return the shared private prompt contract for Telegram quest choices."""
+    return QUEST_CHOICE_RULES.strip()
+
+
+def quest_choice_issues(payload: dict[str, Any]) -> list[str]:
+    """Validate the closed-answer contract before a quest is saved or shown."""
+    issues: list[str] = []
+    items = list(payload.get("items") or [])
+    for index, item in enumerate(items, start=1):
+        options = [str(value or "").strip() for value in (item.get("options") or [])]
+        correct_raw = item.get("correct_option_numbers") or []
+        try:
+            correct = sorted({int(value) for value in correct_raw})
+        except (TypeError, ValueError):
+            correct = []
+        if not 2 <= len(options) <= 6:
+            issues.append(f"q{index}: expected 2..6 options, got {len(options)}")
+            continue
+        if any(not option for option in options):
+            issues.append(f"q{index}: empty option")
+        if len({_fold(option) for option in options}) != len(options):
+            issues.append(f"q{index}: duplicate options")
+        if not correct:
+            issues.append(f"q{index}: correct_option_numbers is empty")
+        elif any(number < 1 or number > len(options) for number in correct):
+            issues.append(f"q{index}: correct option number is outside 1..{len(options)}")
+        elif len(correct) >= len(options):
+            issues.append(f"q{index}: all options cannot be correct")
+
+    if len(items) >= 4:
+        option_sizes = {len(item.get("options") or []) for item in items}
+        if len(option_sizes) < 2:
+            issues.append("quest option counts are monotonous: vary 2..6 choices by difficulty")
+    if len(items) >= 6:
+        multiple_flags = [len(set(item.get("correct_option_numbers") or [])) > 1 for item in items]
+        if not any(multiple_flags):
+            issues.append("quest needs at least one multiple-correct item")
+        if all(multiple_flags):
+            issues.append("quest needs at least one single-correct item")
+    return issues
+
+
+def normalize_quest_choice_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize option text and derived flags without changing answer semantics."""
+    result = dict(payload or {})
+    normalized_items: list[dict[str, Any]] = []
+    for raw in list(result.get("items") or []):
+        item = dict(raw or {})
+        options = [_clean(value) for value in (item.get("options") or []) if _clean(value)][:6]
+        numbers: list[int] = []
+        for value in item.get("correct_option_numbers") or []:
+            try:
+                number = int(value)
+            except (TypeError, ValueError):
+                continue
+            if 1 <= number <= len(options) and number not in numbers:
+                numbers.append(number)
+        numbers.sort()
+        item["options"] = options
+        item["correct_option_numbers"] = numbers
+        item["allow_multiple"] = len(numbers) > 1
+        normalized_items.append(item)
+    result["items"] = normalized_items
+    result["question_count"] = len(normalized_items)
+    return result
+
+
+def format_quest_question(item: dict[str, Any], index: int, total: int) -> str:
+    """Render one Telegram quest question with numbered answer options."""
+    options = list(item.get("options") or [])
+    multiple = bool(item.get("allow_multiple") or len(item.get("correct_option_numbers") or []) > 1)
+    option_lines = "\n".join(f"{number}. {text}" for number, text in enumerate(options, start=1))
+    mode = (
+        "Можно выбрать несколько вариантов. Ответьте только их номерами, например: 1 3."
+        if multiple
+        else "Выберите один вариант и ответьте только его номером."
+    )
+    return (
+        f"❓ Вопрос {index} из {total}\n\n"
+        f"{str(item.get('question_text') or '').strip()}\n\n"
+        f"{option_lines}\n\n"
+        f"{mode}"
+    ).strip()
+
+
+def parse_quest_choice_answer(text: str, option_count: int) -> Optional[tuple[int, ...]]:
+    """Parse a learner answer made only of option numbers separated by spaces/punctuation."""
+    value = str(text or "").strip()
+    if not value or option_count < 2:
+        return None
+    # Only digits and neutral separators are accepted: this keeps the UX explicit
+    # and prevents accidental free-text answers from being interpreted as choices.
+    if re.search(r"[^0-9\s,;.+]", value):
+        return None
+    numbers = [int(token) for token in re.findall(r"\d+", value)]
+    if not numbers:
+        return None
+    unique = tuple(sorted(set(numbers)))
+    if any(number < 1 or number > option_count for number in unique):
+        return None
+    return unique
+
+
+def check_quest_choice_answer(item: dict[str, Any], text: str) -> tuple[Optional[bool], tuple[int, ...]]:
+    """Return deterministic correctness for a multiple-choice quest item."""
+    options = list(item.get("options") or [])
+    selected = parse_quest_choice_answer(text, len(options))
+    if selected is None:
+        return None, ()
+    correct = tuple(sorted({int(value) for value in (item.get("correct_option_numbers") or [])}))
+    return selected == correct, selected
+
+
+async def generate_quest_task_set(
+    client,
+    *,
+    system_prompt: str,
+    user_content: str,
+    requested_count: int,
+) -> tuple[GeneratedTaskSet, dict[str, Any]]:
+    """Generate an exact-size quest and repair malformed answer-choice banks once."""
+    prompt = "\n\n".join([str(system_prompt or "").strip(), quest_choice_rules()])
+    generated = await generate_exact_task_set(
+        client,
+        system_prompt=prompt,
+        user_content=user_content,
+        requested_count=requested_count,
+    )
+    payload = normalize_quest_choice_payload(task_set_payload(generated))
+    issues = quest_choice_issues(payload)
+    if not issues:
+        return generated, payload
+
+    repair_note = (
+        "\n\nCHOICE FORMAT REPAIR. The previous quest did not satisfy the Telegram choice contract:\n- "
+        + "\n- ".join(issues[:20])
+        + "\nRegenerate the COMPLETE quest with the same requested number of questions. "
+          "Every item must have 2..6 distinct options and valid 1-based correct_option_numbers."
+    )
+    repaired = await generate_exact_task_set(
+        client,
+        system_prompt=prompt,
+        user_content=str(user_content or "") + repair_note,
+        requested_count=requested_count,
+        temperature=0.2,
+    )
+    repaired_payload = normalize_quest_choice_payload(task_set_payload(repaired))
+    remaining = quest_choice_issues(repaired_payload)
+    if remaining:
+        raise ValueError("Quest choice validation failed: " + "; ".join(remaining[:12]))
+    return repaired, repaired_payload
+
 def canonicalize_subject(subject: str, candidates: list[str], *, threshold: float = 0.72) -> str:
-    """Map a free-form/inflected subject name to an existing EduAI program when close enough."""
+    """Map a free-form/inflected subject name to an existing Umnix program when close enough."""
     value = _clean(subject)
     if not value or not candidates:
         return value

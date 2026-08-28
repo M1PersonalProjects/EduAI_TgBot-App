@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-TELEGRAM_CHAT_TITLE = "Чат_Tg-Bot-EduAI"
+TELEGRAM_CHAT_TITLE = "Чат Telegram · Umnix"
 TELEGRAM_CHAT_TYPE = "telegram_default"
 
 BOOK_MODE = "book"

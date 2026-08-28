@@ -105,7 +105,7 @@ def _quick_check(
     if _GAME_PROGRESS.search(combined) and not _GAME_EDUCATION.search(combined):
         return ScopeGuardResult(
             False,
-            "EduAI does not provide game walkthroughs, builds, cheats, or progression tactics.",
+            "umnix.ai does not provide game walkthroughs, builds, cheats, or progression tactics.",
             (
                 "Я могу обсудить игру как обычную тему или помочь изучать программирование, "
                 "математику, историю и другие знания на её примере, но не буду вести "

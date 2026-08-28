@@ -32,7 +32,7 @@ if not root_logger.handlers:
     root_logger.addHandler(console_handler)
 
 # 5. Создаем именной логер для твоего собственного кода приложения
-logger = logging.getLogger("EduAI")
+logger = logging.getLogger("Umnix")
 
 logging.getLogger("aiogram").setLevel(logging.INFO)
 logging.getLogger("uvicorn").setLevel(logging.INFO)

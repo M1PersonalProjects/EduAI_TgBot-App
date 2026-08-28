@@ -14,8 +14,8 @@ def test_composer_is_compact_and_empty_placeholder_does_not_expand_it():
     parent = _text("templates/parent.html")
     assert "if (!String(input.value || '').trim())" in chat
     assert "baseHeight = mobile ? 34 : 32" in chat
-    assert 'placeholder="Спросите EduAI…"' in student
-    assert 'placeholder="Спросите EduAI…"' in parent
+    assert 'placeholder="Спросите Umnix…"' in student
+    assert 'placeholder="Спросите Umnix…"' in parent
     assert "min-height: 42px !important" in css
     assert "width: min(100%, 960px)" in css
 

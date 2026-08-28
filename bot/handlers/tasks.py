@@ -11,6 +11,8 @@ from bot.messages import answer_plain, send_plain_to_chat
 from services.tutor_policy import task_grading_prompt
 from services.educational_context import build_context_from_metadata
 from services.assignment_source import TEACHER, normalize_assignment_source
+from services.quest_generation import check_quest_choice_answer, format_quest_question
+from services.mentor_identity import mentor_label, normalize_mentor_kind
 
 router = Router()
 
@@ -24,6 +26,9 @@ class QuestStates(StatesGroup):
 @router.message(F.text.lower() == "отмена")
 @router.message(F.text == "/cancel")
 async def cancel_quest(message: Message, state: FSMContext):
+    """
+    Отменяет активное задание и очищает состояние FSM.
+    """
     current_state = await state.get_state()
     if current_state is None:
         await message.answer("У тебя сейчас нет activeных заданий.")
@@ -35,6 +40,9 @@ async def cancel_quest(message: Message, state: FSMContext):
 @router.message(F.text == "/quest")
 @router.message(F.text == "🚀 Запустить квест")
 async def start_quest(message: Message, state: FSMContext):
+    """
+    Запускает новый квест для пользователя.
+    """
     user_id = message.from_user.id
     await state.clear()
 
@@ -48,12 +56,14 @@ async def start_quest(message: Message, state: FSMContext):
     async with db.pool.acquire() as conn:
         parent_task = await conn.fetchrow(
             """
-            SELECT task_id, topic_context, questions_json, student_answers_json,
-                   parent_id, parent_comment, assignment_source, subject, topic
-            FROM tasks_history
-            WHERE student_id = $1 AND assignment_source = 'teacher'
-              AND status IN ('created'::task_status, 'in_progress'::task_status)
-            ORDER BY created_at ASC
+            SELECT th.task_id, th.topic_context, th.questions_json, th.student_answers_json,
+                   th.parent_id, th.parent_comment, th.assignment_source, th.subject, th.topic,
+                   p.mentor_kind
+            FROM tasks_history th
+            LEFT JOIN users p ON p.tg_id = th.parent_id
+            WHERE th.student_id = $1 AND th.assignment_source = 'teacher'
+              AND th.status IN ('created'::task_status, 'in_progress'::task_status)
+            ORDER BY th.created_at ASC
             LIMIT 1
             """,
             user_id
@@ -62,27 +72,31 @@ async def start_quest(message: Message, state: FSMContext):
         try:
             topic = json.loads(parent_task["topic_context"]) if isinstance(parent_task["topic_context"], str) else parent_task["topic_context"]
             quest = json.loads(parent_task["questions_json"]) if isinstance(parent_task["questions_json"], str) else parent_task["questions_json"]
+            mentor_kind = normalize_mentor_kind(parent_task.get("mentor_kind") if hasattr(parent_task, "get") else None)
+            mentor_public = mentor_label(mentor_kind)
+            mentor_dative = mentor_label(mentor_kind, "dative")
 
             history_feedback = ""
             if parent_task["student_answers_json"]:
                 old_ans = json.loads(parent_task["student_answers_json"]) if isinstance(parent_task["student_answers_json"], str) else parent_task["student_answers_json"]
                 history_feedback = (
                     f"\n\n⚠️ Твой прошлый ответ: {old_ans.get('provided_answer')}\n"
-                    f"❌ Подсказка учителя: {old_ans.get('verification_feedback')}"
+                    f"❌ Подсказка {mentor_public.lower()}: {old_ans.get('verification_feedback')}"
                 )
             try:
                 parent_comment_value = parent_task["parent_comment"]
             except (KeyError, TypeError):
-                # Backward compatibility: old DB rows/test fixtures may not expose
-                # the newly public parent_comment field yet. Treat it as empty.
                 parent_comment_value = None
             parent_comment = (parent_comment_value or "").strip()
             parent_comment_block = (
-                f"\n\n💬 Комментарий от Учителя:\n{parent_comment}"
+                f"\n\n💬 Комментарий от {mentor_public}:\n{parent_comment}"
                 if parent_comment else ""
             )
             async with db.pool.acquire() as conn:
-                await conn.execute("UPDATE tasks_history SET status = 'in_progress'::task_status WHERE task_id = $1", parent_task["task_id"])
+                await conn.execute(
+                    "UPDATE tasks_history SET status = 'in_progress'::task_status WHERE task_id = $1",
+                    parent_task["task_id"]
+                )
             quest_items = quest.get("items") or []
             if quest_items:
                 question_blocks = [
@@ -100,7 +114,7 @@ async def start_quest(message: Message, state: FSMContext):
                 assignment_source="teacher",
                 quest_subject=parent_task.get("subject") if hasattr(parent_task, "get") else None,
                 quest_topic=parent_task.get("topic") if hasattr(parent_task, "get") else None,
-                quest_title=quest.get("title") or "Задание от Учителя",
+                quest_title=quest.get("title") or f"Задание от {mentor_public}",
                 quest_items=quest_items,
                 quest_index=0,
                 quest_answers=[],
@@ -110,31 +124,34 @@ async def start_quest(message: Message, state: FSMContext):
             await status_msg.delete()
             await answer_plain(
                 message,
-                f"👨‍👩‍👦 Персональное задание от Учителя!\n"
+                f"👨‍👩‍👦 Персональное задание от {mentor_public}!\n"
                 f"📘 {quest.get('title') or 'Задание'}\n\n"
                 f"{active_question}"
                 f"{parent_comment_block}"
                 f"{history_feedback}\n\n"
-                "Отправь ответы одним сообщением. После отправки задание перейдёт Учителю "
+                f"Отправь ответы одним сообщением. После отправки задание перейдёт {mentor_dative} "
                 "на ручную проверку.\n\n"
                 "Напиши ответ в чат (или введи /cancel для отмены)."
             )
             return
         except Exception as e:
-            logger.error(f"Ошибка парсинга задания Учителя: {e}")
+            logger.error(f"Ошибка парсинга задания наставника: {e}")
     await status_msg.delete()
     from bot.handlers.quests import quest_entry_keyboard
 
     await message.answer(
         "🧩 Создай квест-тест под свою тему.\n\n"
-        "Можно выбрать учебник, страницу или тему из базы EduAI, "
-        "либо сразу описать запрос текстом — минимум класс, предмет и тема.",
+        "Можно выбрать класс, предмет, учебник и страницу из базы Umnix или просто описать своими словами, "
+        "какой квест хочется пройти. Если важной информации действительно не хватит, я попрошу уточнить только её.",
         reply_markup=quest_entry_keyboard(),
     )
 
 
 @router.message(QuestStates.waiting_for_answer, F.text)
 async def check_quest_answer(message: Message, state: FSMContext):
+    """
+    Проверяет ответ пользователя на активный квест и оценивает его с помощью ИИ.
+    """
     user_answer = (message.text or "").strip()
     user_id = message.from_user.id
     data = await state.get_data()
@@ -149,11 +166,13 @@ async def check_quest_answer(message: Message, state: FSMContext):
     try:
         from api.schemas.tasks import OpenAITaskVerification
 
+        choice_verification = None
         async with db.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                SELECT parent_id, assignment_source, subject, topic, topic_context
-                FROM tasks_history WHERE task_id=$1 AND student_id=$2
+                SELECT th.parent_id, th.assignment_source, th.subject, th.topic, th.topic_context, p.mentor_kind
+                FROM tasks_history th
+                LEFT JOIN users p ON p.tg_id = th.parent_id WHERE th.task_id=$1 AND th.student_id=$2
                 """,
                 task_id, user_id,
             )
@@ -162,6 +181,9 @@ async def check_quest_answer(message: Message, state: FSMContext):
                 await state.clear()
                 return
             source = normalize_assignment_source(row.get("assignment_source"), row.get("parent_id"))
+            mentor_kind = normalize_mentor_kind(row.get("mentor_kind") if hasattr(row, "get") else None)
+            mentor_public = mentor_label(mentor_kind)
+            mentor_dative = mentor_label(mentor_kind, "dative")
             parent_id = row.get("parent_id") if source == TEACHER else None
             raw_topic_context = row.get("topic_context") if hasattr(row, "get") else row["topic_context"]
             topic_context = (
@@ -203,45 +225,75 @@ async def check_quest_answer(message: Message, state: FSMContext):
                         return
 
                 await status_msg.delete()
-                await answer_plain(message, "✅ Ответ отправлен Учителю и ожидает ручной проверки.")
+                await answer_plain(message, f"✅ Ответ отправлен {mentor_dative} и ожидает ручной проверки.")
                 if parent_id:
                     try:
                         await send_plain_to_chat(
                             message.bot,
                             parent_id,
                             "📝 Ученик отправил ответ на назначенное задание. "
-                            "Откройте историю заданий в EduAI для ручной проверки.",
+                            "Откройте историю заданий в Umnix для ручной проверки.",
                         )
                     except Exception:
-                        logger.warning("Не удалось уведомить Учителя о новом ответе", exc_info=True)
+                        logger.warning("Не удалось уведомить наставника о новом ответе", exc_info=True)
                 await state.clear()
                 return
 
-            grading_context = await build_context_from_metadata(
-                conn,
-                str(topic_context.get("topic") or row.get("topic") or question_text or "answer checking"),
-                topic_context,
+            current_item = (
+                quest_items[quest_index]
+                if quest_items and 0 <= quest_index < len(quest_items)
+                else {}
             )
+            if current_item.get("options") and current_item.get("correct_option_numbers"):
+                is_correct, selected = check_quest_choice_answer(current_item, user_answer)
+                if is_correct is None:
+                    await status_msg.edit_text(
+                        "Ответь только номером варианта. Если правильных вариантов несколько — "
+                        "напиши их номера через пробел, например: 1 3."
+                    )
+                    return
+                if is_correct:
+                    explanation = (current_item.get("reference_answer") or "Верный выбор.").strip()
+                else:
+                    explanation = (
+                        "Выбран не тот набор вариантов. Проверь условие и попробуй ещё раз. "
+                        "Правильный ответ пока не раскрывается."
+                    )
+                choice_verification = (bool(is_correct), explanation, selected)
+                grading_context = None
+            else:
+                grading_context = await build_context_from_metadata(
+                    conn,
+                    str(topic_context.get("topic") or row.get("topic") or question_text or "answer checking"),
+                    topic_context,
+                )
 
-        response = await parse_chat_completion(openai_client,
-            messages=[
-                {"role": "system", "content": task_grading_prompt()},
-                {
-                    "role": "user",
-                    "content": (
-                        f"Assignment source: {source}.\n"
-                        f"Task Question: {question_text}\n"
-                        f"Reference Answer: {correct_answer}\n"
-                        f"Student's Answer: {user_answer}\n\n"
-                        f"PRIMARY EDUCATIONAL CONTEXT:\n"
-                        f"{grading_context.primary.content if grading_context.primary else 'none'}\n\n"
-                        f"RANKED EDUAI SUPPLEMENTS:\n{grading_context.database_context or 'none'}"
-                    ),
-                },
-            ],
-            response_format=OpenAITaskVerification,
-        )
-        verification = response.choices[0].message.parsed
+        if choice_verification is not None:
+            class _ChoiceVerification:
+                def __init__(self, is_correct, explanation):
+                    self.is_correct = is_correct
+                    self.explanation = explanation
+            verification = _ChoiceVerification(choice_verification[0], choice_verification[1])
+        else:
+            response = await parse_chat_completion(openai_client,
+                messages=[
+                    {"role": "system", "content": task_grading_prompt()},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Assignment source: {source}.\n"
+                            f"Task Question: {question_text}\n"
+                            f"Reference Answer: {correct_answer}\n"
+                            f"Student's Answer: {user_answer}\n\n"
+                            f"PRIMARY EDUCATIONAL CONTEXT:\n"
+                            f"{grading_context.primary.content if grading_context.primary else 'none'}\n\n"
+                            f"RANKED UMNIX KNOWLEDGE-BASE SUPPLEMENTS:\n{grading_context.database_context or 'none'}"
+                        ),
+                    },
+                ],
+                response_format=OpenAITaskVerification,
+            )
+            verification = response.choices[0].message.parsed
         await status_msg.delete()
 
         attempt = {
@@ -280,12 +332,18 @@ async def check_quest_answer(message: Message, state: FSMContext):
                     question_text=next_item.get("question_text") or "",
                     correct_answer=next_item.get("reference_answer") or "",
                 )
+                next_prompt = (
+                    format_quest_question(next_item, next_index + 1, len(quest_items))
+                    if next_item.get("options")
+                    else (
+                        f"❓ Вопрос {next_index + 1} из {len(quest_items)}\n\n"
+                        f"{next_item.get('question_text', '')}\n\n"
+                        "Напиши следующий ответ."
+                    )
+                )
                 await answer_plain(
                     message,
-                    f"✅ Верно! {verification.explanation}\n\n"
-                    f"❓ Вопрос {next_index + 1} из {len(quest_items)}\n\n"
-                    f"{next_item.get('question_text', '')}\n\n"
-                    "Напиши следующий ответ (или /cancel для отмены).",
+                    f"✅ Верно! {verification.explanation}\n\n{next_prompt}\n\n/cancel — остановить квест.",
                 )
                 return
 

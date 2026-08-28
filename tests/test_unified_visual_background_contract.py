@@ -10,8 +10,8 @@ def _text(path: str) -> str:
 def test_all_site_templates_use_shared_background_bundle():
     for name in ("admin", "parent", "student", "auth", "files", "interactive"):
         source = _text(f"templates/{name}.html")
-        assert "/static/css/app.css?v=20260824-ux-polish-2" in source
-        assert "/static/js/app.js?v=20260824-ux-polish-2" in source
+        assert "/static/css/app.css?v=20260825-umnix-2" in source
+        assert "/static/js/app.js?v=20260825-umnix-2" in source
 
 
 def test_shared_app_installs_matrix_and_glow_once():

@@ -79,7 +79,7 @@ def test_interactive_prompt_forbids_embedded_answer_keys():
     assert "questions only" in prompt
     assert "never embed correct answers" in prompt
     assert "answerkey" in prompt
-    assert "finished eduai learning product" in prompt
+    assert "finished umnix learning product" in prompt
 
 
 def test_interactive_solution_detector_catches_obvious_client_side_keys():

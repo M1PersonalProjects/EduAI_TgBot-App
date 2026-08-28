@@ -1807,3 +1807,540 @@ body.admin-page .admin-main-area {
   .thinking-widget { right: .65rem; bottom: max(.65rem, env(safe-area-inset-bottom)); }
   .thinking-cancel { width: 100%; }
 }
+
+/* === UMNIX UNIFIED PRODUCT LAYOUT + BRAND 2026-08-25 START === */
+:root {
+  --umnix-page-gutter: clamp(.72rem, 1.55vw, 1.5rem);
+  --umnix-content-max: 1560px;
+  --umnix-logo-blue: #1687ff;
+  --umnix-logo-violet: #795bff;
+}
+
+/* One frame for Student / Teacher / Admin / Files / Interactive pages. */
+body.student-page .student-main-area,
+body.teacher-page .main-area,
+body.admin-page .admin-main-area {
+  width: min(var(--umnix-content-max), 100%) !important;
+  max-width: var(--umnix-content-max) !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding-left: var(--umnix-page-gutter) !important;
+  padding-right: var(--umnix-page-gutter) !important;
+  padding-top: max(var(--umnix-page-gutter), env(safe-area-inset-top)) !important;
+  padding-bottom: max(var(--umnix-page-gutter), env(safe-area-inset-bottom)) !important;
+  min-width: 0 !important;
+}
+body.admin-page .app-shell,
+body.student-page .app-shell,
+body.teacher-page .app-shell { width: 100%; min-width: 0; }
+body.admin-page .page-section,
+body.student-page .page-section,
+body.teacher-page .page-section { min-width: 0; padding-bottom: .75rem; }
+.file-library-shell,
+.interactive-shell {
+  width: min(var(--umnix-content-max), 100%) !important;
+  margin-inline: auto !important;
+  padding-left: var(--umnix-page-gutter) !important;
+  padding-right: var(--umnix-page-gutter) !important;
+}
+
+/* Compact persistent Umnix identity. Internal `EduAI` JS/CSS identifiers are
+   intentionally retained for backwards compatibility; this is the public brand. */
+.topbar-identity { display:flex; align-items:center; gap:.8rem; min-width:0; }
+.umnix-brand {
+  display:inline-flex;
+  align-items:center;
+  flex:0 0 auto;
+  gap:.52rem;
+  color:var(--reference-text, var(--text));
+  text-decoration:none;
+  user-select:none;
+  white-space:nowrap;
+}
+.umnix-logo {
+  position:relative;
+  display:grid;
+  place-items:center;
+  width:36px;
+  height:36px;
+  border-radius:12px;
+  overflow:hidden;
+  color:#fff;
+  background:linear-gradient(145deg,var(--umnix-logo-blue),var(--umnix-logo-violet));
+  box-shadow:0 8px 25px rgba(58,100,255,.25), inset 0 1px rgba(255,255,255,.25);
+}
+.umnix-logo::before {
+  content:"";
+  position:absolute;
+  width:27px;
+  height:27px;
+  border:1px solid rgba(255,255,255,.38);
+  border-radius:50%;
+  transform:rotate(-28deg) scaleY(.52);
+}
+.umnix-logo::after {
+  content:"";
+  position:absolute;
+  right:7px;
+  top:7px;
+  width:5px;
+  height:5px;
+  border-radius:50%;
+  background:#fff;
+  box-shadow:0 0 10px rgba(255,255,255,.8);
+}
+.umnix-logo > span { position:relative; z-index:1; font-size:1rem; font-weight:850; letter-spacing:-.08em; transform:translateX(-1px); }
+.umnix-wordmark { font-size:.94rem; font-weight:850; letter-spacing:-.035em; }
+.topbar-page-copy { min-width:0; }
+
+/* Give every topbar the same comfortable outer geometry. */
+.topbar {
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  margin-inline:0 !important;
+  border-radius:20px !important;
+}
+.table-wrap,
+.data-table { max-width:100%; }
+.table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+
+/* Voice control belongs to the same compact composer control family. */
+.chat-voice-button {
+  width:34px !important;
+  min-width:34px !important;
+  height:34px !important;
+  min-height:34px !important;
+  flex:0 0 34px;
+  border-radius:999px !important;
+  font-size:.92rem;
+  background:rgba(120,120,128,.09) !important;
+}
+.chat-voice-button:hover { transform:translateY(-1px); background:rgba(120,120,128,.16) !important; }
+.chat-voice-button.is-recording {
+  color:#fff !important;
+  background:#ff3b5f !important;
+  box-shadow:0 0 0 5px rgba(255,59,95,.12);
+  animation:umnixVoicePulse 1.15s ease-in-out infinite;
+}
+.chat-voice-button.is-transcribing { opacity:.8; }
+.voice-spinner {
+  display:block;
+  width:15px;
+  height:15px;
+  border:2px solid currentColor;
+  border-right-color:transparent;
+  border-radius:50%;
+  animation:umnixSpin .7s linear infinite;
+}
+@keyframes umnixSpin { to { transform:rotate(360deg); } }
+@keyframes umnixVoicePulse { 50% { transform:scale(.94); box-shadow:0 0 0 9px rgba(255,59,95,.07); } }
+
+/* Preserve the clean Gemini-like mobile tutor: brand + settings stay visible,
+   navigation remains in the dedicated tutor sheet, never over the composer. */
+@media (max-width: 767px) {
+  :root { --umnix-page-gutter: max(.55rem, env(safe-area-inset-left)); }
+  body.student-page .student-main-area,
+  body.teacher-page .main-area,
+  body.admin-page .admin-main-area {
+    padding-left:max(.55rem, env(safe-area-inset-left)) !important;
+    padding-right:max(.55rem, env(safe-area-inset-right)) !important;
+    padding-top:max(.55rem, env(safe-area-inset-top)) !important;
+    padding-bottom:max(.65rem, env(safe-area-inset-bottom)) !important;
+  }
+  .topbar { min-height:52px; padding:.42rem .5rem !important; border-radius:18px !important; }
+  .topbar-page-copy { display:none !important; }
+  .umnix-logo { width:32px; height:32px; border-radius:11px; }
+  .umnix-logo::before { width:23px; height:23px; }
+  .umnix-wordmark { font-size:.9rem; }
+  body[data-active-section="tutor"] .topbar > .topbar-identity,
+  body[data-active-section="assistant"] .topbar > .topbar-identity,
+  body[data-active-section="tutor"] .topbar .umnix-brand,
+  body[data-active-section="assistant"] .topbar .umnix-brand {
+    display:flex !important;
+    visibility:visible !important;
+    opacity:1 !important;
+  }
+  .chat-voice-button,
+  .chat-plus-button,
+  .chat-send-button {
+    width:36px !important;
+    min-width:36px !important;
+    height:36px !important;
+    min-height:36px !important;
+    flex-basis:36px;
+  }
+  .modal-panel,
+  .ui-settings-popover {
+    max-width:calc(100vw - max(1rem, env(safe-area-inset-left) + env(safe-area-inset-right))) !important;
+  }
+}
+@media (max-width: 370px) {
+  .umnix-wordmark { display:none; }
+  body.student-page .student-main-area,
+  body.teacher-page .main-area,
+  body.admin-page .admin-main-area {
+    padding-left:max(.4rem, env(safe-area-inset-left)) !important;
+    padding-right:max(.4rem, env(safe-area-inset-right)) !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-voice-button.is-recording,.voice-spinner { animation:none !important; }
+}
+/* === UMNIX UNIFIED PRODUCT LAYOUT + BRAND 2026-08-25 END === */
+
+/* === UMNIX FINAL FRAME CONSISTENCY 2026-08-25 START === */
+.file-library-shell,
+.interactive-shell {
+  padding-top: max(var(--umnix-page-gutter), env(safe-area-inset-top)) !important;
+  padding-bottom: max(var(--umnix-page-gutter), env(safe-area-inset-bottom)) !important;
+  min-width: 0;
+}
+.file-library-shell > *,
+.interactive-shell > * { min-width: 0; }
+@media (max-width: 767px) {
+  .file-library-shell,
+  .interactive-shell {
+    padding-left: max(.55rem, env(safe-area-inset-left)) !important;
+    padding-right: max(.55rem, env(safe-area-inset-right)) !important;
+    padding-top: max(.55rem, env(safe-area-inset-top)) !important;
+    padding-bottom: max(.65rem, env(safe-area-inset-bottom)) !important;
+  }
+}
+/* === UMNIX FINAL FRAME CONSISTENCY 2026-08-25 END === */
+
+
+/* === UMNIX MOBILE CHAT BRAND FINALIZATION 2026-08-25 START === */
+.chat-screen-brand { display:none; }
+@media (max-width: 767px) {
+  body[data-active-section="tutor"] .chat-screen-brand,
+  body[data-active-section="assistant"] .chat-screen-brand {
+    display:inline-flex;
+    min-width:0;
+    margin-right:auto;
+    gap:.42rem;
+  }
+  body[data-active-section="tutor"] .chat-screen-brand .umnix-logo,
+  body[data-active-section="assistant"] .chat-screen-brand .umnix-logo {
+    width:30px;
+    height:30px;
+    border-radius:10px;
+  }
+  body[data-active-section="tutor"] .chat-screen-brand .umnix-wordmark,
+  body[data-active-section="assistant"] .chat-screen-brand .umnix-wordmark {
+    display:inline !important;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    font-size:.91rem;
+  }
+  body[data-active-section="tutor"] .chat-screen-title,
+  body[data-active-section="assistant"] .chat-screen-title {
+    display:none !important;
+  }
+  body[data-active-section="tutor"] .chat-screen-header-row,
+  body[data-active-section="assistant"] .chat-screen-header-row {
+    width:100%;
+    min-width:0;
+    gap:.42rem;
+    padding-right:3rem;
+  }
+  body[data-active-section="tutor"] .chat-screen-header-row > .book-panel-toggle,
+  body[data-active-section="assistant"] .chat-screen-header-row > .book-panel-toggle,
+  body[data-active-section="tutor"] .chat-screen-header-row > .tutor-mobile-nav-toggle,
+  body[data-active-section="assistant"] .chat-screen-header-row > .tutor-mobile-nav-toggle {
+    flex:0 0 40px;
+  }
+}
+@media (max-width: 340px) {
+  body[data-active-section="tutor"] .chat-screen-brand .umnix-wordmark,
+  body[data-active-section="assistant"] .chat-screen-brand .umnix-wordmark { display:none !important; }
+}
+/* === UMNIX MOBILE CHAT BRAND FINALIZATION 2026-08-25 END === */
+
+/* === 2026-08-25 UMNIX FINAL NAVIGATION + CARD SYSTEM === */
+:root {
+  --umnix-page-gutter: clamp(.85rem, 2vw, 1.5rem);
+  --umnix-page-bottom: clamp(1.25rem, 3vw, 2.25rem);
+}
+
+body.student-page .main-area,
+body.teacher-page .main-area,
+body.admin-page .main-area,
+body.files-page .main-area {
+  width: min(100%, 1560px) !important;
+  margin-inline: auto !important;
+  padding: 1rem var(--umnix-page-gutter) var(--umnix-page-bottom) !important;
+}
+body.student-page .page-section,
+body.teacher-page .page-section,
+body.admin-page .page-section {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* One compact mobile section launcher instead of a permanent row of tabs. */
+.mobile-section-menu { display:none; position:relative; flex:0 0 auto; }
+.mobile-section-menu-toggle { overflow:hidden; }
+.mobile-section-menu-arrow {
+  display:inline-block;
+  font-size:1.08rem;
+  line-height:1;
+  transform:rotate(0deg);
+  transition:transform .42s cubic-bezier(.2,.72,.18,1);
+}
+.mobile-section-menu.open .mobile-section-menu-arrow { transform:rotate(360deg); }
+.mobile-section-menu-sheet {
+  position:fixed;
+  z-index:188;
+  top:max(4.25rem, calc(env(safe-area-inset-top) + 3.65rem));
+  right:max(.65rem, env(safe-area-inset-right));
+  left:max(.65rem, env(safe-area-inset-left));
+  display:grid;
+  gap:.35rem;
+  max-height:calc(min(100dvh,var(--eduai-viewport-height,100dvh)) - 5rem);
+  overflow:auto;
+  padding:.55rem;
+  border-radius:22px;
+  opacity:0;
+  visibility:hidden;
+  pointer-events:none;
+  transform:translateY(-7px) scale(.985);
+  transform-origin:top right;
+  transition:opacity .18s ease, transform .22s cubic-bezier(.2,.72,.18,1), visibility .18s ease;
+}
+.mobile-section-menu.open .mobile-section-menu-sheet {
+  opacity:1;
+  visibility:visible;
+  pointer-events:auto;
+  transform:translateY(0) scale(1);
+}
+.mobile-section-menu-item {
+  display:flex;
+  min-height:46px;
+  align-items:center;
+  gap:.72rem;
+  border:0;
+  border-radius:15px;
+  padding:.72rem .85rem;
+  color:var(--reference-text);
+  background:transparent;
+  font-weight:780;
+  text-align:left;
+  text-decoration:none;
+  cursor:pointer;
+}
+.mobile-section-menu-item:hover,
+.mobile-section-menu-item:active,
+.mobile-section-menu-item.active { background:rgba(120,120,128,.14); }
+.mobile-section-menu-item.active { color:var(--reference-accent); }
+.mobile-section-role-switch { border-top:1px solid var(--reference-border); border-radius:0 0 15px 15px; }
+
+/* Compact equal-size summary cards. Full content is opened separately. */
+.compact-record-grid {
+  display:grid !important;
+  grid-template-columns:repeat(auto-fill,minmax(min(100%,17rem),1fr));
+  gap:.8rem !important;
+}
+.compact-record-card {
+  display:flex;
+  min-height:12.5rem;
+  max-height:12.5rem;
+  flex-direction:column;
+  overflow:hidden;
+  border-radius:20px !important;
+  padding:.9rem !important;
+  cursor:pointer;
+  transition:transform .16s ease, border-color .16s ease, background .16s ease !important;
+}
+.compact-record-card:hover { transform:translateY(-2px); border-color:color-mix(in srgb,var(--reference-accent) 30%,var(--reference-border)) !important; }
+.compact-record-card .record-title { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; }
+.compact-record-card .record-preview { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:3; line-clamp:3; }
+.compact-record-card .record-footer { margin-top:auto; padding-top:.55rem; }
+.record-detail-modal .modal-panel { width:min(46rem,calc(100vw - 1rem)); }
+
+.about-hero { position:relative; overflow:hidden; }
+.about-benefit-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(14rem,1fr)); gap:.8rem; }
+.about-benefit { min-height:9.5rem; }
+
+@media (max-width: 767px) {
+  :root { --umnix-page-gutter:max(.65rem,env(safe-area-inset-left),env(safe-area-inset-right)); }
+  body.student-page .main-area,
+  body.teacher-page .main-area,
+  body.admin-page .main-area,
+  body.files-page .main-area {
+    width:100% !important;
+    max-width:100% !important;
+    padding-top:max(.65rem,env(safe-area-inset-top)) !important;
+    padding-right:max(.65rem,env(safe-area-inset-right)) !important;
+    padding-bottom:max(1rem,env(safe-area-inset-bottom)) !important;
+    padding-left:max(.65rem,env(safe-area-inset-left)) !important;
+  }
+  .topbar {
+    min-height:52px !important;
+    margin-bottom:.75rem !important;
+    padding:.42rem .48rem !important;
+    border-radius:19px !important;
+    box-shadow:none !important;
+  }
+  .desktop-quick-nav.student-primary-nav,
+  .desktop-quick-nav.teacher-primary-nav,
+  .desktop-quick-nav.admin-primary-nav { display:none !important; }
+  .mobile-section-menu { display:inline-flex; }
+  body[data-active-section="tutor"] .mobile-section-menu,
+  body[data-active-section="assistant"] .mobile-section-menu { display:none !important; }
+  .mobile-section-menu-toggle {
+    width:38px !important;
+    min-width:38px !important;
+    height:38px !important;
+    min-height:38px !important;
+    border-radius:13px !important;
+  }
+  .student-topbar-actions,
+  .teacher-topbar-actions,
+  .admin-topbar-actions { gap:.35rem !important; }
+  .student-topbar-actions > .icon-btn,
+  .teacher-topbar-actions > .icon-btn,
+  .admin-topbar-actions > .icon-btn { width:38px !important; min-width:38px !important; height:38px !important; min-height:38px !important; }
+
+  /* Chat history is a true full-screen swipe page on phones. No open/close buttons. */
+  body[data-active-section="tutor"] [data-chat-sidebar-toggle],
+  body[data-active-section="assistant"] [data-chat-sidebar-toggle] { display:none !important; }
+  body[data-active-section="tutor"] .chat-thread-sidebar,
+  body[data-active-section="assistant"] .chat-thread-sidebar {
+    position:fixed !important;
+    inset:0 !important;
+    z-index:182 !important;
+    width:100vw !important;
+    max-width:100vw !important;
+    height:min(100dvh,var(--eduai-viewport-height,100dvh)) !important;
+    max-height:none !important;
+    padding:max(.8rem,env(safe-area-inset-top)) max(.8rem,env(safe-area-inset-right)) max(.8rem,env(safe-area-inset-bottom)) max(.8rem,env(safe-area-inset-left)) !important;
+    border:0 !important;
+    border-radius:0 !important;
+    transform:translate3d(calc(-100% + var(--thread-drag-x,0px)),0,0) !important;
+    background:color-mix(in srgb,var(--reference-bg) 94%,transparent) !important;
+    box-shadow:none !important;
+    backdrop-filter:blur(28px) !important;
+    -webkit-backdrop-filter:blur(28px) !important;
+  }
+  body[data-active-section="tutor"] .tutor-chat-layout.threads-drawer-open .chat-thread-sidebar,
+  body[data-active-section="assistant"] .tutor-chat-layout.threads-drawer-open .chat-thread-sidebar {
+    transform:translate3d(var(--thread-drag-x,0px),0,0) !important;
+  }
+  .chat-thread-sidebar-head { padding-top:.1rem; }
+  .chat-thread-backdrop { display:none !important; }
+  .chat-screen-header {
+    box-shadow:none !important;
+    background:linear-gradient(to bottom,color-mix(in srgb,var(--reference-bg) 80%,transparent),transparent) !important;
+  }
+  .chat-screen-header-row { padding-left:.05rem; }
+  .chat-screen-brand { margin-left:.05rem; }
+
+  .compact-record-grid { grid-template-columns:1fr 1fr !important; gap:.55rem !important; }
+  .compact-record-card { min-height:10.7rem; max-height:10.7rem; padding:.72rem !important; border-radius:17px !important; }
+  .compact-record-card .badge { font-size:.62rem; padding:.25rem .38rem; }
+  .compact-record-card .record-title { font-size:.9rem !important; }
+  .compact-record-card .record-preview { font-size:.76rem !important; line-height:1.35 !important; -webkit-line-clamp:2; line-clamp:2; }
+  .record-detail-modal .modal-panel { width:calc(100vw - .8rem); max-height:calc(min(100dvh,var(--eduai-viewport-height,100dvh)) - .8rem); border-radius:22px; }
+  .about-benefit-grid { grid-template-columns:1fr; }
+}
+
+@media (max-width: 360px) {
+  .compact-record-grid { grid-template-columns:1fr !important; }
+  .compact-record-card { min-height:9.8rem; max-height:9.8rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-section-menu-arrow,.mobile-section-menu-sheet,.compact-record-card { transition:none !important; }
+}
+/* === /2026-08-25 UMNIX FINAL NAVIGATION + CARD SYSTEM === */
+
+
+/* === 2026-08-25 UMNIX UNIFIED MOBILE SHELL FINAL === */
+@media (max-width: 767px) {
+  /* The tutor is the one app-like full-screen surface. Other sections keep the common page gutter. */
+  body.student-page[data-active-section="tutor"] .main-area,
+  body.teacher-page[data-active-section="assistant"] .main-area {
+    padding: 0 !important;
+  }
+  body.student-page[data-active-section="tutor"] .topbar,
+  body.teacher-page[data-active-section="assistant"] .topbar {
+    display: none !important;
+  }
+  body.student-page[data-active-section="tutor"] .page-section#tutor,
+  body.teacher-page[data-active-section="assistant"] .page-section#assistant {
+    min-height: min(100dvh, var(--eduai-viewport-height, 100dvh)) !important;
+    margin: 0 !important;
+  }
+  body.student-page[data-active-section="tutor"] .tutor-chat-layout,
+  body.teacher-page[data-active-section="assistant"] .tutor-chat-layout {
+    min-height: min(100dvh, var(--eduai-viewport-height, 100dvh)) !important;
+    border-radius: 0 !important;
+  }
+  body.student-page[data-active-section="tutor"] .chat-center-card,
+  body.teacher-page[data-active-section="assistant"] .chat-center-card {
+    border-radius: 0 !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
+    border-bottom: 0 !important;
+    box-shadow: none !important;
+  }
+  /* No desktop-style halo/shadow stripe above the mobile app surface. */
+  body.student-page[data-active-section="tutor"]::after,
+  body.teacher-page[data-active-section="assistant"]::after {
+    opacity: .38 !important;
+    filter: blur(28px) !important;
+  }
+  body.student-page[data-active-section="tutor"] .chat-screen-header,
+  body.teacher-page[data-active-section="assistant"] .chat-screen-header {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+  /* Full-screen history page: swipe only, no explicit drawer buttons on phones. */
+  body.student-page[data-active-section="tutor"] .chat-thread-sidebar,
+  body.teacher-page[data-active-section="assistant"] .chat-thread-sidebar {
+    width: 100dvw !important;
+    max-width: 100dvw !important;
+    min-width: 100dvw !important;
+    height: min(100dvh, var(--eduai-viewport-height, 100dvh)) !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+  }
+  body.student-page[data-active-section="tutor"] .chat-thread-sidebar-head [data-chat-sidebar-toggle],
+  body.teacher-page[data-active-section="assistant"] .chat-thread-sidebar-head [data-chat-sidebar-toggle],
+  body.student-page[data-active-section="tutor"] .chat-sidebar-rail-button,
+  body.teacher-page[data-active-section="assistant"] .chat-sidebar-rail-button,
+  body.student-page[data-active-section="tutor"] .chat-sidebar-main-toggle,
+  body.teacher-page[data-active-section="assistant"] .chat-sidebar-main-toggle {
+    display: none !important;
+  }
+  /* Every non-chat role page starts at the exact same vertical rhythm. */
+  body.student-page:not([data-active-section="tutor"]) .page-section.active,
+  body.teacher-page:not([data-active-section="assistant"]) .page-section.active,
+  body.admin-page .page-section.active {
+    padding-top: .05rem !important;
+  }
+}
+/* === /2026-08-25 UMNIX UNIFIED MOBILE SHELL FINAL === */
+
+/* === 2026-08-25 UMNIX MOBILE PRIMARY NAV OVERRIDE === */
+@media (max-width: 767px) {
+  /* Historical responsive rules made the desktop navigation flex again.
+     The mobile shell must expose sections only through the single ↗ launcher. */
+  body.student-page .desktop-quick-nav.student-primary-nav,
+  body.teacher-page .desktop-quick-nav.teacher-primary-nav,
+  body.admin-page .desktop-quick-nav.admin-primary-nav {
+    display: none !important;
+  }
+}
+/* === /2026-08-25 UMNIX MOBILE PRIMARY NAV OVERRIDE === */
+
+/* Final mobile swipe-drawer cleanup: historical tablet rule exposed the rail toggle. */
+@media (max-width: 767px) {
+  body.student-page[data-active-section="tutor"] .tutor-chat-layout.threads-collapsed .chat-thread-sidebar > .chat-sidebar-rail-button[data-chat-sidebar-toggle],
+  body.student-page[data-active-section="tutor"] .tutor-chat-layout:not(.threads-collapsed) .chat-thread-sidebar > .chat-sidebar-rail-button[data-chat-sidebar-toggle],
+  body.teacher-page[data-active-section="assistant"] .tutor-chat-layout.threads-collapsed .chat-thread-sidebar > .chat-sidebar-rail-button[data-chat-sidebar-toggle],
+  body.teacher-page[data-active-section="assistant"] .tutor-chat-layout:not(.threads-collapsed) .chat-thread-sidebar > .chat-sidebar-rail-button[data-chat-sidebar-toggle] {
+    display: none !important;
+  }
+}

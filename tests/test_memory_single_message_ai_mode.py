@@ -116,7 +116,7 @@ async def test_long_telegram_tutor_answer_is_one_document_object():
     message.answer.assert_not_awaited()
     message.answer_document.assert_awaited_once()
     kwargs = message.answer_document.await_args.kwargs
-    assert kwargs["document"].filename == "eduai-answer.txt"
+    assert kwargs["document"].filename == "umnix-answer.txt"
 
 
 @pytest.mark.asyncio

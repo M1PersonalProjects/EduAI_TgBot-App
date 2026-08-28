@@ -12,7 +12,7 @@ def test_base_prompt_is_permissive_and_has_external_source_rules():
     prompt = BASE_TUTOR_RULES.lower()
     assert "ordinary everyday conversation is allowed" in prompt
     assert "school, college/vocational education, and university" in prompt
-    assert "questions about eduai itself are allowed" in prompt
+    assert "questions about umnix itself are allowed" in prompt
     assert "you may use external sources, including web search" in prompt
     assert "do not refuse solely because the textbook lacks sufficient information" in prompt
     assert "answers only" not in prompt

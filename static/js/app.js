@@ -1,8 +1,51 @@
 (function () {
   const SESSION_KEY = 'eduai.session.v1';
   const ROLE_PATH = { student: '/student.html', parent: '/parent.html', admin: '/admin.html' };
-  const ROLE_LABELS = { student: 'Ученик', parent: 'Учитель', admin: 'Администратор' };
+  const ROLE_LABELS = { student: 'Ученик', parent: 'Учитель / Родитель', admin: 'Администратор' };
   const roleLabel = role => ROLE_LABELS[role] || role || '';
+  const mentorKind = user => user?.mentor_kind === 'parent' ? 'parent' : 'teacher';
+  const mentorLabel = user => mentorKind(user) === 'parent' ? 'Родитель' : 'Учитель';
+
+  function applyMentorIdentity(user) {
+    if (!user || user.role !== 'parent' || !document.body?.classList.contains('teacher-page')) return;
+    const parentMode = mentorKind(user) === 'parent';
+    document.body.dataset.mentorKind = parentMode ? 'parent' : 'teacher';
+    // The template is written in Teacher wording by default. Only Parent-mode
+    // needs adaptation; reversing every occurrence of «Родитель» in Teacher-mode
+    // would corrupt neutral copy such as «Учитель или Родитель».
+    if (!parentMode) return;
+    const pairs = [['Учителями','Родителями'],['Учителем','Родителем'],['Учителю','Родителю'],['Учителя','Родителя'],['Учитель','Родитель'],['учителями','родителями'],['учителем','родителем'],['учителю','родителю'],['учителя','родителя'],['учитель','родитель']];
+    const replaceText = value => pairs.reduce((out, pair) => out.split(pair[0]).join(pair[1]), String(value || ''));
+    const processRoot = root => {
+      if (!root) return;
+      if (root.nodeType === Node.TEXT_NODE) {
+        if (!root.parentElement?.closest('script,style,template')) root.nodeValue = replaceText(root.nodeValue);
+        return;
+      }
+      if (root.nodeType !== Node.ELEMENT_NODE && root !== document.body) return;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      const nodes = [];
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        if (!node.parentElement?.closest('script,style,template')) nodes.push(node);
+      }
+      nodes.forEach(node => { node.nodeValue = replaceText(node.nodeValue); });
+      root.querySelectorAll?.('[title],[aria-label],[placeholder]').forEach(el => {
+        ['title','aria-label','placeholder'].forEach(name => {
+          const value = el.getAttribute(name);
+          if (value) el.setAttribute(name, replaceText(value));
+        });
+      });
+    };
+    processRoot(document.body);
+    if (!window.__umnixMentorCopyObserver) {
+      window.__umnixMentorCopyObserver = new MutationObserver(mutations => {
+        mutations.forEach(mutation => mutation.addedNodes.forEach(processRoot));
+      });
+      window.__umnixMentorCopyObserver.observe(document.body, { childList:true, subtree:true });
+    }
+    document.title = replaceText(document.title);
+  }
   const MATH_RENDERER_VERSION = '20260812-5';
   let katexPromise = null;
 
@@ -34,6 +77,7 @@
         return null;
       }
       saveSession({ ...session, user });
+      applyMentorIdentity(user);
       document.querySelectorAll('[data-user-name]').forEach(el => el.textContent = user.username ? `@${user.username}` : `ID ${user.tg_id}`);
       document.querySelectorAll('[data-admin-only]').forEach(el => el.hidden = !user.is_admin);
       return user;
@@ -279,7 +323,7 @@
 
   let activeThinkingWidgets = 0;
 
-  function startThinking(label = 'EduAI думает', options = {}) {
+  function startThinking(label = 'Umnix думает', options = {}) {
     const widget = document.createElement('div');
     widget.className = 'thinking-widget glass-strong';
     widget.setAttribute('role', 'status');
@@ -375,7 +419,7 @@
   window.EduAI = {
     api, guard, readSession, saveSession, clearSession, escapeHtml,
     markdown, renderMath, toast, formatDate, setBusy, openModal, closeModal,
-    logout, startThinking, setFormDisabled, initShell, ROLE_PATH, ROLE_LABELS, roleLabel, MATH_RENDERER_VERSION,
+    logout, startThinking, setFormDisabled, initShell, ROLE_PATH, ROLE_LABELS, roleLabel, mentorKind, mentorLabel, applyMentorIdentity, MATH_RENDERER_VERSION,
     mathDebug: { normalizeLatexTransport, latexFallback }
   };
 })();
@@ -614,7 +658,7 @@
     wrap.innerHTML = `
       <button class="icon-btn ui-settings-toggle" type="button" aria-label="Настройки интерфейса" aria-haspopup="dialog" aria-expanded="false">⚙</button>
       <div class="ui-settings-popover glass-strong" role="dialog" aria-label="Настройка отображения темы сайта" hidden>
-        <div class="ui-settings-head"><div><strong>Тема сайта</strong><p class="ui-settings-description">Выберите отображение EduAI</p></div><button type="button" class="thread-action" data-ui-settings-close aria-label="Закрыть">×</button></div>
+        <div class="ui-settings-head"><div><strong>Тема сайта</strong><p class="ui-settings-description">Выберите оформление Umnix</p></div><button type="button" class="thread-action" data-ui-settings-close aria-label="Закрыть">×</button></div>
         <div class="theme-segmented" role="group" aria-label="Тема оформления">
           <button type="button" data-theme-choice="light">Светлая</button>
           <button type="button" data-theme-choice="dark">Тёмная</button>
@@ -852,19 +896,19 @@
       button.type = 'button';
       button.className = 'btn-secondary book-panel-toggle';
       button.setAttribute('aria-expanded', 'false');
-      button.innerHTML = '<span aria-hidden="true">📚</span><span>Book Mode</span>';
+      button.innerHTML = '<span aria-hidden="true">📚</span><span>Учебник</span>';
       const headerRow = center.querySelector(':scope > div:first-child .flex') || center.firstElementChild;
       headerRow?.append(button);
       const backdrop = document.createElement('button');
       backdrop.type = 'button';
       backdrop.className = 'ui-context-backdrop';
-      backdrop.setAttribute('aria-label', 'Закрыть Book Mode');
+      backdrop.setAttribute('aria-label', 'Закрыть выбор учебника');
       layout.append(backdrop);
       const close = () => { layout.classList.remove('book-panel-open'); button.setAttribute('aria-expanded', 'false'); };
       const closeButton = document.createElement('button');
       closeButton.type = 'button';
       closeButton.className = 'icon-btn book-panel-close';
-      closeButton.setAttribute('aria-label', 'Закрыть Book Mode');
+      closeButton.setAttribute('aria-label', 'Закрыть выбор учебника');
       closeButton.textContent = '×';
       panel.prepend(closeButton);
       closeButton.addEventListener('click', close);
@@ -891,6 +935,61 @@
         startY = startX = null;
       }, { passive: true });
     });
+  }
+
+  function setupMobileSectionNavigation() {
+    const primaryNav = document.querySelector('.teacher-primary-nav, .student-primary-nav, .admin-primary-nav');
+    const topbar = document.querySelector('.topbar');
+    const actions = document.querySelector('.teacher-topbar-actions, .student-topbar-actions, .admin-topbar-actions') || topbar?.lastElementChild;
+    if (!primaryNav || !topbar || !actions || document.querySelector('[data-mobile-section-menu]')) return;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'mobile-section-menu';
+    wrap.dataset.mobileSectionMenu = '1';
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'icon-btn mobile-section-menu-toggle';
+    toggle.setAttribute('aria-label', 'Открыть разделы');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.innerHTML = '<span class="mobile-section-menu-arrow" aria-hidden="true">↗</span>';
+    const sheet = document.createElement('div');
+    sheet.className = 'mobile-section-menu-sheet glass-strong';
+    sheet.setAttribute('role', 'dialog');
+    sheet.setAttribute('aria-label', 'Разделы кабинета');
+    sheet.setAttribute('aria-hidden', 'true');
+
+    const close = () => { wrap.classList.remove('open'); toggle.setAttribute('aria-expanded','false'); sheet.setAttribute('aria-hidden','true'); };
+    primaryNav.querySelectorAll('[data-section]').forEach(source => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'mobile-section-menu-item';
+      item.dataset.sectionTarget = source.dataset.section;
+      item.innerHTML = `<span aria-hidden="true">${navIcon(source)}</span><span>${navLabel(source)}</span>`;
+      item.addEventListener('click', () => { source.click(); close(); });
+      sheet.append(item);
+    });
+    const roleSource = primaryNav.querySelector('.quick-role-switch');
+    if (roleSource) {
+      const link = document.createElement('a');
+      link.className = 'mobile-section-menu-item mobile-section-role-switch';
+      link.href = roleSource.href;
+      link.innerHTML = '<span aria-hidden="true">⇄</span><span>Сменить режим</span>';
+      if (roleSource.hasAttribute('data-admin-only')) link.setAttribute('data-admin-only','');
+      link.hidden = roleSource.hidden;
+      new MutationObserver(() => { link.hidden = roleSource.hidden; }).observe(roleSource, { attributes:true, attributeFilter:['hidden'] });
+      sheet.append(link);
+    }
+    wrap.append(toggle, sheet);
+    actions.prepend(wrap);
+    toggle.addEventListener('click', event => { event.stopPropagation(); const open = !wrap.classList.contains('open'); document.querySelectorAll('.mobile-section-menu.open').forEach(other => other.classList.remove('open')); wrap.classList.toggle('open', open); toggle.setAttribute('aria-expanded', open ? 'true':'false'); sheet.setAttribute('aria-hidden', open ? 'false':'true'); });
+    sheet.addEventListener('click', event => event.stopPropagation());
+    document.addEventListener('click', event => { if (!wrap.contains(event.target)) close(); });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });
+    new MutationObserver(() => {
+      const active = document.body.dataset.activeSection;
+      sheet.querySelectorAll('[data-section-target]').forEach(item => item.classList.toggle('active', item.dataset.sectionTarget === active));
+      if (window.matchMedia('(max-width: 767px)').matches) close();
+    }).observe(document.body, { attributes:true, attributeFilter:['data-active-section'] });
   }
 
   function setupTutorMobileNavigation() {
@@ -1039,6 +1138,7 @@
     setupMobileKeyboard();
     enableMovableModules();
     setupBookModePanels();
+    setupMobileSectionNavigation();
     setupTutorMobileNavigation();
     setupGlobalScrollControl();
     syncNavState();

@@ -13,6 +13,10 @@ class GeneratedTaskItem(BaseModel):
     answer: str = Field(..., min_length=1, max_length=8000)
     short_answer: str = Field(default="", max_length=1000)
     task_type: str = Field(default="practice", max_length=80)
+    # Квесты используют эти поля для закрытых вопросов с одним или несколькими
+    # правильными вариантами. Для обычных заданий поля остаются пустыми.
+    options: List[str] = Field(default_factory=list, max_length=6)
+    correct_option_numbers: List[int] = Field(default_factory=list, max_length=6)
 
 
 class GeneratedTaskSet(BaseModel):
@@ -92,7 +96,15 @@ def task_set_payload(generated: GeneratedTaskSet) -> dict[str, Any]:
         "reference_answer": normalized.correct_answer,
         "question_count": len(normalized.items),
         "items": [
-            {"id": f"q{index}", "question_text": item.question, "reference_answer": item.answer, "task_type": item.task_type}
+            {
+                "id": f"q{index}",
+                "question_text": item.question,
+                "reference_answer": item.answer,
+                "task_type": item.task_type,
+                "options": list(item.options or []),
+                "correct_option_numbers": list(item.correct_option_numbers or []),
+                "allow_multiple": len(set(item.correct_option_numbers or [])) > 1,
+            }
             for index, item in enumerate(normalized.items, start=1)
         ],
     }

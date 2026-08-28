@@ -582,15 +582,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('.editor-tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.editor-tab').forEach(x=>x.classList.toggle('btn-primary',x===b));document.querySelectorAll('.editor-pane').forEach(x=>x.hidden=x.dataset.pane!==b.dataset.tab);}));document.querySelector('.editor-tab').click();
   $('page-form').addEventListener('submit',async e=>{e.preventDefault();const b=e.submitter;const payload={page_number:Number($('page-number').value),page_title:$('page-title').value||null,page_paragraph:$('page-paragraph').value||null,page_markdown:$('page-markdown').value.replaceAll('$',''),page_html:$('page-html').value,page_text:$('page-text').value};EduAI.setBusy(b,true,'Сохраняем…');try{await EduAI.api(`/api/v1/admin/pages/${$('page-id').value}`,{method:'PUT',body:JSON.stringify(payload)});EduAI.toast('Страница сохранена','success');await loadPages($('editor-book').value);}catch(err){EduAI.toast(err.message,'error');}finally{EduAI.setBusy(b,false);}});
 
-  async function loadUsers(){const q=new URLSearchParams();if($('user-role').value)q.set('role',$('user-role').value);if($('user-search').value.trim())q.set('search',$('user-search').value.trim());try{const [users,families]=await Promise.all([EduAI.api('/api/v1/admin/users?'+q),EduAI.api('/api/v1/admin/family-tree')]);$('users-body').innerHTML=users.map(u=>`<tr><td>${u.tg_id}</td><td>${EduAI.escapeHtml(u.username?'@'+u.username:'—')}</td><td><span class="badge">${EduAI.roleLabel?.(u.role) || u.role}</span></td><td>${u.parent_id||'—'}</td><td>${EduAI.formatDate(u.created_at)}</td></tr>`).join('')||'<tr><td colspan="5" class="text-center muted">Ничего не найдено</td></tr>';$('family-tree').innerHTML=families.length?families.map(f=>`<article class="glass card"><p class="font-extrabold">${EduAI.escapeHtml(f.parent_username?'@'+f.parent_username:'Учитель '+f.parent_id)}</p><div class="mt-3 grid gap-2">${f.children.length?f.children.map(c=>`<div class="rounded-xl bg-white/[.04] p-2 text-sm">↳ ${EduAI.escapeHtml(c.username?'@'+c.username:'Ученик '+c.tg_id)}</div>`).join(''):'<p class="text-sm muted">Нет привязанных Учеников</p>'}</div></article>`).join(''):empty('Связей Учитель–Ученик пока нет.');}catch(e){EduAI.toast(e.message,'error');}}
+  async function loadUsers(){const q=new URLSearchParams();if($('user-role').value)q.set('role',$('user-role').value);if($('user-search').value.trim())q.set('search',$('user-search').value.trim());try{const [users,families]=await Promise.all([EduAI.api('/api/v1/admin/users?'+q),EduAI.api('/api/v1/admin/family-tree')]);const roleText=u=>u.role==='parent'?(u.mentor_kind==='parent'?'Родитель':'Учитель'):(EduAI.roleLabel?.(u.role)||u.role);$('users-body').innerHTML=users.map(u=>`<tr><td>${u.tg_id}</td><td>${EduAI.escapeHtml(u.username?'@'+u.username:'—')}</td><td><span class="badge">${EduAI.escapeHtml(roleText(u))}</span></td><td>${u.parent_id||'—'}</td><td>${EduAI.formatDate(u.created_at)}</td></tr>`).join('')||'<tr><td colspan="5" class="text-center muted">Ничего не найдено</td></tr>';$('family-tree').innerHTML=families.length?families.map(f=>{const mentor=f.mentor_kind==='parent'?'Родитель':'Учитель';return `<article class="glass card"><p class="font-extrabold">${EduAI.escapeHtml(f.parent_username?'@'+f.parent_username:mentor+' '+f.parent_id)}</p><span class="badge mt-2">${mentor}</span><div class="mt-3 grid gap-2">${f.children.length?f.children.map(c=>`<div class="rounded-xl bg-white/[.04] p-2 text-sm">↳ ${EduAI.escapeHtml(c.username?'@'+c.username:'Ученик '+c.tg_id)}</div>`).join(''):'<p class="text-sm muted">Нет привязанных Учеников</p>'}</div></article>`}).join(''):empty('Связей наставник–Ученик пока нет.');}catch(e){EduAI.toast(e.message,'error');}}
   $('find-users').addEventListener('click',loadUsers);$('user-search').addEventListener('keydown',e=>{if(e.key==='Enter')loadUsers();});
   const ACTIVITY_PREVIEW_LIMIT = 260;
 
-  function activityRoleLabel(role, sender) {
+  function activityRoleLabel(role, sender, mentorKind = null) {
     if (sender === 'assistant') return 'ИИ-тьютор';
+    if (role === 'parent') return mentorKind === 'parent' ? 'Родитель' : 'Учитель';
     return {
       student: 'Ученик',
-      parent: 'Родитель',
       admin: 'Администратор'
     }[role] || 'Пользователь';
   }
@@ -605,7 +605,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function activityUserLabel(item) {
-    const role = activityRoleLabel(item.user_role, item.sender);
+    const role = activityRoleLabel(item.user_role, item.sender, item.mentor_kind);
     const name = item.username
       ? `@${item.username}`
       : `ID ${item.user_id}`;

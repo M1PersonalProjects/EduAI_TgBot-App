@@ -214,7 +214,7 @@ async def assign_interactive(
                 parent_comment = (payload.comment or "").strip()
                 questions_json = {
                     "title": assignment_title,
-                    "question_text": "Откройте интерактивное задание и выполните его на странице EduAI.",
+                    "question_text": "Откройте интерактивное задание и выполните его на странице Umnix.",
                     "reference_answer": "Результат проверяется самим интерактивным заданием.",
                     "interactive_app_id": str(parsed),
                 }
