@@ -149,11 +149,37 @@ CREATE INDEX IF NOT EXISTS idx_users_role_mentor_kind
 """
 
 
+INTERACTIVE_VERSION_SCHEMA_SQL = r"""
+ALTER TABLE interactive_app_versions
+    ADD COLUMN IF NOT EXISTS version_id UUID,
+    ADD COLUMN IF NOT EXISTS parent_version_id UUID,
+    ADD COLUMN IF NOT EXISTS source_message_id BIGINT;
+
+ALTER TABLE interactive_assignments
+    ADD COLUMN IF NOT EXISTS version_no INTEGER;
+
+UPDATE interactive_assignments ia
+SET version_no = a.current_version
+FROM interactive_apps a
+WHERE ia.app_id = a.app_id AND ia.version_no IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_interactive_app_versions_version_id
+    ON interactive_app_versions(version_id)
+    WHERE version_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_interactive_app_versions_source_message
+    ON interactive_app_versions(source_message_id)
+    WHERE source_message_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_interactive_assignments_version
+    ON interactive_assignments(app_id, student_id, version_no);
+"""
+
+
 RUNTIME_SCHEMA_STATEMENTS = (
     ("brand_titles", BRAND_TITLE_SCHEMA_SQL),
     ("mentor_kind", MENTOR_KIND_SCHEMA_SQL),
     ("assignment_source", ASSIGNMENT_SOURCE_SCHEMA_SQL),
     ("task_drafts_and_review", TASK_DRAFTS_AND_REVIEW_SCHEMA_SQL),
+    ("interactive_versions", INTERACTIVE_VERSION_SCHEMA_SQL),
 )
 
 

@@ -255,6 +255,7 @@ async def send_message(
     lock_context: bool = Form(default=False),
     interactive_app_id: Optional[str] = Form(default=None),
     interactive_action: Optional[str] = Form(default=None),
+    interactive_version: Optional[int] = Form(default=None),
     user=Depends(get_current_user),
 ):
     """
@@ -312,6 +313,7 @@ async def send_message(
             lock_selected_context=lock_context,
             interactive_app_id=interactive_app_id,
             interactive_action=interactive_action,
+            interactive_version=interactive_version,
         )
         result.setdefault("sender_name", "Umnix")
         return result

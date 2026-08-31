@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 from urllib.parse import quote
-from typing import Any, List
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
@@ -37,30 +37,37 @@ def _uuid(value: str) -> uuid.UUID:
         raise HTTPException(status_code=404, detail="Интерактивное задание не найдено") from exc
 
 
-async def _accessible_app(conn, app_id: uuid.UUID, user: Any):
+async def _accessible_app(conn, app_id: uuid.UUID, user: Any, version: Optional[int] = None):
+    """Возвращает только выбранную и доступную пользователю версию приложения."""
+    selected_version = int(version) if version not in (None, "") else None
+    if selected_version is not None and selected_version < 1:
+        raise HTTPException(status_code=404, detail="Версия интерактивного задания не найдена")
     row = await conn.fetchrow(
         """
         SELECT a.app_id, a.owner_id, a.session_id, a.source_message_id, a.title,
                a.app_type, a.question_count, a.original_request, a.current_version, a.created_at,
-               a.updated_at, v.html_document,
+               a.updated_at, v.html_document, v.version_no, v.version_id, v.parent_version_id,
                EXISTS(
                    SELECT 1 FROM interactive_assignments ia
                    WHERE ia.app_id=a.app_id AND ia.student_id=$2
+                     AND (ia.version_no=v.version_no OR (ia.version_no IS NULL AND v.version_no=a.current_version))
                ) AS assigned_to_user
         FROM interactive_apps a
         JOIN interactive_app_versions v
-          ON v.app_id=a.app_id AND v.version_no=a.current_version
+          ON v.app_id=a.app_id AND v.version_no=COALESCE($3::integer, a.current_version)
         WHERE a.app_id=$1
           AND (a.owner_id=$2 OR EXISTS(
               SELECT 1 FROM interactive_assignments ia
               WHERE ia.app_id=a.app_id AND ia.student_id=$2
+                AND (ia.version_no=v.version_no OR (ia.version_no IS NULL AND v.version_no=a.current_version))
           ))
         """,
         app_id,
         user["tg_id"],
+        selected_version,
     )
     if not row:
-        raise HTTPException(status_code=404, detail="Интерактивное задание не найдено")
+        raise HTTPException(status_code=404, detail="Интерактивное задание или версия не найдены")
     if user.get("role") == "student" and contains_embedded_solution_data(row["html_document"]):
         raise HTTPException(
             status_code=409,
@@ -87,9 +94,9 @@ async def teacher_students(user=Depends(get_current_user)):
 
 
 @router.get("/{app_id}")
-async def get_interactive(app_id: str, user=Depends(get_current_user)):
+async def get_interactive(app_id: str, version: Optional[int] = None, user=Depends(get_current_user)):
     async with db.pool.acquire() as conn:
-        row = await _accessible_app(conn, _uuid(app_id), user)
+        row = await _accessible_app(conn, _uuid(app_id), user, version)
         db_role = await conn.fetchval("SELECT role::text FROM users WHERE tg_id=$1", user["tg_id"])
     data = serialize_app(row)
     data["html_document"] = row["html_document"]
@@ -102,13 +109,13 @@ async def get_interactive(app_id: str, user=Depends(get_current_user)):
 
 
 @router.get("/{app_id}/answers")
-async def interactive_answers(app_id: str, user=Depends(get_current_user)):
+async def interactive_answers(app_id: str, version: Optional[int] = None, user=Depends(get_current_user)):
     parsed = _uuid(app_id)
     async with db.pool.acquire() as conn:
         db_user = await conn.fetchrow("SELECT role::text AS role FROM users WHERE tg_id=$1", user["tg_id"])
         if not db_user or db_user["role"] not in {"parent", "admin"}:
             raise HTTPException(status_code=403, detail="Ответы доступны только Учителю")
-        row = await _accessible_app(conn, parsed, user)
+        row = await _accessible_app(conn, parsed, user, version)
     if not row:
         raise HTTPException(status_code=404, detail="Интерактивное задание не найдено")
     try:
@@ -129,7 +136,7 @@ async def versions(app_id: str, user=Depends(get_current_user)):
         await _accessible_app(conn, parsed, user)
         rows = await conn.fetch(
             """
-            SELECT version_no, change_request, created_by, created_at
+            SELECT version_no, version_id, parent_version_id, change_request, created_by, created_at
             FROM interactive_app_versions
             WHERE app_id=$1 ORDER BY version_no DESC
             """,
@@ -139,10 +146,10 @@ async def versions(app_id: str, user=Depends(get_current_user)):
 
 
 @router.get("/{app_id}/download")
-async def download_interactive(app_id: str, user=Depends(get_current_user)):
+async def download_interactive(app_id: str, version: Optional[int] = None, user=Depends(get_current_user)):
     parsed = _uuid(app_id)
     async with db.pool.acquire() as conn:
-        row = await _accessible_app(conn, parsed, user)
+        row = await _accessible_app(conn, parsed, user, version)
     display_name = re_safe_filename(row["title"]) + ".html"
     encoded_name = quote(display_name, safe="")
     return Response(
@@ -166,6 +173,7 @@ def re_safe_filename(value: str) -> str:
 async def assign_interactive(
     app_id: str,
     payload: AssignmentRequest,
+    version: Optional[int] = None,
     user=Depends(get_current_user),
 ):
     if user["role"] not in {"parent", "admin"}:
@@ -175,13 +183,15 @@ async def assign_interactive(
     async with db.pool.acquire() as conn:
         owner = await conn.fetchrow(
             """
-            SELECT a.app_id, a.title, a.current_version, v.html_document
+            SELECT a.app_id, a.title, a.current_version, v.version_no, v.version_id, v.html_document
             FROM interactive_apps a
-            JOIN interactive_app_versions v ON v.app_id=a.app_id AND v.version_no=a.current_version
+            JOIN interactive_app_versions v
+              ON v.app_id=a.app_id AND v.version_no=COALESCE($3::integer, a.current_version)
             WHERE a.app_id=$1 AND a.owner_id=$2
             """,
             parsed,
             user["tg_id"],
+            int(version) if version not in (None, "") else None,
         )
         if not owner:
             raise HTTPException(status_code=404, detail="Интерактивное задание не найдено")
@@ -208,7 +218,7 @@ async def assign_interactive(
                 topic_context = {
                     "source": "interactive_app",
                     "interactive_app_id": str(parsed),
-                    "interactive_version": int(owner["current_version"]),
+                    "interactive_version": int(owner["version_no"]),
                 }
                 assignment_title = (payload.title or owner["title"] or "Интерактивное задание").strip()[:255]
                 parent_comment = (payload.comment or "").strip()
@@ -217,6 +227,7 @@ async def assign_interactive(
                     "question_text": "Откройте интерактивное задание и выполните его на странице Umnix.",
                     "reference_answer": "Результат проверяется самим интерактивным заданием.",
                     "interactive_app_id": str(parsed),
+                    "interactive_version": int(owner["version_no"]),
                 }
                 task_id = await conn.fetchval(
                     """
@@ -239,17 +250,18 @@ async def assign_interactive(
                 )
                 assignment_id = await conn.fetchval(
                     """
-                    INSERT INTO interactive_assignments (app_id, teacher_id, student_id, task_id)
-                    VALUES ($1,$2,$3,$4)
+                    INSERT INTO interactive_assignments (app_id, teacher_id, student_id, task_id, version_no)
+                    VALUES ($1,$2,$3,$4,$5)
                     ON CONFLICT (app_id, student_id) DO UPDATE
                     SET teacher_id=EXCLUDED.teacher_id, task_id=EXCLUDED.task_id,
-                        assigned_at=CURRENT_TIMESTAMP
+                        version_no=EXCLUDED.version_no, assigned_at=CURRENT_TIMESTAMP
                     RETURNING assignment_id
                     """,
                     parsed,
                     user["tg_id"],
                     student_id,
                     task_id,
+                    int(owner["version_no"]),
                 )
                 created.append({"student_id": student_id, "task_id": task_id, "assignment_id": assignment_id})
     return {"status": "assigned", "app_id": str(parsed), "assignments": created}
@@ -267,11 +279,12 @@ async def save_result(
     async with db.pool.acquire() as conn:
         assignment = await conn.fetchrow(
             """
-            SELECT ia.assignment_id, ia.task_id, a.current_version, a.title, a.original_request,
-                   v.html_document, th.assignment_source, th.parent_id, th.subject, th.topic
+            SELECT ia.assignment_id, ia.task_id, COALESCE(ia.version_no, a.current_version) AS version_no,
+                   a.title, a.original_request, v.html_document, th.assignment_source, th.parent_id, th.subject, th.topic
             FROM interactive_assignments ia
             JOIN interactive_apps a ON a.app_id=ia.app_id
-            JOIN interactive_app_versions v ON v.app_id=a.app_id AND v.version_no=a.current_version
+            JOIN interactive_app_versions v
+              ON v.app_id=a.app_id AND v.version_no=COALESCE(ia.version_no, a.current_version)
             LEFT JOIN tasks_history th ON th.task_id=ia.task_id
             WHERE ia.app_id=$1 AND ia.student_id=$2
             """,
@@ -312,7 +325,7 @@ async def save_result(
                 ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8)
                 """,
                 parsed,
-                assignment["current_version"],
+                assignment["version_no"],
                 user["tg_id"],
                 assignment["assignment_id"],
                 score,

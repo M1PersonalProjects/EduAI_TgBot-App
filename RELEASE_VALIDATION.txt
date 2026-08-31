@@ -1,0 +1,21 @@
+EduAI / Umnix final release validation
+Date: 2026-08-28
+
+Validated before packaging:
+- python3 -m compileall -q api bot services tests main.py config.py database.py: PASS
+- python3 -m pytest -q: 245 passed
+- node --check static/js/*.js: PASS
+- FastAPI import/startup smoke: PASS (97 unique route paths)
+- Telegram handler imports: PASS
+- Legacy /api/tasks routes: absent
+- Student manual-review submission route: present
+- Interactive Apps API: present
+
+Release archive intentionally excludes:
+- local virtual environment
+- IDE/cache/log files
+- runtime attachment files
+- runtime textbook digitization queue files
+- .env secrets
+
+Configure .env from .env.example before running against real PostgreSQL, OpenAI and Telegram services.

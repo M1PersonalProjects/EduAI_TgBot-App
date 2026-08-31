@@ -11,7 +11,7 @@ def test_student_uses_top_navigation_without_legacy_page_sidebar():
     assert 'student-primary-nav' in html
     assert 'data-section="tutor"' in html
     assert 'data-section="tasks"' in html
-    assert 'data-section="practice"' in html
+    assert 'data-section="practice"' not in html
 
 
 def test_fixed_mobile_bottom_navigation_is_not_generated_anymore():

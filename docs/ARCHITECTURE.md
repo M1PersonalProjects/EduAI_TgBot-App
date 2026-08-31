@@ -106,11 +106,12 @@ Student answer → pending_review
         ↓
 optional AI suggestion → final Teacher score/comment → evaluated
 
-Student AI practice
+Telegram Quest-test (Student only)
         ↓
-tasks_history (assignment_source='tutor_practice')
+temporary FSM state
         ↓
-automatic server-side checking → completed
+choice checking in Telegram → state.clear()
+(no tasks_history persistence)
 
 Interactive assignment
         ↓
@@ -124,11 +125,11 @@ Student DTO удаляет private answer keys и internal metadata рекурс
 ## Interactive app flow
 
 ```text
-chat request
-  → structured app spec
-  → trusted Umnix shell
-  → sanitizer + quality validation
-  → sandboxed iframe
+explicit Interactive App mode + chat request/materials
+  → AI returns one COMPLETE HTML document
+  → sanitizer + technical/security validation
+  → immutable app version (version_id + parent_version_id)
+  → sandboxed iframe / version-specific URL
   → learner answers
   → server-side grading
 ```

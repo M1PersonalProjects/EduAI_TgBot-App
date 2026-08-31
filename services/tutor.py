@@ -4,6 +4,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 
+from config import settings
 from database import db
 from services.context_resolver import ResolvedContext, load_locked_context, resolve_context
 from services.educational_context import build_educational_context, render_sources, search_eduai_materials
@@ -264,21 +265,27 @@ async def get_messages(user_id: int, session_id: str) -> List[Dict[str, Any]]:
         if message_ids:
             app_rows = await conn.fetch(
                 """
-                SELECT app_id, owner_id, session_id, source_message_id, title,
-                       app_type, question_count, current_version, created_at, updated_at
-                FROM interactive_apps
-                WHERE owner_id=$1 AND source_message_id = ANY($2::bigint[])
+                SELECT a.app_id, a.owner_id, a.session_id,
+                       COALESCE(v.source_message_id, a.source_message_id) AS source_message_id,
+                       a.title, a.app_type, a.question_count, a.current_version, a.created_at, a.updated_at,
+                       v.version_no, v.version_id, v.parent_version_id
+                FROM interactive_apps a
+                JOIN interactive_app_versions v ON v.app_id=a.app_id
+                WHERE a.owner_id=$1 AND a.session_id=$3
+                  AND COALESCE(v.source_message_id, CASE WHEN v.version_no=a.current_version THEN a.source_message_id END) = ANY($2::bigint[])
                 """,
                 user_id,
                 message_ids,
+                session["session_id"],
             )
     app_by_message = {}
     for app in app_rows:
         data = dict(app)
         data["app_id"] = str(data["app_id"])
         data["session_id"] = str(data["session_id"])
-        data["open_url"] = f"/interactive/{data['app_id']}"
-        data["download_url"] = f"/api/v1/interactive/{data['app_id']}/download"
+        data["version_no"] = int(data.get("version_no") or data.get("current_version") or 1)
+        data["open_url"] = f"/interactive/{data['app_id']}?version={data['version_no']}"
+        data["download_url"] = f"/api/v1/interactive/{data['app_id']}/download?version={data['version_no']}"
         app_by_message[app["source_message_id"]] = data
     result = []
     for row in rows:
@@ -339,7 +346,7 @@ async def search_web_for_education(query: str) -> str:
     try:
         response = await asyncio.wait_for(
             openai_client.responses.create(
-                model="gpt-4.1-mini",
+                model=settings.openai_model,
                 tools=[{"type": "web_search_preview"}],
                 input=(
                     "Найди достоверную информацию, которая реально улучшит ответ пользователю. "
@@ -420,6 +427,7 @@ async def respond(
     message_source: str = "web",
     interactive_app_id: Optional[str] = None,
     interactive_action: Optional[str] = None,
+    interactive_version: Optional[int] = None,
 ) -> Dict[str, Any]:
     clean_text = clean_ai_text(message_text) or "Проанализируй вложение и помоги разобраться."
     if attachment_id is None and attachment is not None:
@@ -725,6 +733,7 @@ async def respond(
             web_context=web_context,
             interactive_app_id=interactive_app_id,
             interactive_action=interactive_action,
+            interactive_version=interactive_version,
         )
     except InteractiveAppTemporaryError as exc:
         reply = canonicalize_message(str(exc))
@@ -800,7 +809,9 @@ async def respond(
                     session["session_id"],
                     user_id,
                 )
-        await set_interactive_source_message(interactive_app["app_id"], ai_message_id)
+        await set_interactive_source_message(
+            interactive_app["app_id"], ai_message_id, interactive_app.get("version_no")
+        )
         return {
             "message_id": ai_message_id,
             "session_id": str(session["session_id"]),

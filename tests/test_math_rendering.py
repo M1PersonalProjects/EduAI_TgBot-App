@@ -47,15 +47,9 @@ def test_code_and_url_are_not_math():
     assert "`x = a / b`" in joined
 
 
-def test_ai_generated_telegram_notifications_use_safe_sender():
+def test_telegram_quest_messages_use_safe_plain_sender_and_no_legacy_parent_handler():
     from pathlib import Path
     tasks = Path("bot/handlers/tasks.py").read_text(encoding="utf-8")
-    parent = Path("bot/handlers/parent.py").read_text(encoding="utf-8")
-    assert "send_plain_to_chat" in tasks
-    assert "Разбор ИИ: {verification.explanation}" in tasks
-
-    # После нового ТЗ Учитель больше не генерирует/отправляет обычное задание
-    # из Telegram: handler только строит аналитику и использует безопасный answer_plain.
-    assert "answer_plain" in parent
-    assert "INSERT INTO tasks_history" not in parent
-    assert "Создание обычных заданий перенесено в WebApp" in parent
+    assert "answer_plain" in tasks
+    assert "INSERT INTO tasks_history" not in tasks
+    assert not Path("bot/handlers/parent.py").exists()

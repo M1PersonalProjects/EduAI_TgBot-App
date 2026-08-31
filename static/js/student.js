@@ -154,8 +154,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const context = task.topic_context || {};
           const title = task.title || questions.title || `Задание №${task.task_id}`;
           const subject = task.subject || context.subject || 'Учёба';
-          const teacherTask = task.assignment_source === 'teacher';
-          const sourceLabel = teacherTask ? `От ${taskMentorLabel(task)}` : 'Квест';
+          const sourceLabel = `От ${taskMentorLabel(task)}`;
           return `
             <article class="glass compact-record-card" data-task-summary="${task.task_id}" tabindex="0" role="button" aria-label="Открыть ${EduAI.escapeHtml(title)}">
               <div class="flex items-center justify-between gap-2">
@@ -187,27 +186,29 @@ document.addEventListener('DOMContentLoaded', async () => {
   function renderTaskDetail(task) {
     const questions = task.questions_json || {};
     const context = task.topic_context || {};
-    const teacherTask = task.assignment_source === 'teacher';
     const items = Array.isArray(questions.items) ? questions.items : [];
     const body = questions.question_text || (items.length ? items.map((item, index) => `${index + 1}. ${item.question_text || item.question || ''}`).join('\n\n') : 'Условие не указано.');
     return `
       <div class="grid gap-4">
-        <div class="flex flex-wrap gap-2"><span class="badge">${teacherTask ? `От ${taskMentorLabel(task)}` : 'Самостоятельный квест'}</span><span class="badge">${EduAI.escapeHtml(taskStatusLabel(task.status, task))}</span>${task.subject ? `<span class="badge">${EduAI.escapeHtml(task.subject)}</span>` : ''}</div>
+        <div class="flex flex-wrap gap-2"><span class="badge">От ${taskMentorLabel(task)}</span><span class="badge">${EduAI.escapeHtml(taskStatusLabel(task.status, task))}</span>${task.subject ? `<span class="badge">${EduAI.escapeHtml(task.subject)}</span>` : ''}</div>
         ${task.topic ? `<p class="text-sm"><span class="muted">Тема:</span> ${EduAI.escapeHtml(task.topic)}</p>` : ''}
         <section class="rounded-2xl bg-white/[.035] p-4"><h3 class="font-extrabold">Условие</h3><div class="mt-3 leading-7">${EduAI.markdown(body)}</div></section>
-        ${teacherTask && task.parent_comment ? `<section class="rounded-2xl bg-violet-300/[.07] p-4"><p class="text-xs font-bold text-violet-200">Комментарий ${taskMentorLabel(task)}</p><p class="mt-2">${EduAI.escapeHtml(task.parent_comment)}</p></section>` : ''}
+        ${task.parent_comment ? `<section class="rounded-2xl bg-violet-300/[.07] p-4"><p class="text-xs font-bold text-violet-200">Комментарий ${taskMentorLabel(task)}</p><p class="mt-2">${EduAI.escapeHtml(task.parent_comment)}</p></section>` : ''}
         ${renderTaskAttachments(task)}
-        ${questions.interactive_app_id ? `<a class="btn-primary" href="/interactive/${encodeURIComponent(questions.interactive_app_id)}" target="_blank" rel="noopener noreferrer">Открыть интерактивное задание</a>` : ''}
+        ${questions.interactive_app_id ? `<a class="btn-primary" href="/interactive/${encodeURIComponent(questions.interactive_app_id)}${questions.interactive_version ? `?version=${encodeURIComponent(questions.interactive_version)}` : ''}" target="_blank" rel="noopener noreferrer">Открыть интерактивное задание</a>` : ''}
         ${task.student_answers_json?.verification_feedback ? `<section class="rounded-2xl bg-white/[.04] p-4"><h3 class="font-extrabold">Последняя проверка</h3><div class="mt-2 text-sm muted">${EduAI.markdown(task.student_answers_json.verification_feedback)}</div></section>` : ''}
         <form class="task-form grid gap-2" data-task-id="${task.task_id}" ${questions.interactive_app_id ? 'hidden' : ''}>
           <label class="text-xs font-bold muted" for="answer-${task.task_id}">Ваш ответ</label>
-          <div class="flex flex-col sm:flex-row gap-2"><input id="answer-${task.task_id}" class="input flex-1" maxlength="4000" required placeholder="Введите ответ"><button class="btn-primary shrink-0" type="submit">${teacherTask ? `Отправить ${taskMentorLabel(task)}` : 'Проверить'}</button></div>
+          <input id="answer-${task.task_id}" class="input" maxlength="4000" required placeholder="Введите ответ">
+          <label class="text-xs font-bold muted" for="submission-files-${task.task_id}">Файлы или фотографии (необязательно, до 10)</label>
+          <input id="submission-files-${task.task_id}" class="input" type="file" name="attachments" multiple accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.docx,.xlsx,.pptx,.odt,.ods,.odp,.txt,.md,.csv,.rtf">
+          <button class="btn-primary justify-self-start" type="submit">Отправить ${taskMentorLabel(task)}</button>
         </form>
       </div>`;
   }
 
   function openTaskDetail(taskId) {
-    const task = [...(state.dashboard?.tasks || []), ...(state.dashboard?.practice_tasks || [])].find(item => String(item.task_id) === String(taskId));
+    const task = (state.dashboard?.tasks || []).find(item => String(item.task_id) === String(taskId));
     if (!task) return;
     const modal = ensureTaskDetailModal();
     modal.querySelector('[data-student-task-title]').textContent = task.title || task.questions_json?.title || `Задание №${task.task_id}`;
@@ -220,11 +221,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.dashboard = data;
 
     byId('task-count-badge').textContent = data.tasks.length;
-    if (byId('practice-count-badge')) byId('practice-count-badge').textContent = (data.practice_tasks || []).length;
-
     byId('tasks-list').innerHTML = renderTaskCards(data.tasks || []);
-    if (byId('practice-list')) byId('practice-list').innerHTML = renderTaskCards(data.practice_tasks || []);
-
   }
 
   async function loadDashboard() {
@@ -253,22 +250,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     EduAI.setBusy(button, true, 'Проверяем…');
 
     try {
+      const body = new FormData();
+      body.append('student_answer', answer);
+      const files = Array.from(form.querySelector('input[type="file"]')?.files || []);
+      if (files.length > 10) throw new Error('Можно прикрепить не более 10 файлов');
+      files.forEach(file => body.append('attachments', file));
       const result = await EduAI.api(
         `/api/v1/student/tasks/${form.dataset.taskId}/submit`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ student_answer: answer })
-        }
+        { method: 'POST', body }
       );
 
-      if (result.status === 'pending_review') {
-        EduAI.toast(result.message || 'Ответ отправлен Учителю на проверку.', 'success');
-      } else {
-        EduAI.toast(
-          result.success ? (result.message || 'Верно!') : result.message,
-          result.success ? 'success' : 'error'
-        );
-      }
+      EduAI.toast(result.message || 'Ответ отправлен Учителю на проверку.', 'success');
 
       await loadDashboard();
     } catch (error) {

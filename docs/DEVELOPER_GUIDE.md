@@ -19,7 +19,7 @@
 - `services/educational_context.py` — ранжирование учебных источников;
 - `services/chat_memory.py` / `conversation_context.py` — память и активный контекст;
 - `services/task_generation.py` — общий structured task generation;
-- `services/assignment_source.py` — источник задания (`teacher` / `tutor_practice`) и нормализация сложности;
+- `services/assignment_source.py` — совместимость исторических источников и нормализация сложности; новые обычные задания сохраняются только как `teacher`;
 - `services/attachment_storage.py` — ownership/storage/linking файлов;
 - `GET /api/v1/attachments/library` — библиотека вложений текущего пользователя по чатам WebApp/Telegram;
 - `DELETE /api/v1/attachments/{attachment_id}/memory` — удаление связи вложения с памятью/историей чата с сохранением файла, если он ещё нужен заданию;
@@ -36,6 +36,7 @@
 OPENAI_MODEL=gpt-4o
 OPENAI_TIMEOUT_SECONDS=45
 OPENAI_MAX_RETRIES=2
+OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
 ```
 
 Feature-код получает общий `openai_client` и вызывает `create_chat_completion()` или `parse_chat_completion()`. Это сохраняет единые timeout/retry/logging правила и позволяет тестам подменять client.
@@ -62,7 +63,7 @@ BASE RULES
 - PUT — полная замена/обновление ресурса;
 - DELETE — удаление.
 
-Legacy GET `/api/tasks/generate/{tg_id}` пока сохранён для обратной совместимости; новые клиенты должны использовать POST-версию.
+Legacy `/api/tasks/*` удалён. Новые обычные задания создаются только через WebApp draft workflow или из ответа Tutor через тот же draft workflow.
 
 При добавлении Student response убедитесь, что рекурсивно исключены `reference_answer`, `correct_answer`, `ai_instructions`, system prompts и private verification metadata.
 
@@ -70,7 +71,7 @@ Legacy GET `/api/tasks/generate/{tg_id}` пока сохранён для обр
 
 Обычное Teacher assignment никогда не отправляется сразу из генератора. `POST /api/v1/parent/task-drafts` создаёт persistent draft; `PATCH` редактирует; `/send` является единственным UI-финализатором. `POST /api/v1/parent/tasks/generate` также возвращает `status=draft`.
 
-После ответа обычного задания статус становится `pending_review`. `POST /api/v1/parent/tasks/{task_id}/review-suggestion` возвращает только рекомендацию AI, а `POST /api/v1/parent/tasks/{task_id}/review` фиксирует решение Учителя. Legacy `/api/tasks/submit` и Telegram handler обязаны соблюдать ту же ручную проверку для `assignment_source=teacher`.
+После ответа обычного задания статус становится `pending_review`. `POST /api/v1/parent/tasks/{task_id}/review-suggestion` возвращает только рекомендацию AI, а `POST /api/v1/parent/tasks/{task_id}/review` фиксирует решение Учителя. Student WebApp отправляет текст и, при необходимости, файлы в `pending_review`; Telegram Quest-test является отдельным временным режимом и не использует `tasks_history`.
 
 `student_safe_task_payload()` рекурсивно удаляет private answer fields. Никогда не передавайте `reference_answer`, `correct_answer`, `ai_instructions` или hidden criteria в Student DOM/state/download/Telegram. Интерактивные приложения проверяются через backend `grade_interactive_submission`; learner HTML проходит проверку `contains_embedded_solution_data`.
 

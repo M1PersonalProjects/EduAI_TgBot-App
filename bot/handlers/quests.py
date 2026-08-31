@@ -20,7 +20,6 @@ from services.quest_generation import (
     generate_quest_task_set,
     parse_quest_request,
 )
-from services.assignment_source import infer_difficulty
 
 router = Router()
 
@@ -41,7 +40,7 @@ def quest_test_button():
     """
     Возвращает кнопку для создания квест-теста.
     """
-    return [InlineKeyboardButton(text="🧩 Создать Квест-Тест", callback_data="create_quest_test")]
+    return [InlineKeyboardButton(text="🧩 Создать квест-тест", callback_data="create_quest_test")]
 
 
 def quest_entry_keyboard() -> InlineKeyboardMarkup:
@@ -488,52 +487,14 @@ async def generate_quest_test_from_request(message: Message, state: FSMContext):
         if not items:
             raise ValueError("Quest generator returned no task items")
 
-        topic_context = {
-            "source": "telegram_quest_test",
-            "request": spec.raw_request,
-            "attachment_used": bool(attachment_text),
-            "book_id": primary.book_id if primary else data.get("chosen_book_id"),
-            "page_id": primary.page_id if primary else data.get("chosen_page_id"),
-            "book_title": primary.book_title if primary else data.get("chosen_book_label"),
-            "book_class": spec.grade,
-            "book_program": spec.subject,
-            "page_title": primary.page_title if primary else None,
-            "topic": spec.topic,
-            "subject": spec.subject,
-            "requested_count": spec.requested_count,
-            "generated_count": len(items),
-            "source_trace": bundle.source_trace,
-            "difficulty": infer_difficulty(spec.raw_request, spec.topic),
-        }
-        async with db.pool.acquire() as conn:
-            task_id = await conn.fetchval(
-                """
-                INSERT INTO tasks_history (
-                    student_id, parent_id, assignment_source, title, subject, topic,
-                    topic_context, questions_json, score, status, sent_at, updated_at
-                )
-                VALUES (
-                    $1, NULL, 'tutor_practice', $2, $3, $4, $5::jsonb, $6::jsonb,
-                    0, 'in_progress'::task_status, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-                )
-                RETURNING task_id
-                """,
-                message.from_user.id,
-                ai_task.title,
-                spec.subject,
-                spec.topic,
-                json.dumps(topic_context, ensure_ascii=False),
-                json.dumps(questions_json, ensure_ascii=False),
-            )
-
         first = items[0]
         from bot.handlers.tasks import QuestStates
         await state.update_data(
-            active_task_id=task_id,
+            active_task_id=None,
             question_text=first.get("question_text") or "",
             correct_answer=first.get("reference_answer") or "",
             parent_id=None,
-            assignment_source="tutor_practice",
+            assignment_source="telegram_quest_test",
             quest_title=ai_task.title,
             quest_items=items,
             quest_index=0,

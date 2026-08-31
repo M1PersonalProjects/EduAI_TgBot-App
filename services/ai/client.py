@@ -79,14 +79,14 @@ async def transcribe_audio(
     data: bytes,
     filename: str = "voice.webm",
     content_type: str = "audio/webm",
-    model: str = "gpt-4o-mini-transcribe",
+    model: Optional[str] = None,
 ) -> str:
     """Транскрибирует короткое голосовое сообщение без сохранения временного файла."""
     if not data:
         raise ValueError("Пустое голосовое сообщение")
     try:
         response = await openai_client.audio.transcriptions.create(
-            model=model,
+            model=model or settings.openai_transcription_model,
             file=(filename or "voice.webm", data, content_type or "application/octet-stream"),
         )
     except (APITimeoutError, APIConnectionError) as exc:

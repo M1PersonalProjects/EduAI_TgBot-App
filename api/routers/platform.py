@@ -2,7 +2,7 @@ import json
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 
 from api.schemas.tasks import OpenAITaskVerification
@@ -24,6 +24,7 @@ from services.assignment_source import TEACHER, infer_difficulty, normalize_assi
 from services.textbook_digitizer import digitize_pdf_bytes
 from services.attachment_storage import (
     load_attachment_for_ai,
+    save_upload,
     validate_owned_attachments,
 )
 
@@ -63,12 +64,6 @@ class ChatRequest(BaseModel):
     """
     message_text: str = Field(..., min_length=1, max_length=4000)
 
-
-class TaskAnswerRequest(BaseModel):
-    """
-    Запрос на отправку ответа на задание.
-    """
-    student_answer: str = Field(..., min_length=1, max_length=4000)
 
 
 class TaskAttachmentOption(BaseModel):
@@ -467,9 +462,7 @@ def student_task_attachment_dto(row: Any) -> dict[str, Any]:
 
 @router.get("/student/dashboard")
 async def student_dashboard(user=Depends(require_roles("student"))):
-    """
-    Получение информации о профиле ученика и его активных заданиях.
-    """
+    """Возвращает профиль Ученика и только задания, назначенные Учителем."""
     async with db.pool.acquire() as conn:
         profile = await conn.fetchrow(
             """
@@ -500,6 +493,7 @@ async def student_dashboard(user=Depends(require_roles("student"))):
             FROM tasks_history t
             LEFT JOIN users p ON p.tg_id = t.parent_id
             WHERE t.student_id = $1
+              AND t.assignment_source = 'teacher'
               AND t.status IN ('created', 'in_progress', 'pending_review')
             ORDER BY t.created_at ASC
             """,
@@ -543,157 +537,105 @@ async def student_dashboard(user=Depends(require_roles("student"))):
         row["attachments"] = attachments_by_task.get(row["task_id"], [])
         task_items.append(row)
 
-    teacher_tasks = [
-        item for item in task_items
-        if normalize_assignment_source(item.get("assignment_source"), item.get("parent_id")) == TEACHER
-    ]
-    practice_tasks = [
-        item for item in task_items
-        if normalize_assignment_source(item.get("assignment_source"), item.get("parent_id")) != TEACHER
-    ]
-    return {
-        "profile": dict(profile),
-        "tasks": teacher_tasks,
-        "practice_tasks": practice_tasks,
-    }
+    return {"profile": dict(profile), "tasks": task_items}
 
 
 @router.post("/student/tasks/{task_id}/submit")
-async def submit_student_task(task_id: int, payload: TaskAnswerRequest, user=Depends(require_roles("student"))):
-    """
-    Отправка ответа на задание учеником. Задание должно быть в статусе "created" или "in_progress".
-    """
+async def submit_student_task(
+    task_id: int,
+    student_answer: str = Form(..., min_length=1, max_length=4000),
+    attachments: List[UploadFile] = File(default=[]),
+    user=Depends(require_roles("student")),
+):
+    """Передаёт текст и файлы обычного задания Учителю на ручную проверку."""
+    if len(attachments) > 10:
+        raise HTTPException(status_code=422, detail="Можно прикрепить не более 10 файлов")
+
     async with db.pool.acquire() as conn:
         task = await conn.fetchrow(
             """
-            SELECT parent_id, assignment_source, questions_json, topic_context
+            SELECT parent_id, assignment_source
             FROM tasks_history
-            WHERE task_id = $1 AND student_id = $2 AND status IN ('created', 'in_progress')
+            WHERE task_id = $1
+              AND student_id = $2
+              AND assignment_source = 'teacher'
+              AND status IN ('created', 'in_progress')
             """,
             task_id,
             user["tg_id"],
         )
     if not task:
-        raise HTTPException(status_code=404, detail="Активное задание не найдено")
+        raise HTTPException(status_code=404, detail="Активное задание Учителя не найдено")
 
-    questions = parse_json(task["questions_json"])
-    topic_context = parse_json(task["topic_context"])
-    source = normalize_assignment_source(task.get("assignment_source"), task.get("parent_id"))
+    stored_attachments = []
+    for upload in attachments:
+        if not upload or not upload.filename:
+            continue
+        stored_attachments.append(await save_upload(upload=upload, owner_id=user["tg_id"]))
 
-    if source == TEACHER:
-        answer_data = {"provided_answer": without_latex(payload.student_answer), "review_status": "pending_review"}
-        async with db.pool.acquire() as conn:
-            async with conn.transaction():
-                attempt_number = int(await conn.fetchval(
-                    "SELECT COALESCE(MAX(attempt_number), 0) + 1 FROM task_submissions WHERE task_id=$1 AND student_id=$2",
-                    task_id, user["tg_id"],
-                ) or 1)
-                await conn.execute(
-                    """
-                    INSERT INTO task_submissions (task_id, student_id, answer_text, attempt_number, status)
-                    VALUES ($1,$2,$3,$4,'pending_review')
-                    """,
-                    task_id, user["tg_id"], without_latex(payload.student_answer), attempt_number,
-                )
-                updated = await conn.fetchval(
-                    """
-                    UPDATE tasks_history
-                    SET student_answers_json=$1::jsonb, status='pending_review'::task_status, updated_at=CURRENT_TIMESTAMP
-                    WHERE task_id=$2 AND student_id=$3 AND status IN ('created','in_progress')
-                    RETURNING task_id
-                    """,
-                    json.dumps(answer_data, ensure_ascii=False), task_id, user["tg_id"],
-                )
-                if not updated:
-                    raise HTTPException(status_code=409, detail="Задание уже отправлено на проверку")
-        return {
-            "success": True,
-            "status": "pending_review",
-            "assignment_source": source,
-            "message": "Ответ отправлен Учителю и ожидает ручной проверки.",
-        }
-
-    async with db.pool.acquire() as conn:
-        grading_context = await build_context_from_metadata(
-            conn,
-            str(topic_context.get("topic") or questions.get("question_text", "")),
-            topic_context,
-        )
-    try:
-        response = await parse_chat_completion(
-            openai_client,
-            messages=[
-                {"role": "system", "content": task_grading_prompt()},
-                {
-                    "role": "user",
-                    "content": (
-                        f"Assignment source: {source}.\n"
-                        f"Задание: {questions.get('question_text', '')}\n"
-                        f"Эталон/критерии: {questions.get('reference_answer', '')}\n"
-                        f"Ответ ученика: {payload.student_answer}\n\n"
-                        f"PRIMARY EDUCATIONAL CONTEXT:\n{grading_context.primary.content if grading_context.primary else 'none'}\n\n"
-                        f"RANKED UMNIX.AI SUPPLEMENTS:\n{grading_context.database_context or 'none'}"
-                    ),
-                },
-            ],
-            response_format=OpenAITaskVerification,
-        )
-        result = response.choices[0].message.parsed
-    except Exception as exc:
-        logger.error("Task verification failed: %s", exc)
-        raise HTTPException(status_code=502, detail="Не удалось проверить ответ. Попробуйте позже")
-
+    answer_text = without_latex(student_answer)
     answer_data = {
-        "provided_answer": without_latex(payload.student_answer),
-        "verification_feedback": canonicalize_message(result.explanation),
-        "is_correct": result.is_correct,
+        "provided_answer": answer_text,
+        "review_status": "pending_review",
+        "attachment_ids": [item.attachment_id for item in stored_attachments],
     }
-
     async with db.pool.acquire() as conn:
         async with conn.transaction():
-            attempt_number = int(await conn.fetchval(
+            attempt_number = int(
+                await conn.fetchval(
+                    "SELECT COALESCE(MAX(attempt_number), 0) + 1 FROM task_submissions WHERE task_id=$1 AND student_id=$2",
+                    task_id,
+                    user["tg_id"],
+                )
+                or 1
+            )
+            submission_id = await conn.fetchval(
                 """
-                SELECT COALESCE(MAX(attempt_number), 0) + 1
-                FROM task_submissions
-                WHERE task_id = $1 AND student_id = $2
+                INSERT INTO task_submissions (task_id, student_id, answer_text, attempt_number, status)
+                VALUES ($1,$2,$3,$4,'pending_review')
+                RETURNING submission_id
                 """,
                 task_id,
                 user["tg_id"],
-            ) or 1)
-            submission_status = "completed" if result.is_correct else "needs_revision"
-            await conn.execute(
-                """
-                INSERT INTO task_submissions (
-                    task_id, student_id, answer_text, attempt_number, ai_feedback, score, status, reviewed_at
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,CURRENT_TIMESTAMP)
-                """,
-                task_id, user["tg_id"], without_latex(payload.student_answer), attempt_number,
-                canonicalize_message(result.explanation), 100 if result.is_correct else 0, submission_status,
+                answer_text,
+                attempt_number,
             )
-            final_status = "completed" if result.is_correct else "in_progress"
+            for sort_order, item in enumerate(stored_attachments):
+                await conn.execute(
+                    """
+                    INSERT INTO task_submission_attachments (submission_id, attachment_id, sort_order)
+                    VALUES ($1,$2,$3)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    submission_id,
+                    item.attachment_id,
+                    sort_order,
+                )
             updated = await conn.fetchval(
                 """
                 UPDATE tasks_history
-                SET student_answers_json=$1::jsonb, score=$2, status=$3::task_status,
-                    completed_at=CASE WHEN $3 = 'completed' THEN CURRENT_TIMESTAMP ELSE completed_at END,
+                SET student_answers_json=$1::jsonb,
+                    status='pending_review'::task_status,
                     updated_at=CURRENT_TIMESTAMP
-                WHERE task_id=$4 AND student_id=$5 AND status IN ('created','in_progress')
+                WHERE task_id=$2
+                  AND student_id=$3
+                  AND assignment_source='teacher'
+                  AND status IN ('created','in_progress')
                 RETURNING task_id
                 """,
                 json.dumps(answer_data, ensure_ascii=False),
-                100 if result.is_correct else 0,
-                final_status,
                 task_id,
                 user["tg_id"],
             )
             if not updated:
-                raise HTTPException(status_code=409, detail="Задание уже было завершено")
+                raise HTTPException(status_code=409, detail="Задание уже отправлено на проверку")
 
     return {
-        "success": result.is_correct,
-        "status": final_status,
-        "message": without_latex(result.explanation),
-        "assignment_source": source,
+        "success": True,
+        "status": "pending_review",
+        "assignment_source": "teacher",
+        "attachment_count": len(stored_attachments),
+        "message": "Ответ отправлен Учителю и ожидает ручной проверки.",
     }
 
 
@@ -1665,6 +1607,21 @@ async def get_parent_task(
             task_id,
         )
 
+        submission_ids = [row["submission_id"] for row in submissions]
+        submission_attachments = []
+        if submission_ids:
+            submission_attachments = await conn.fetch(
+                """
+                SELECT tsa.submission_id, tsa.attachment_id, tsa.sort_order,
+                       a.original_name, a.mime_type, a.extension, a.size_bytes
+                FROM task_submission_attachments tsa
+                JOIN attachments a ON a.attachment_id=tsa.attachment_id
+                WHERE tsa.submission_id = ANY($1::bigint[])
+                ORDER BY tsa.submission_id, tsa.sort_order
+                """,
+                submission_ids,
+            )
+
     result = dict(task)
     result["topic_context"] = parse_json(result["topic_context"])
     result["questions_json"] = parse_json(result["questions_json"])
@@ -1675,10 +1632,14 @@ async def get_parent_task(
         task_attachment_dto(row)
         for row in attachments
     ]
-    result["submissions"] = [
-        dict(row)
-        for row in submissions
-    ]
+    submission_files: dict[int, list[dict[str, Any]]] = {}
+    for row in submission_attachments:
+        submission_files.setdefault(int(row["submission_id"]), []).append(student_task_attachment_dto(row))
+    result["submissions"] = []
+    for row in submissions:
+        item = dict(row)
+        item["attachments"] = submission_files.get(int(row["submission_id"]), [])
+        result["submissions"].append(item)
 
     return result
 

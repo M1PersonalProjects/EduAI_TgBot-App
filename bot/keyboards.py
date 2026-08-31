@@ -30,7 +30,7 @@ def get_parent_menu(mentor_kind: str = "teacher") -> ReplyKeyboardMarkup:
         ],
         [
             KeyboardButton(
-                text="🌐 Открыть Umnix.ai",
+                text="🌐 Открыть Umnix",
                 web_app=WebAppInfo(url=settings.webapp_base_url),
             ),
         ],
@@ -48,11 +48,12 @@ def get_student_menu() -> ReplyKeyboardMarkup:
     buttons = [
         [
             KeyboardButton(text="📚 Учебники"),
-            KeyboardButton(text="🤖 ИИ-помощник"),
+            KeyboardButton(text="🧩 Квест-тест"),
         ],
+        [KeyboardButton(text="🤖 ИИ-помощник")],
         [
             KeyboardButton(
-                text="🌐 Открыть Umnix.ai",
+                text="🌐 Открыть Umnix",
                 web_app=WebAppInfo(url=settings.webapp_base_url),
             ),
         ],
@@ -69,13 +70,13 @@ def get_admin_menu() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="🌐 Открыть Umnix.ai",
+                    text="🌐 Открыть Umnix",
                     web_app=WebAppInfo(url=settings.webapp_base_url),
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="⇄ Режим Учителя",
+                    text="⇄ Обычный режим",
                     callback_data="admin_toggle_role",
                 )
             ],

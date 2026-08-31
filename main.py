@@ -12,13 +12,12 @@ from aiogram import Bot, Dispatcher
 from config import settings
 from database import db
 
-from bot.handlers import start, webapp, tasks as bot_tasks, ai_chat, parent, quests
+from bot.handlers import start, webapp, tasks as bot_tasks, ai_chat, quests
 
 from api.routers.attachments import router as attachments_v1_router
 from api.routers.admin import router as admin_router
 from api.routers.accounts import router as accounts_router
 from api.routers.books import router as books_router
-from api.routers.tasks import router as tasks_router
 from api.routers.chats import router as chats_router, tutor_router as tutor_chats_router
 from api.routers.auth import router as auth_v1_router
 from api.routers.platform import router as platform_v1_router
@@ -66,7 +65,6 @@ if static_dir.exists():
 
 app.include_router(accounts_router)
 app.include_router(books_router)
-app.include_router(tasks_router)
 app.include_router(admin_router)
 app.include_router(chats_router)
 app.include_router(tutor_chats_router)
@@ -83,7 +81,6 @@ dp = Dispatcher()
 dp.include_router(bot_tasks.router)
 dp.include_router(start.router)
 dp.include_router(webapp.router)
-dp.include_router(parent.router)
 dp.include_router(quests.router)
 dp.include_router(ai_chat.router)
 

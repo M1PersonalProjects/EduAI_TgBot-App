@@ -223,6 +223,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <p class="text-xs font-bold uppercase tracking-[.12em] muted">Ответ ученика</p>
                 <div class="mt-1 text-sm leading-6 text-slate-200">${EduAI.markdown(item.answer_text || '—')}</div>
               </div>
+              ${(item.attachments || []).length ? `
+                <div>
+                  <p class="text-xs font-bold uppercase tracking-[.12em] muted">Файлы Ученика</p>
+                  <div class="mt-2 grid gap-2">${item.attachments.map(file => `
+                    <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white/[.04] p-3">
+                      <span class="text-sm">📎 ${EduAI.escapeHtml(file.original_name || `Файл #${file.attachment_id}`)}</span>
+                      <span class="flex gap-2">
+                        <button type="button" class="btn-secondary text-xs task-detail-preview" data-url="${EduAI.escapeHtml(file.preview_url || '')}" data-name="${EduAI.escapeHtml(file.original_name || 'attachment')}">Просмотр</button>
+                        <button type="button" class="btn-secondary text-xs task-detail-download" data-url="${EduAI.escapeHtml(file.download_url || '')}" data-name="${EduAI.escapeHtml(file.original_name || 'attachment')}">Скачать</button>
+                      </span>
+                    </div>`).join('')}</div>
+                </div>` : ''}
               ${item.ai_feedback ? `
                 <div>
                   <p class="text-xs font-bold uppercase tracking-[.12em] text-violet-200">Обратная связь ИИ</p>

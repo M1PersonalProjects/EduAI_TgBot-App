@@ -17,7 +17,6 @@
       <nav class="desktop-quick-nav student-primary-nav" aria-label="Разделы Ученика">
         <button type="button" class="quick-nav-link active" data-section="tutor"><span aria-hidden="true">✦</span><span>ИИ-тьютор</span></button>
         <button type="button" class="quick-nav-link" data-section="tasks"><span aria-hidden="true">✓</span><span>Задания</span><span id="task-count-badge" class="badge">0</span></button>
-        <button type="button" class="quick-nav-link" data-section="practice"><span aria-hidden="true">🧩</span><span>Квесты</span><span id="practice-count-badge" class="badge">0</span></button>
         <button type="button" class="quick-nav-link" data-section="about"><span aria-hidden="true">♡</span><span>О нашем приложении</span></button>
       </nav>
       <div class="student-topbar-actions flex items-center gap-2"><span class="badge hide-mobile"><span class="status-dot"></span> Синхронизировано</span><button class="icon-btn" id="refresh-dashboard" aria-label="Обновить" title="Обновить">↻</button><button data-logout class="icon-btn" type="button" aria-label="Выйти" title="Выйти">↪</button></div>
@@ -68,13 +67,12 @@
     </section>
 
     <section id="tasks" class="page-section"><div class="flex flex-wrap items-end justify-between gap-3 mb-4"><div><p class="text-sm font-bold text-emerald-200">Учебный план</p><h2 class="text-2xl font-extrabold">Задания</h2><p class="mt-1 muted">Здесь собраны задания, которые вам назначили. Нажмите карточку, чтобы открыть условие, материалы и отправить ответ.</p></div><button id="refresh-tasks" class="btn-secondary">Обновить</button></div><div id="tasks-list" class="compact-record-grid"></div></section>
-    <section id="practice" class="page-section"><div class="mb-4"><p class="text-sm font-bold text-cyan-200">Самостоятельная тренировка</p><h2 class="text-2xl font-extrabold">Квесты</h2><p class="mt-1 muted">Ваши тренировочные квесты и тесты. Они помогают закреплять темы и не отправляются наставнику как домашняя работа.</p></div><div id="practice-list" class="compact-record-grid"></div></section>
     <section id="about" class="page-section">
       <article class="glass card about-hero"><span class="badge">♡ Umnix</span><h2 class="mt-4 text-3xl font-extrabold">Учёба, которая подстраивается под вас</h2><p class="mt-3 max-w-3xl muted">Umnix объединяет ИИ-тьютора, ваши учебники, файлы, задания и интерактивные тренажёры. В отличие от обычного общего ИИ, здесь ответ строится с учётом школьного контекста, выбранного учебника и истории обучения.</p></article>
       <div class="about-benefit-grid mt-4">
         <article class="glass card about-benefit"><div class="text-2xl">✦</div><h3 class="mt-3 font-extrabold">Понимать, а не списывать</h3><p class="mt-2 text-sm muted">Тьютор объясняет ход решения, даёт подсказки и помогает самостоятельно прийти к ответу.</p></article>
         <article class="glass card about-benefit"><div class="text-2xl">📚</div><h3 class="mt-3 font-extrabold">Учебные материалы рядом</h3><p class="mt-2 text-sm muted">Можно прикрепить файл, выбрать учебник или страницу, а недостающий контекст дополнить проверяемыми источниками.</p></article>
-        <article class="glass card about-benefit"><div class="text-2xl">🧩</div><h3 class="mt-3 font-extrabold">Практика в разных форматах</h3><p class="mt-2 text-sm muted">Квесты, задания и интерактивные приложения помогают тренировать знания, а не просто читать ответы.</p></article>
+        <article class="glass card about-benefit"><div class="text-2xl">🧩</div><h3 class="mt-3 font-extrabold">Практика в разных форматах</h3><p class="mt-2 text-sm muted">Задания и интерактивные приложения помогают тренировать знания, а Quest-test доступен отдельным режимом в Telegram.</p></article>
         <article class="glass card about-benefit"><div class="text-2xl">◎</div><h3 class="mt-3 font-extrabold">Связь с наставником</h3><p class="mt-2 text-sm muted">Учитель или Родитель может назначать работу и видеть результаты, а ваши личные квесты остаются отдельной тренировкой.</p></article>
       </div>
     </section>

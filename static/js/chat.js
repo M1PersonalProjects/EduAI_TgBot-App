@@ -2,7 +2,7 @@
   class ChatUI {
     constructor(options) {
       this.options = options;
-      this.state = { sessions: [], activeId: null, editingInteractiveId: null, interactiveAction: null, profile: null, threadQuery: '', pendingRequest: null, voiceRecorder: null, voiceStream: null, voiceChunks: [], voiceStopTimer: null };
+      this.state = { sessions: [], activeId: null, editingInteractiveId: null, editingInteractiveVersion: null, interactiveAction: null, profile: null, threadQuery: '', pendingRequest: null, voiceRecorder: null, voiceStream: null, voiceChunks: [], voiceStopTimer: null };
       this.$ = name => document.getElementById(options[name]);
       this.layout = null;
       this.jumpButton = null;
@@ -403,9 +403,10 @@
       return this.$('formId')?.querySelector('[data-chat-interactive-action]') || null;
     }
 
-    startInteractiveCompose(action = 'create', appId = null) {
+    startInteractiveCompose(action = 'create', appId = null, versionNo = null) {
       this.state.interactiveAction = action;
       this.state.editingInteractiveId = appId || null;
+      this.state.editingInteractiveVersion = versionNo ? Number(versionNo) : null;
       const hidden = this.interactiveActionInput();
       if (hidden) hidden.value = action;
       const preview = this.$('formId')?.parentElement?.querySelector('[data-chat-compose-mode]');
@@ -425,6 +426,7 @@
     clearInteractiveCompose() {
       this.state.interactiveAction = null;
       this.state.editingInteractiveId = null;
+      this.state.editingInteractiveVersion = null;
       const hidden = this.interactiveActionInput();
       if (hidden) hidden.value = '';
       const preview = this.$('formId')?.parentElement?.querySelector('[data-chat-compose-mode]');
@@ -593,10 +595,11 @@
       if (!app?.app_id) return '';
       const session = EduAI.readSession?.();
       const canAssign = ['parent', 'admin'].includes(session?.user?.role);
-      return `<div class="interactive-chat-card mt-3" data-interactive-app="${EduAI.escapeHtml(app.app_id)}">
+      const version = Number(app.version_no || app.current_version || 1);
+      return `<div class="interactive-chat-card mt-3" data-interactive-app="${EduAI.escapeHtml(app.app_id)}" data-interactive-version="${version}">
         <div class="interactive-card-head min-w-0">
           <strong class="interactive-card-title">🧩 ${EduAI.markdown(app.title || 'Интерактивное задание')}</strong>
-          <div class="text-xs muted">v${Number(app.current_version || 1)}${app.question_count ? ` · ${Number(app.question_count)} вопросов` : ''}</div>
+          <div class="text-xs muted">v${version}${app.question_count ? ` · ${Number(app.question_count)} вопросов` : ''}</div>
         </div>
         <div class="interactive-card-actions">
           <button type="button" class="interactive-card-action" data-interactive-open>Открыть</button>
@@ -620,28 +623,29 @@
       const card = event.target.closest('[data-interactive-app]');
       if (card) {
         const appId = card.dataset.interactiveApp;
+        const version = Number(card.dataset.interactiveVersion || 1);
         if (event.target.closest('[data-interactive-open]')) {
-          window.open(`/interactive/${encodeURIComponent(appId)}`, '_blank', 'noopener,noreferrer'); return;
+          window.open(`/interactive/${encodeURIComponent(appId)}?version=${version}`, '_blank', 'noopener,noreferrer'); return;
         }
         if (event.target.closest('[data-interactive-edit]')) {
-          this.startInteractiveCompose('edit', appId);
+          this.startInteractiveCompose('edit', appId, version);
           this.$('inputId').value = '';
           EduAI.toast('Опишите изменение и отправьте сообщение', 'success'); return;
         }
         if (event.target.closest('[data-interactive-download]')) {
           try {
-            const blob = await this.fetchProtected(`/api/v1/interactive/${encodeURIComponent(appId)}/download`);
+            const blob = await this.fetchProtected(`/api/v1/interactive/${encodeURIComponent(appId)}/download?version=${version}`);
             const url = URL.createObjectURL(blob); const link = document.createElement('a');
             link.href = url; link.download = 'interactive.html'; document.body.appendChild(link); link.click(); link.remove();
             setTimeout(() => URL.revokeObjectURL(url), 1000);
           } catch (error) { EduAI.toast(error.message, 'error'); }
           return;
         }
-        if (event.target.closest('[data-interactive-assign]')) { await this.assignInteractive(appId); return; }
+        if (event.target.closest('[data-interactive-assign]')) { await this.assignInteractive(appId, version); return; }
       }
       await this.attachmentAction(event);
     }
-    async assignInteractive(appId) {
+    async assignInteractive(appId, version = 1) {
       try {
         const students = await EduAI.api('/api/v1/interactive/students');
         if (!students.length) { EduAI.toast('Нет привязанных Учеников', 'error'); return; }
@@ -655,9 +659,10 @@
           modal.addEventListener('click', event => { if (event.target === modal || event.target.closest('[data-assign-close]')) EduAI.closeModal('interactive-assign-modal'); });
         }
         modal.dataset.appId = appId;
+        modal.dataset.version = String(version);
         modal.querySelector('[data-assign-students]').innerHTML = students.map(item => `<label class="flex items-center gap-3 rounded-xl bg-white/[.04] p-3"><input type="checkbox" name="students" value="${item.tg_id}"><span class="text-sm font-bold">${EduAI.escapeHtml(item.username ? '@' + item.username : 'ID ' + item.tg_id)}</span></label>`).join('');
         const form = modal.querySelector('[data-interactive-assign-form]');
-        modal.querySelector('[data-assign-preview]').onclick = () => window.open(`/interactive/${encodeURIComponent(appId)}`, '_blank', 'noopener,noreferrer');
+        modal.querySelector('[data-assign-preview]').onclick = () => window.open(`/interactive/${encodeURIComponent(appId)}?version=${version}`, '_blank', 'noopener,noreferrer');
         form.onsubmit = async event => {
           event.preventDefault();
           const button = event.submitter;
@@ -665,7 +670,7 @@
           if (!studentIds.length) { EduAI.toast('Выберите хотя бы одного Ученика', 'error'); return; }
           EduAI.setBusy(button, true, 'Отправляем…');
           try {
-            await EduAI.api(`/api/v1/interactive/${encodeURIComponent(appId)}/assign`, {
+            await EduAI.api(`/api/v1/interactive/${encodeURIComponent(appId)}/assign?version=${version}`, {
               method: 'POST',
               body: JSON.stringify({ student_ids: studentIds, title: form.elements.title.value.trim(), comment: form.elements.comment.value.trim() })
             });
@@ -871,6 +876,7 @@
         form.append('message_text', text);
         if (interactiveAction) form.append('interactive_action', interactiveAction);
         if (this.state.editingInteractiveId) form.append('interactive_app_id', this.state.editingInteractiveId);
+        if (this.state.editingInteractiveVersion) form.append('interactive_version', String(this.state.editingInteractiveVersion));
         if (file) form.append('attachment', file);
         const mapping = [['classId','book_class'],['subjectId','book_program'],['bookId','book_id'],['pageId','page_id']];
         mapping.forEach(([id,key]) => { const element = this.$(id); if (element && element.value) form.append(key, element.value); });

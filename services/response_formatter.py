@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import io
 import re
 from dataclasses import dataclass
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 MATH_FORMATTING_RULES = r"""
 MATHEMATICAL OUTPUT RULES
@@ -348,7 +348,7 @@ def telegram_safe_text(value: object) -> str:
     return format_for_telegram(value)
 
 
-def render_formula_png(expr: str) -> bytes | None:
+def render_formula_png(expr: str) -> Optional[bytes]:
     try:
         matplotlib.use("Agg")
 

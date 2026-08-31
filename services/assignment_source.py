@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Optional
 
 TEACHER = "teacher"
 TUTOR_PRACTICE = "tutor_practice"
 VALID_ASSIGNMENT_SOURCES = {TEACHER, TUTOR_PRACTICE}
 
 
-def normalize_assignment_source(value: str | None, parent_id: int | None = None) -> str:
+def normalize_assignment_source(value: Optional[str], parent_id: Optional[int] = None) -> str:
     """Нормализует источник задания и поддерживает старые строки до миграции."""
     normalized = (value or "").strip().lower()
     if normalized in VALID_ASSIGNMENT_SOURCES:

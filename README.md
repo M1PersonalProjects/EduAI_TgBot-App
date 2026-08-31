@@ -13,7 +13,7 @@ FastAPI routers / Telegram handlers
         ▼
 shared services
   ├─ tutor / context / memory
-  ├─ task generation and checking
+  ├─ teacher task generation / manual review
   ├─ attachments
   ├─ interactive apps
   ├─ textbook digitization
@@ -62,7 +62,7 @@ python -m pip install -r requirements.txt
 
 ## База данных и актуализация схемы
 
-Приложение ожидает существующую базовую схему Umnix. Минимальные совместимые изменения, необходимые текущему коду (`assignment_source`, draft-first задания и `pending_review`), проверяются и идемпотентно применяются при старте через `services/schema_migrations.py`. Runtime не зависит от одноразовых `.sql`-файлов.
+Приложение ожидает существующую базовую схему Umnix. Минимальные совместимые изменения, необходимые текущему коду (`assignment_source`, draft-first задания, `pending_review` и версионность Interactive Apps), проверяются и идемпотентно применяются при старте через `services/schema_migrations.py`. Runtime не зависит от одноразовых `.sql`-файлов.
 
 Перед любыми ручными изменениями production-БД делайте резервную копию.
 
@@ -100,16 +100,20 @@ Frontend использует единый iOS-inspired design system в `static
 
 ### Задания Учителя
 
-Обычное задание всегда проходит путь `черновик → редактирование/preview → выбор Ученика → отправка`. Черновик можно начать со страницы «Ученики» или из конкретного ответа AI Tutor. Ответ Ученика переводит обычное задание в `pending_review`; окончательную оценку и комментарий выставляет Учитель. AI может дать Учителю подсказку, но не принимает финальное решение. Интерактивные приложения остаются отдельным типом задания с автоматической серверной проверкой.
+Обычное задание всегда проходит путь `черновик → редактирование/preview → выбор Ученика → отправка`. Ученик может приложить к ответу документы/фотографии. Черновик можно начать со страницы «Ученики» или из конкретного ответа AI Tutor. Ответ Ученика переводит обычное задание в `pending_review`; окончательную оценку и комментарий выставляет Учитель. AI может дать Учителю подсказку, но не принимает финальное решение. Интерактивные приложения остаются отдельным типом задания с автоматической серверной проверкой.
+
+### Quest-test
+
+Quest-test существует только в Telegram для Ученика. Его прогресс хранится только во временном FSM-состоянии и очищается после завершения или `/cancel`; отдельного Web-раздела и записей Quest-test в `tasks_history` нет.
 
 
 ## AI и prompts
 
 - единственная точка создания OpenAI клиента: `services/ai/client.py`;
-- модель, timeout и retries задаются через environment;
+- основная AI-модель, STT-модель, timeout и retries задаются через environment (`OPENAI_MODEL`, `OPENAI_TRANSCRIPTION_MODEL`, `OPENAI_TIMEOUT_SECONDS`, `OPENAI_MAX_RETRIES`);
 - системные prompt-блоки находятся в `services/prompts/`;
 - пользовательский язык не меняется из-за языка prompt;
-- Book Mode использует выбранный учебник как основной, но не единственный источник;
+- Book Mode использует выбранный учебник как основной источник и соблюдает выбранный scope;
 - приватные эталонные ответы и AI instructions не должны попадать в Student DTO.
 
 ## Вложения
@@ -138,7 +142,7 @@ bot/
 services/
   ai/                    centralized OpenAI access
   prompts/               system prompt blocks
-  templates/             trusted interactive shell templates
+  interactive_apps.py    AI → complete HTML → validate/save/version
   *.py                   shared business services
 static/
   css/                    design system and responsive styles

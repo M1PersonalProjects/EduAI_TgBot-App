@@ -38,14 +38,14 @@ def test_teacher_ai_message_creates_editable_draft_before_send():
 
 def test_regular_teacher_tasks_require_manual_review_everywhere():
     platform = read("api/routers/platform.py")
-    legacy = read("api/routers/tasks.py")
-    telegram = read("bot/handlers/tasks.py")
+    student = read("static/js/student.js")
     parent = read("static/js/parent.js")
-    for source in (platform, legacy, telegram):
-        assert "pending_review" in source
+    assert "pending_review" in platform
     assert "/review-suggestion" in platform
     assert "/review" in platform
     assert "Ручная проверка Учителя" in parent
+    assert "Проверить" not in student
+    assert not (ROOT / "api/routers/tasks.py").exists()
 
 
 def test_student_transport_does_not_expose_teacher_answer_keys():

@@ -1,5 +1,7 @@
 (function () {
   const appId = document.body.dataset.interactiveAppId;
+  const requestedVersion = new URLSearchParams(window.location.search).get('version');
+  const versionQuery = requestedVersion ? `?version=${encodeURIComponent(requestedVersion)}` : '';
   const frame = document.getElementById('interactive-frame');
   const loading = document.getElementById('interactive-loading');
   const title = document.getElementById('interactive-title');
@@ -28,10 +30,10 @@
 
   async function load() {
     try {
-      app = await EduAI.api(`/api/v1/interactive/${encodeURIComponent(appId)}`);
+      app = await EduAI.api(`/api/v1/interactive/${encodeURIComponent(appId)}${versionQuery}`);
       title.innerHTML = EduAI.markdown(app.title || 'Интерактивное задание');
       EduAI.renderMath?.(title);
-      version.textContent = `Версия v${app.current_version || 1}${app.question_count ? ` · ${app.question_count} вопросов` : ''}`;
+      version.textContent = `Версия v${app.version_no || app.current_version || 1}${app.question_count ? ` · ${app.question_count} вопросов` : ''}`;
       if (answersButton) {
         let canViewAnswers = Boolean(app.can_view_answers);
         // Defensive fallback: /auth/session reads the canonical users row by tg_id.
@@ -89,7 +91,7 @@
 
   downloadButton.addEventListener('click', async () => {
     try {
-      const blob = await fetchProtectedBlob(`/api/v1/interactive/${encodeURIComponent(appId)}/download`);
+      const blob = await fetchProtectedBlob(`/api/v1/interactive/${encodeURIComponent(appId)}/download${versionQuery}`);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -104,7 +106,7 @@
     const original = answersButton.textContent;
     answersButton.textContent = 'Готовим ответы…';
     try {
-      const data = await EduAI.api(`/api/v1/interactive/${encodeURIComponent(appId)}/answers`);
+      const data = await EduAI.api(`/api/v1/interactive/${encodeURIComponent(appId)}/answers${versionQuery}`);
       answersContent.innerHTML = EduAI.markdown(data.answers_markdown || 'Ответы не сформированы.');
       EduAI.renderMath?.(answersContent);
       answersPanel.hidden = false;
