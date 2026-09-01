@@ -20,10 +20,9 @@ def test_interactive_backend_keeps_parent_student_permissions():
 
 
 def test_admin_can_keep_admin_role_and_use_teacher_tutor_mode():
-    tutor = Path("services/tutor.py").read_text(encoding="utf-8")
+    tutor = Path("services/ai/orchestrator.py").read_text(encoding="utf-8")
     api = Path("api/routers/tutor.py").read_text(encoding="utf-8")
-    assert 'if role == "admin":' in tutor
-    assert 'role = "parent"' in tutor
+    assert 'resolved_role = "parent" if role == "admin" else str(role)' in tutor
     assert 'ALLOWED_TUTOR_ROLES = {"student", "parent", "admin"}' in api
 
 

@@ -43,7 +43,7 @@ def test_history_is_scoped_after_context_switch():
 
 
 def test_tutor_book_mode_excludes_old_attachments_by_default():
-    source = Path("services/tutor.py").read_text(encoding="utf-8")
+    source = Path("services/ai/orchestrator.py").read_text(encoding="utf-8")
     assert "elif active_mode == BOOK_MODE:" in source
     assert "if attachment_reference:" in source
     assert "selected_attachments = []" in source

@@ -183,3 +183,22 @@ storage/attachments/      runtime user files (ignored by Git)
 - pill-shaped composer;
 - mobile drawer для чатов и bottom sheet для Book Mode.
 
+
+## Единый AI-оркестратор
+
+Все пользовательские AI-сценарии WebApp и Telegram входят через `services/ai/orchestrator.py::generate_response()`.
+Оркестратор собирает контекст текущей `session_id`, историю и память чата, вложения, Book Mode и выбранный AI-mode. Роутеры и Telegram handlers не создают prompt и не вызывают LLM-клиент напрямую.
+
+Основные mode: `chat`, `interactive_create`, `interactive_edit`, `interactive_answers`, `interactive_grade`, `quest`.
+Interactive Apps сохраняют версии, историю версий, скачивание HTML, редактирование выбранной версии и отправку Ученику.
+
+## База данных с нуля
+
+Каноническая схема находится в `database.sql`. Для новой БД используйте именно этот файл целиком; runtime `ALTER TABLE` больше не применяются.
+
+```bash
+createdb umnix_db
+psql -d umnix_db -f database.sql
+```
+
+Перед применением к существующей production-БД сделайте backup: `database.sql` рассчитан на чистое создание схемы, а не на миграцию существующих данных.

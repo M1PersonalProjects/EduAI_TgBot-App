@@ -85,7 +85,7 @@ async def test_old_pdf_remains_resolvable_after_long_chat(monkeypatch):
 
 
 def test_tutor_uses_shared_session_memory_and_channel_prompt_contract():
-    source = open("services/tutor.py", encoding="utf-8").read()
+    source = open("services/ai/orchestrator.py", encoding="utf-8").read()
     assert "await session_attachments" in source
     assert "available_rows=all_session_attachments" in source
     assert "attachments_inventory=attachments_inventory_text" in source
@@ -161,7 +161,7 @@ async def test_ai_helper_state_persists_for_five_messages(
     responder = AsyncMock(
         return_value={"message_text": "Ответ", "book_mode": False}
     )
-    monkeypatch.setattr(ai_chat, "respond", responder)
+    monkeypatch.setattr(ai_chat, "generate_response", responder)
     monkeypatch.setattr(ai_chat, "parse_telegram_attachment", AsyncMock(return_value=None))
 
     for index in range(5):

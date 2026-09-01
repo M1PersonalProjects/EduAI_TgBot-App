@@ -10,7 +10,8 @@ from database import db
 from logger_config import logger
 from services.file_parser import AttachmentError
 from services.thinking import TelegramThinkingIndicator
-from services.tutor import ensure_telegram_session, exit_book_mode, respond
+from services.tutor import ensure_telegram_session, exit_book_mode
+from services.ai.orchestrator import generate_response
 
 
 router = Router()
@@ -127,11 +128,12 @@ async def _handle_ai_message(message: Message):
     try:
         attachment = await parse_telegram_attachment(message)
         session = await ensure_telegram_session(message.from_user.id)
-        result = await respond(
+        result = await generate_response(
             user_id=message.from_user.id,
             role=user["role"],
             session_id=str(session["session_id"]),
-            message_text=user_text,
+            message=user_text,
+            mode="chat",
             attachment=attachment,
             message_source="telegram",
         )

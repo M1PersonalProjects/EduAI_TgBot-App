@@ -18,7 +18,7 @@ async def test_quick_tutor_handles_plain_text(make_message, mock_db, monkeypatch
         "message_text": "Начнём с определения дроби.",
         "book_mode": False,
     })
-    monkeypatch.setattr(ai_chat, "respond", responder)
+    monkeypatch.setattr(ai_chat, "generate_response", responder)
     monkeypatch.setattr(
         ai_chat,
         "ensure_telegram_session",
@@ -28,7 +28,7 @@ async def test_quick_tutor_handles_plain_text(make_message, mock_db, monkeypatch
     await ai_chat.quick_ai_chat_fallback(message)
 
     responder.assert_awaited_once()
-    assert responder.await_args.kwargs["message_text"] == "Объясни дроби"
+    assert responder.await_args.kwargs["message"] == "Объясни дроби"
     assert any(
         call.args and call.args[0] == "Начнём с определения дроби."
         for call in message.answer.await_args_list
@@ -55,7 +55,7 @@ async def test_quick_tutor_passes_telegram_document_to_ai(
         "message_text": "Презентация разобрана.",
         "book_mode": False,
     })
-    monkeypatch.setattr(ai_chat, "respond", responder)
+    monkeypatch.setattr(ai_chat, "generate_response", responder)
     monkeypatch.setattr(
         ai_chat,
         "ensure_telegram_session",

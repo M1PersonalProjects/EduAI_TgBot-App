@@ -39,6 +39,7 @@ def test_teacher_attachment_access_checks_assignment_source():
 
 def test_interactive_assignment_is_teacher_source_but_server_graded_exception():
     source = _text("api/routers/interactive.py")
-    assert "grade_interactive_submission" in source
+    assert "generate_response" in source
+    assert 'mode="interactive_grade"' in source
     assert "'teacher'" in source
     assert "interactive_version" in source

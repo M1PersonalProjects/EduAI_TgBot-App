@@ -17,6 +17,8 @@ Requirements:
 - Keep DOM rendering, arrays, filters, categories, identifiers and event handlers internally consistent.
 - Do not expose raw LaTeX or "$" notation to users. Use readable HTML and Unicode notation.
 - Student-facing applications must not expose correct answers, answer keys or solutions in accessible client-side code.
+- When task completion must be reported to Umnix, use EduAIInteractive.complete(...) when the runtime bridge is available.
+- Return only the complete HTML document.
 """
 
 INTERACTIVE_ANSWER_KEY_RULES = r"""

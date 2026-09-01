@@ -9,13 +9,13 @@ def read(path: str) -> str:
 
 def test_teacher_and_parent_share_backend_role_but_keep_public_identity():
     start = read("bot/handlers/start.py")
-    schema = read("services/schema_migrations.py")
+    database = read("database.sql")
     auth = read("api/routers/auth.py")
     assert 'db_role = "parent" if selected_role in {"teacher", "parent"}' in start
     assert 'mentor_kind = selected_role if selected_role in {"teacher", "parent"}' in start
     assert "Я Учитель" in read("bot/keyboards.py")
     assert "Я Родитель" in read("bot/keyboards.py")
-    assert "ADD COLUMN IF NOT EXISTS mentor_kind TEXT" in schema
+    assert "mentor_kind TEXT" in database
     assert '"mentor_kind"' in auth
     assert normalize_mentor_kind("parent") == "parent"
     assert mentor_label("parent") == "Родитель"
@@ -62,10 +62,10 @@ def test_student_teacher_have_about_section_and_compact_task_cards():
 
 def test_admin_and_existing_telegram_chat_titles_use_public_umnix_brand():
     platform = read("api/routers/platform.py")
-    schema = read("services/schema_migrations.py")
+    conversation = read("services/conversation_context.py")
     admin = read("static/js/admin.js")
     assert "mentor_kind" in platform
-    assert "Чат Telegram · Umnix" in schema
+    assert "Чат Telegram · Umnix" in conversation
     assert "Родитель" in admin and "Учитель" in admin
 
 

@@ -8,7 +8,7 @@ def read(relative: str) -> str:
 
 
 def test_sender_identity_profile_and_new_chat_greeting_contract():
-    tutor = read("services/tutor.py")
+    tutor = read("services/ai/orchestrator.py")
     api = read("api/routers/tutor.py")
     chat = read("static/js/chat.js")
     assert 'sender_name' in tutor
@@ -63,7 +63,8 @@ def test_interactive_apps_use_existing_task_system_and_server_grading():
     chat = read("static/js/chat.js")
     assert "interactive_assignments" in interactive
     assert "tasks_history" in interactive
-    assert "grade_interactive_submission" in interactive
+    assert "generate_response" in interactive
+    assert 'mode="interactive_grade"' in interactive
     assert "contains_embedded_solution_data" in interactive
     assert "Отправить Ученикам" in chat
     assert "Проверить приложение" in chat
@@ -87,11 +88,14 @@ def test_ios_chat_adaptation_profile_search_swipes_keyboard_and_book_sheet():
     assert "prefers-reduced-motion: reduce" in css
 
 
-def test_runtime_schema_is_self_contained_and_does_not_require_sql_files():
+def test_database_sql_is_canonical_schema_and_runtime_migrations_are_disabled():
     schema = read("services/schema_migrations.py")
-    assert "RUNTIME_SCHEMA_STATEMENTS" in schema
-    assert "task_drafts" in schema
-    assert "pending_review" in schema
-    assert "Path(" not in schema
-    assert "read_text(" not in schema
-    assert "migrations/" not in schema
+    database = read("database.sql")
+    assert "RUNTIME_SCHEMA_STATEMENTS" not in schema
+    assert "database.sql" in schema
+    assert "ALTER TABLE" not in database.upper()
+    assert "CREATE TABLE" in database.upper()
+    assert "task_drafts" in database
+    assert "pending_review" in database
+    assert "interactive_apps" in database
+    assert "interactive_app_versions" in database

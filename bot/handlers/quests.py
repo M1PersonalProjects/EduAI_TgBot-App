@@ -11,7 +11,8 @@ from bot.messages import answer_plain
 from bot.handlers.ai_chat import exit_book_keyboard
 from services.file_parser import AttachmentError
 from services.thinking import TelegramThinkingIndicator
-from services.tutor import exit_book_mode, openai_client, respond, ensure_telegram_session, search_web_for_education
+from services.tutor import exit_book_mode, ensure_telegram_session, search_web_for_education
+from services.ai.orchestrator import generate_response
 from services.educational_context import build_educational_context
 from services.tutor_policy import student_task_prompt
 from services.quest_generation import (
@@ -467,22 +468,27 @@ async def generate_quest_test_from_request(message: Message, state: FSMContext):
             return
 
         primary_text = primary.content if primary else "none"
-        ai_task, questions_json = await generate_quest_task_set(
-            openai_client,
-            system_prompt=student_task_prompt(),
-            user_content=(
-                "Create an engaging Telegram quest-test for a Student. Infer wording, level and examples from the request, attachment and sources.\n"
-                f"Grade: {spec.grade}\n"
-                f"Subject: {spec.subject}\n"
-                f"Topic: {spec.topic}\n"
-                f"Student request: {spec.raw_request}\n\n"
-                f"ATTACHED MATERIAL:\n{attachment_text or 'none'}\n\n"
-                f"PRIMARY TEXTBOOK CONTEXT:\n{primary_text}\n\n"
-                f"RANKED UMNIX KNOWLEDGE-BASE SUPPLEMENTS:\n{bundle.database_context or 'none'}\n\n"
-                f"WEB FALLBACK:\n{bundle.web_context or 'none'}"
-            ),
-            requested_count=spec.requested_count,
+        generated = await generate_response(
+            user_id=message.from_user.id,
+            role="student",
+            mode="quest",
+            message=spec.raw_request,
+            quest_context={
+                "spec": {
+                    "grade": spec.grade,
+                    "subject": spec.subject,
+                    "topic": spec.topic,
+                    "raw_request": spec.raw_request,
+                },
+                "attachment_text": attachment_text or "none",
+                "primary_text": primary_text,
+                "database_context": bundle.database_context or "none",
+                "web_context": bundle.web_context or "none",
+                "requested_count": spec.requested_count,
+            },
         )
+        ai_task = generated["ai_task"]
+        questions_json = generated["questions_json"]
         items = questions_json.get("items") or []
         if not items:
             raise ValueError("Quest generator returned no task items")
@@ -575,11 +581,12 @@ async def accept_final_ai_question(message: Message, state: FSMContext):
             "page_paragraph": data.get("chosen_topic"),
         }
         session = await ensure_telegram_session(message.from_user.id)
-        result = await respond(
+        result = await generate_response(
             user_id=message.from_user.id,
             role=data.get("user_role", "student"),
             session_id=str(session["session_id"]),
-            message_text=question_text,
+            message=question_text,
+            mode="chat",
             attachment=attachment,
             manual_context=manual_context,
             lock_selected_context=bool(data.get("chosen_book_id")),

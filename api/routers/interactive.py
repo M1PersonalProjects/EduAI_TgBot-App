@@ -10,7 +10,8 @@ from pydantic import BaseModel, Field
 
 from api.security import get_current_user
 from database import db
-from services.interactive_apps import contains_embedded_solution_data, generate_teacher_answer_key, grade_interactive_submission, serialize_app
+from services.interactive_apps import contains_embedded_solution_data, serialize_app
+from services.ai.orchestrator import generate_response
 from services.assignment_source import TEACHER, normalize_assignment_source
 
 
@@ -119,9 +120,13 @@ async def interactive_answers(app_id: str, version: Optional[int] = None, user=D
     if not row:
         raise HTTPException(status_code=404, detail="Интерактивное задание не найдено")
     try:
-        answers = await generate_teacher_answer_key(
+        answers = await generate_response(
+            user_id=user["tg_id"],
+            role=user["role"],
+            mode="interactive_answers",
+            message="Сформируй ответы для выбранной версии интерактивного приложения.",
             title=row["title"],
-            request=row["original_request"] or "",
+            original_request=row["original_request"] or "",
             html_document=row["html_document"],
         )
     except Exception as exc:
@@ -297,9 +302,13 @@ async def save_result(
             assignment.get("assignment_source"), assignment.get("parent_id")
         )
         try:
-            grade = await grade_interactive_submission(
+            grade = await generate_response(
+                user_id=user["tg_id"],
+                role=user["role"],
+                mode="interactive_grade",
+                message="Проверь ответы Ученика в интерактивном приложении.",
                 title=assignment["title"],
-                request=assignment["original_request"] or "",
+                original_request=assignment["original_request"] or "",
                 html_document=assignment["html_document"],
                 answers=payload.answers,
             )

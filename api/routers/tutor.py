@@ -9,6 +9,7 @@ from database import db
 from logger_config import logger
 from services.attachment_storage import get_attachment, load_attachment_for_ai, save_upload
 from services.ai import AIUpstreamError, transcribe_audio
+from services.ai.orchestrator import generate_response
 from services.telegram_profile import get_telegram_avatar
 from services.tutor import (
     create_session,
@@ -19,7 +20,6 @@ from services.tutor import (
     list_sessions,
     lock_context as lock_session_context,
     rename_session,
-    respond,
 )
 
 router = APIRouter(prefix="/api/v1/tutor", tags=["AI Tutor v1"])
@@ -302,17 +302,18 @@ async def send_message(
         "page_paragraph": page_paragraph,
     }
     try:
-        result = await respond(
+        mode = "interactive_edit" if interactive_action == "edit" else ("interactive_create" if interactive_action == "create" else "chat")
+        result = await generate_response(
             user_id=user["tg_id"],
             role=user["role"],
             session_id=session_id,
-            message_text=message_text,
+            message=message_text,
+            mode=mode,
             attachment=parsed_attachment,
             attachment_id=stored_attachment_id,
             manual_context=manual_context,
             lock_selected_context=lock_context,
             interactive_app_id=interactive_app_id,
-            interactive_action=interactive_action,
             interactive_version=interactive_version,
         )
         result.setdefault("sender_name", "Umnix")

@@ -19,3 +19,4 @@ __all__ = [
     "parse_chat_completion",
     "transcribe_audio",
 ]
+
