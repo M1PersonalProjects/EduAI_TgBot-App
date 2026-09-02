@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Any, Optional
 
-from services.task_generation import (
+from services.education.task_generation import (
     GeneratedTaskSet,
     extract_requested_task_count,
     generate_exact_task_set,

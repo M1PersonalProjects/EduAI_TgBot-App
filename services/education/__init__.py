@@ -5,21 +5,63 @@ from services.education.context_resolver import (
     resolve_context,
     load_locked_context,
 )
-from services.education.educational_context import get_book_context
-from services.education.task_generation import generate_task
-from services.education.quest_generation import generate_quest
-from services.education.scope_guard import validate_scope
-from services.education.assignment_source import get_assignment_source
+from services.education.task_generation import (
+    generate_exact_task_set,
+    GeneratedTaskSet,
+    GeneratedTaskItem,
+    extract_requested_task_count,
+    find_requested_task_count,
+    normalize_task_set,
+    generated_count,
+    task_set_payload,
+)
+from services.education.quest_generation import (
+    generate_quest_task_set,
+    parse_quest_request,
+    QuestRequestSpec,
+    canonicalize_subject,
+    quest_choice_rules,
+    format_quest_question,
+    parse_quest_choice_answer,
+    check_quest_choice_answer,
+)
+from services.education.scope_guard import (
+    validate_request_scope,
+    ScopeClassification,
+    ScopeGuardResult,
+    build_refusal_message,
+)
+from services.education.assignment_source import (
+    normalize_assignment_source,
+    infer_difficulty,
+    TEACHER,
+)
 from services.education.conversation_context import get_conversation_history
 
 __all__ = [
     "ResolvedContext",
     "resolve_context",
     "load_locked_context",
-    "get_book_context",
-    "generate_task",
-    "generate_quest",
-    "validate_scope",
+    "generate_exact_task_set",
+    "GeneratedTaskSet",
+    "GeneratedTaskItem",
+    "extract_requested_task_count",
+    "find_requested_task_count",
+    "normalize_task_set",
+    "generated_count",
+    "task_set_payload",
+    "generate_quest_task_set",
+    "parse_quest_request",
+    "QuestRequestSpec",
+    "canonicalize_subject",
+    "quest_choice_rules",
+    "format_quest_question",
+    "parse_quest_choice_answer",
+    "check_quest_choice_answer",
+    "validate_request_scope",
+    "ScopeClassification",
+    "ScopeGuardResult",
+    "build_refusal_message",
     "get_assignment_source",
     "get_conversation_history",
 ]
