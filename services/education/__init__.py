@@ -36,7 +36,6 @@ from services.education.assignment_source import (
     infer_difficulty,
     TEACHER,
 )
-from services.education.conversation_context import get_conversation_history
 
 __all__ = [
     "ResolvedContext",
@@ -62,6 +61,4 @@ __all__ = [
     "ScopeClassification",
     "ScopeGuardResult",
     "build_refusal_message",
-    "get_assignment_source",
-    "get_conversation_history",
 ]
