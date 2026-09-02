@@ -2,7 +2,7 @@ from typing import List, Optional
 
 from aiogram.types import BufferedInputFile
 
-from services.response_formatter import format_for_telegram
+from services.core.response_formatter import format_for_telegram
 
 TELEGRAM_TEXT_LIMIT = 4000
 LONG_ANSWER_FILENAME = "umnix-answer.txt"
