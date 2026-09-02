@@ -1101,7 +1101,8 @@ body:not(.admin-page):not(.teacher-page).ai-thinking .eduai-top-glow {
 
 /* === 2026-08-24 UNIFIED FRONTEND + MOBILE CHAT FIX START === */
 /* The site uses one navigation model. Fixed bottom navigation was the source of
-   composer overlap on phones, so all primary navigation now lives in the topbar. */
+   composer overlap on phones, so all primary navigation now lives in the topbar.
+   Mobile section menu (arrow button) is now used on all pages including tutor. */
 .mobile-bottom-nav { display: none !important; }
 @media (max-width: 767px) {
   .main-area { padding-bottom: max(1rem, env(safe-area-inset-bottom)) !important; }
@@ -1342,7 +1343,7 @@ body.admin-page .admin-topbar-actions .ui-settings-wrap { flex: 0 0 auto; }
     right: 0;
     left: 0;
     min-height: 58px;
-    padding: max(.45rem, env(safe-area-inset-top)) 3.3rem .4rem .45rem !important;
+    padding: max(.55rem, env(safe-area-inset-top)) .45rem .4rem .45rem !important;
     border: 0 !important;
     background: linear-gradient(to bottom, color-mix(in srgb, var(--reference-bg) 92%, transparent) 0%, color-mix(in srgb, var(--reference-bg) 62%, transparent) 72%, transparent 100%);
     backdrop-filter: blur(10px);
@@ -2042,7 +2043,7 @@ body.teacher-page .page-section { min-width: 0; padding-bottom: .75rem; }
     width:100%;
     min-width:0;
     gap:.42rem;
-    padding-right:3rem;
+    padding-right:.45rem;
   }
   body[data-active-section="tutor"] .chat-screen-header-row > .book-panel-toggle,
   body[data-active-section="assistant"] .chat-screen-header-row > .book-panel-toggle,
