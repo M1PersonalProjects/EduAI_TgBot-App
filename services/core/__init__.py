@@ -27,7 +27,17 @@ from services.core.chat_memory import (
     build_attachment_context,
     message_attachments_payload,
 )
-from services.core.response_formatter import format_response
+from services.core.response_formatter import (
+    format_for_telegram,
+    telegram_safe_text,
+    canonicalize_message,
+    contains_raw_latex,
+    normalize_latex_transport,
+    telegram_parts,
+    render_formula_png,
+    MATH_FORMATTING_RULES,
+    TelegramPart,
+)
 
 __all__ = [
     "StoredAttachment",
@@ -51,5 +61,13 @@ __all__ = [
     "attachment_inventory",
     "build_attachment_context",
     "message_attachments_payload",
-    "format_response",
+    "format_for_telegram",
+    "telegram_safe_text",
+    "canonicalize_message",
+    "contains_raw_latex",
+    "normalize_latex_transport",
+    "telegram_parts",
+    "render_formula_png",
+    "MATH_FORMATTING_RULES",
+    "TelegramPart",
 ]

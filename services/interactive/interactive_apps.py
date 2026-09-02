@@ -12,8 +12,8 @@ from database import db
 from logger_config import logger
 from services.ai import AIUpstreamError, create_chat_completion, openai_client, parse_chat_completion
 from services.education.context_resolver import ResolvedContext
-from services.task_generation import find_requested_task_count
-from services.tutor_policy import (
+from services.education.task_generation import find_requested_task_count
+from services.web.tutor_policy import (
     INTERACTIVE_TASK_RULES,
     private_answer_key_prompt,
     role_rules,

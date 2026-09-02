@@ -1,4 +1,4 @@
-from services.response_formatter import MATH_FORMATTING_RULES
+from services.core.response_formatter import MATH_FORMATTING_RULES
 
 OUTPUT_FORMAT_RULES = r"""
 OUTPUT FORMAT RULES
