@@ -11,7 +11,7 @@ from api.schemas.admin import OpenAIPageResponse
 from database import db
 from logger_config import logger
 from services.ai import openai_client, parse_chat_completion
-from services.tutor import clean_ai_text
+from services.web.tutor import clean_ai_text
 from services.prompts import TEXTBOOK_DIGITIZATION_RULES
 
 ProgressCallback = Callable[[str, int, int], Awaitable[None]]

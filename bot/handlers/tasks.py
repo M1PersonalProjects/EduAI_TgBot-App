@@ -6,7 +6,7 @@ from aiogram.types import Message
 
 from bot.messages import answer_plain
 from database import db
-from services.quest_generation import check_quest_choice_answer, format_quest_question
+from services.education.quest_generation import check_quest_choice_answer, format_quest_question
 
 router = Router()
 

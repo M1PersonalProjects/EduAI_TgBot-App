@@ -7,7 +7,7 @@ from typing import Optional
 
 from database import db
 from logger_config import logger
-from services.textbook_digitizer import digitize_pdf_path
+from services.digitization.textbook_digitizer import digitize_pdf_path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 QUEUE_STORAGE = BASE_DIR / "storage" / "digitization_queue"

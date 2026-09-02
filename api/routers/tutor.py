@@ -10,7 +10,7 @@ from logger_config import logger
 from services.core.attachment_storage import get_attachment, load_attachment_for_ai, save_upload
 from services.ai import AIUpstreamError, transcribe_audio
 from services.ai.orchestrator import generate_response
-from services.telegram_profile import get_telegram_avatar
+from services.bot.telegram_profile import get_telegram_avatar
 from services.web.tutor import (
     create_session,
     delete_session,

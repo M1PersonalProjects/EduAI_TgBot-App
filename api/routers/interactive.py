@@ -10,9 +10,9 @@ from pydantic import BaseModel, Field
 
 from api.security import get_current_user
 from database import db
-from services.interactive_apps import contains_embedded_solution_data, serialize_app
+from services.interactive.interactive_apps import contains_embedded_solution_data, serialize_app
 from services.ai.orchestrator import generate_response
-from services.assignment_source import TEACHER, normalize_assignment_source
+from services.education.assignment_source import TEACHER, normalize_assignment_source
 
 
 router = APIRouter(prefix="/api/v1/interactive", tags=["Interactive assignments"])

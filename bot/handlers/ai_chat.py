@@ -8,9 +8,9 @@ from bot.media import parse_telegram_attachment
 from bot.messages import answer_plain
 from database import db
 from logger_config import logger
-from services.file_parser import AttachmentError
-from services.thinking import TelegramThinkingIndicator
-from services.tutor import ensure_telegram_session, exit_book_mode
+from services.core.file_parser import AttachmentError
+from services.bot.thinking import TelegramThinkingIndicator
+from services.web.tutor import ensure_telegram_session, exit_book_mode
 from services.ai.orchestrator import generate_response
 
 

@@ -4,7 +4,7 @@ from database import db
 from logger_config import logger
 from services.ai import openai_client
 from api.schemas.admin import BookCreateRequest, BookAdminResponse, PageUpdateRequest
-from services.textbook_digitizer import digitize_pdf_bytes
+from services.digitization.textbook_digitizer import digitize_pdf_bytes
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Space"])
 

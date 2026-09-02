@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from api.security import get_current_user
 from database import db
 from logger_config import logger
-from services.tutor import ensure_session, get_messages, respond
+from services.web.tutor import ensure_session, get_messages, respond
 
 
 router = APIRouter(prefix="/api/chats", tags=["Deprecated Web App AI Chat"])

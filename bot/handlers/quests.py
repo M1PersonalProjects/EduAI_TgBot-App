@@ -9,13 +9,13 @@ from logger_config import logger
 from bot.media import parse_telegram_attachment
 from bot.messages import answer_plain
 from bot.handlers.ai_chat import exit_book_keyboard
-from services.file_parser import AttachmentError
-from services.thinking import TelegramThinkingIndicator
-from services.tutor import exit_book_mode, ensure_telegram_session, search_web_for_education
+from services.core.file_parser import AttachmentError
+from services.bot.thinking import TelegramThinkingIndicator
+from services.web.tutor import exit_book_mode, ensure_telegram_session, search_web_for_education
 from services.ai.orchestrator import generate_response
-from services.educational_context import build_educational_context
-from services.tutor_policy import student_task_prompt
-from services.quest_generation import (
+from services.education.educational_context import build_educational_context
+from services.web.tutor_policy import student_task_prompt
+from services.education.quest_generation import (
     canonicalize_subject,
     format_quest_question,
     generate_quest_task_set,
