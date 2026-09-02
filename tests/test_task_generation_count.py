@@ -1,4 +1,4 @@
-from services.task_generation import extract_requested_task_count, find_requested_task_count
+from services.education.task_generation import extract_requested_task_count, find_requested_task_count
 
 
 def test_requested_count_is_extracted_from_russian_and_english():

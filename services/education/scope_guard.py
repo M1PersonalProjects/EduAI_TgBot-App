@@ -6,7 +6,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from services.context_resolver import ResolvedContext
+from services.education.context_resolver import ResolvedContext
 
 
 class ScopeClassification(BaseModel):

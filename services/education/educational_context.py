@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from logger_config import logger
-from services.context_resolver import ResolvedContext, resolve_context
+from services.education.context_resolver import ResolvedContext, resolve_context
 
 MAX_SUPPLEMENTAL_CHARS = 18000
 MAX_WEB_CHARS = 12000

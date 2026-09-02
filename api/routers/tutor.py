@@ -7,11 +7,11 @@ from pydantic import BaseModel, Field
 from api.security import get_current_user
 from database import db
 from logger_config import logger
-from services.attachment_storage import get_attachment, load_attachment_for_ai, save_upload
+from services.core.attachment_storage import get_attachment, load_attachment_for_ai, save_upload
 from services.ai import AIUpstreamError, transcribe_audio
 from services.ai.orchestrator import generate_response
 from services.telegram_profile import get_telegram_avatar
-from services.tutor import (
+from services.web.tutor import (
     create_session,
     delete_session,
     ensure_session,

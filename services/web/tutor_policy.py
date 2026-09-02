@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from services.context_resolver import ResolvedContext
+from services.education.context_resolver import ResolvedContext
 from services.prompts import (
     BASE_TUTOR_RULES,
     INTERACTIVE_TASK_RULES,
