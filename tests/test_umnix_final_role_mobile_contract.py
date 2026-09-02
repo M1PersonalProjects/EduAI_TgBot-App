@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from services.mentor_identity import mentor_label, normalize_mentor_kind
+from services.web.mentor_identity import mentor_label, normalize_mentor_kind
 
 
 def read(path: str) -> str:

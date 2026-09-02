@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 
 from api.security import require_roles
 from database import db
-from services.digitization_queue import ensure_queue_storage
+from services.digitization.digitization_queue import ensure_queue_storage
 
 router = APIRouter(
     prefix="/api/v1/admin/digitization",

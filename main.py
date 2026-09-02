@@ -24,8 +24,8 @@ from api.routers.platform import router as platform_v1_router
 from api.routers.tutor import router as tutor_v1_router
 from api.routers.interactive import router as interactive_v1_router
 from api.routers.digitization import router as digitization_router
-from services.digitization_queue import start_digitization_worker, stop_digitization_worker
-from services.schema_migrations import ensure_runtime_schema
+from services.digitization.digitization_queue import start_digitization_worker, stop_digitization_worker
+from services.utils.schema_migrations import ensure_runtime_schema
 
 from logger_config import logger
 
