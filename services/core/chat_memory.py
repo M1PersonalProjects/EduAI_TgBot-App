@@ -4,7 +4,7 @@ import re
 from dataclasses import asdict
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from services.attachment_storage import get_attachment, load_attachment_for_ai
+from services.core.attachment_storage import get_attachment, load_attachment_for_ai
 
 SHORT_TERM_MESSAGES = 10
 MAX_HISTORY_CHARS = 36000

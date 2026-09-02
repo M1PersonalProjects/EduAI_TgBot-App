@@ -12,7 +12,7 @@ from fastapi import HTTPException, UploadFile, status
 from config import settings
 from database import db
 from logger_config import logger
-from services.file_parser import (
+from services.core.file_parser import (
     AttachmentError,
     ParsedAttachment,
     attachment_size_limit,
