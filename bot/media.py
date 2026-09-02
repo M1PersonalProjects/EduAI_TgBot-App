@@ -6,8 +6,8 @@ from aiogram.types import Message
 from fastapi import UploadFile
 from starlette.datastructures import Headers
 
-from services.attachment_storage import get_attachment, load_attachment_for_ai, save_upload
-from services.file_parser import (
+from services.core.attachment_storage import get_attachment, load_attachment_for_ai, save_upload
+from services.core.file_parser import (
     attachment_size_limit,
     AttachmentError,
     ParsedAttachment,

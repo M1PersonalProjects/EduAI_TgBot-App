@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from services.conversation_context import (
+from services.education.conversation_context import (
     ATTACHMENT_MODE,
     BOOK_MODE,
     GENERAL_MODE,
@@ -65,7 +65,7 @@ def test_webapp_keeps_telegram_chat_visible_and_non_deletable():
 
 
 def test_explicit_book_reference_detects_natural_language_textbook_pointer():
-    from services.conversation_context import explicit_book_reference
+    from services.education.conversation_context import explicit_book_reference
     assert explicit_book_reference("В учебнике Математика 5 класс на странице 42 объясни пример")
     assert explicit_book_reference("Возьми параграф 7 и объясни правило")
     assert not explicit_book_reference("Как у тебя дела?")

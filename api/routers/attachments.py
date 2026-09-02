@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 
 from api.security import get_current_user
 from database import db
-from services.attachment_storage import (
+from services.core.attachment_storage import (
     delete_attachment,
     ensure_attachment_access,
     forget_attachment_from_chat_memory,

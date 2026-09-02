@@ -10,19 +10,19 @@ from api.security import get_current_user, require_roles
 from database import db
 from logger_config import logger
 from services.ai import openai_client, parse_chat_completion
-from services.response_formatter import canonicalize_message
-from services.context_resolver import resolve_book_context
-from services.educational_context import build_context_from_metadata, build_educational_context
-from services.task_generation import extract_requested_task_count, generate_exact_task_set, task_set_payload
-from services.tutor_policy import (
+from services.core.response_formatter import canonicalize_message
+from services.education.context_resolver import resolve_book_context
+from services.education.educational_context import build_context_from_metadata, build_educational_context
+from services.education.task_generation import extract_requested_task_count, generate_exact_task_set, task_set_payload
+from services.web.tutor_policy import (
     teacher_task_prompt,
     private_answer_key_prompt,
     task_grading_prompt,
 )
-from services.tutor import clean_ai_text, ensure_session, respond as tutor_respond, search_web_for_education
-from services.assignment_source import TEACHER, infer_difficulty, normalize_assignment_source
-from services.textbook_digitizer import digitize_pdf_bytes
-from services.attachment_storage import (
+from services.web.tutor import clean_ai_text, ensure_session, respond as tutor_respond, search_web_for_education
+from services.education.assignment_source import TEACHER, infer_difficulty, normalize_assignment_source
+from services.digitization.textbook_digitizer import digitize_pdf_bytes
+from services.core.attachment_storage import (
     load_attachment_for_ai,
     save_upload,
     validate_owned_attachments,
