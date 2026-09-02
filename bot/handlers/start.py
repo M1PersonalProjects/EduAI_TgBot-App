@@ -13,7 +13,7 @@ from bot.keyboards import (
     get_student_menu,
 )
 from logger_config import logger
-from services.mentor_identity import mentor_label, normalize_mentor_kind
+from services.web.mentor_identity import mentor_label, normalize_mentor_kind
 
 router = Router()
 

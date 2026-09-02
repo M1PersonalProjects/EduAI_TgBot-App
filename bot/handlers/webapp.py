@@ -5,7 +5,7 @@ from database import db
 from bot.keyboards import get_parent_menu, get_student_menu
 from bot.messages import answer_plain
 from urllib.parse import quote
-from services.mentor_identity import mentor_label, normalize_mentor_kind
+from services.web.mentor_identity import mentor_label, normalize_mentor_kind
 
 router = Router()
 

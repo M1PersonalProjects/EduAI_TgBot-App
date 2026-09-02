@@ -6,23 +6,23 @@ from typing import Any, Dict, List, Optional
 
 from config import settings
 from database import db
-from services.context_resolver import ResolvedContext, load_locked_context, resolve_context
-from services.educational_context import build_educational_context, render_sources, search_eduai_materials
-from services.task_generation import find_requested_task_count
-from services.file_parser import ParsedAttachment
-from services.scope_guard import validate_request_scope
+from services.education.context_resolver import ResolvedContext, load_locked_context, resolve_context
+from services.education.educational_context import build_educational_context, render_sources, search_eduai_materials
+from services.education.task_generation import find_requested_task_count
+from services.core.file_parser import ParsedAttachment
+from services.education.scope_guard import validate_request_scope
 
-from services.tutor_policy import build_tutor_prompt, should_search_eduai_materials, should_use_external_sources, student_task_prompt
-from services.interactive_apps import (
+from services.web.tutor_policy import build_tutor_prompt, should_search_eduai_materials, should_use_external_sources, student_task_prompt
+from services.interactive.interactive_apps import (
     InteractiveAppTemporaryError,
     maybe_handle_chat_request,
     card_text as interactive_card_text,
     set_source_message as set_interactive_source_message,
 )
-from services.response_formatter import canonicalize_message
+from services.core.response_formatter import canonicalize_message
 from logger_config import logger
 from services.ai.client import create_chat_completion, openai_client
-from services.chat_memory import (
+from services.core.chat_memory import (
     attachment_inventory,
     build_attachment_context,
     build_memory_summary,
@@ -34,7 +34,7 @@ from services.chat_memory import (
     session_attachments,
     update_state_dict,
 )
-from services.conversation_context import (
+from services.education.conversation_context import (
     ATTACHMENT_MODE,
     BOOK_MODE,
     activate_attachment_context,
@@ -963,7 +963,7 @@ async def generate_response(
         )
 
     if normalized_mode == "quest":
-        from services.quest_generation import generate_quest_task_set
+        from services.education.quest_generation import generate_quest_task_set
         payload = quest_context or {}
         spec = payload.get("spec") or {}
         primary_text = str(payload.get("primary_text") or "none")
@@ -992,7 +992,7 @@ async def generate_response(
     if normalized_mode == "interactive_answers":
         if resolved_role != "parent":
             raise PermissionError("Ответы доступны только Учителю")
-        from services.interactive_apps import generate_teacher_answer_key
+        from services.interactive.interactive_apps import generate_teacher_answer_key
         return await generate_teacher_answer_key(
             title=title,
             request=original_request,
@@ -1000,7 +1000,7 @@ async def generate_response(
         )
 
     if normalized_mode == "interactive_grade":
-        from services.interactive_apps import grade_interactive_submission
+        from services.interactive.interactive_apps import grade_interactive_submission
         return await grade_interactive_submission(
             title=title,
             request=original_request,
