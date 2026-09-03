@@ -1,4 +1,3 @@
-import json
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
@@ -11,14 +10,16 @@ from bot.messages import answer_plain
 from bot.handlers.ai_chat import exit_book_keyboard
 from services.core.file_parser import AttachmentError
 from services.bot.thinking import TelegramThinkingIndicator
-from services.web.tutor import exit_book_mode, ensure_telegram_session, search_web_for_education
-from services.ai.orchestrator import generate_response
+from services.ai.orchestrator import (
+    ensure_telegram_session,
+    exit_book_mode,
+    generate_response,
+    search_web_for_education,
+)
 from services.education.educational_context import build_educational_context
-from services.web.tutor_policy import student_task_prompt
 from services.education.quest_generation import (
     canonicalize_subject,
     format_quest_question,
-    generate_quest_task_set,
     parse_quest_request,
 )
 

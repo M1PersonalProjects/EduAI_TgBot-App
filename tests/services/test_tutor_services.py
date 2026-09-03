@@ -3,16 +3,16 @@ import zipfile
 
 import pytest
 
-from services.context_resolver import ResolvedContext, _book_score, extract_hints
-from services.file_parser import (
+from services.education.context_resolver import ResolvedContext, _book_score, extract_hints
+from services.core.file_parser import (
     MAX_ATTACHMENT_BYTES,
     MAX_PDF_BYTES,
     AttachmentError,
     attachment_size_limit,
     parse_attachment,
 )
-from services.thinking import format_elapsed
-from services.tutor import book_mode_footer, clean_ai_text
+from services.bot.thinking import format_elapsed
+from services.ai.orchestrator import book_mode_footer, clean_ai_text
 
 
 def test_context_hints_support_russian_and_english_requests():

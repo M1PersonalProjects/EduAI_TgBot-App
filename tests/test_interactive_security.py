@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services.interactive_apps import (
+from services.interactive.interactive_apps import (
     contains_embedded_solution_data,
     maybe_handle_chat_request,
     sanitize_interactive_html,
@@ -49,8 +49,8 @@ def test_student_answer_keys_are_detected():
 async def test_normal_text_never_auto_starts_interactive_app(monkeypatch):
     create = AsyncMock()
     edit = AsyncMock()
-    monkeypatch.setattr("services.interactive_apps.create_app", create)
-    monkeypatch.setattr("services.interactive_apps.edit_app", edit)
+    monkeypatch.setattr("services.interactive.interactive_apps.create_app", create)
+    monkeypatch.setattr("services.interactive.interactive_apps.edit_app", edit)
     result = await maybe_handle_chat_request(
         user_id=1,
         session_id=__import__('uuid').uuid4(),
@@ -67,7 +67,7 @@ async def test_normal_text_never_auto_starts_interactive_app(monkeypatch):
 async def test_explicit_create_mode_starts_generator(monkeypatch):
     expected = {"app_id": "x"}
     create = AsyncMock(return_value=expected)
-    monkeypatch.setattr("services.interactive_apps.create_app", create)
+    monkeypatch.setattr("services.interactive.interactive_apps.create_app", create)
     result = await maybe_handle_chat_request(
         user_id=1,
         session_id=__import__('uuid').uuid4(),
@@ -98,7 +98,7 @@ def test_serialized_card_is_pinned_to_saved_version():
 
 def test_service_has_no_legacy_structured_shell_or_intent_detector():
     from pathlib import Path
-    source = Path("services/interactive_apps.py").read_text(encoding="utf-8")
+    source = Path("services/interactive/interactive_apps.py").read_text(encoding="utf-8")
     assert "render_interactive_shell" not in source
     assert "InteractiveAppSpec" not in source
     assert "detect_create_request" not in source

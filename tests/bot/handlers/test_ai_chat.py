@@ -7,7 +7,7 @@ import pytest
 
 from bot.handlers import ai_chat
 from bot.media import parse_telegram_attachment
-from services.file_parser import ParsedAttachment
+from services.core.file_parser import ParsedAttachment
 
 
 @pytest.mark.asyncio

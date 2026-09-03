@@ -2,7 +2,6 @@ from aiogram import Router, F
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.fsm.context import FSMContext
 from database import db
-from bot.keyboards import get_parent_menu, get_student_menu
 from bot.messages import answer_plain
 from urllib.parse import quote
 from services.web.mentor_identity import mentor_label, normalize_mentor_kind

@@ -1,10 +1,9 @@
 import inspect
 import json
 import re
-from dataclasses import asdict
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from services.core.attachment_storage import get_attachment, load_attachment_for_ai
+from services.core.attachment_storage import load_attachment_for_ai
 
 SHORT_TERM_MESSAGES = 10
 MAX_HISTORY_CHARS = 36000
@@ -441,16 +440,22 @@ def attachment_inventory(rows: Sequence[Dict[str, Any]]) -> str:
 
 
 async def build_attachment_context(selected: Sequence[Dict[str, Any]], query: str = "") -> Tuple[str, List[str]]:
+    """Собирает ограниченный, но справедливый контекст из всех выбранных файлов."""
     text_blocks: List[str] = []
     image_urls: List[str] = []
+    text_rows = [row for row in selected if str(row.get("extracted_text") or "").strip()]
+    per_file_budget = max(600, MAX_ATTACHMENT_TEXT_CHARS // max(1, len(text_rows)))
     remaining = MAX_ATTACHMENT_TEXT_CHARS
     image_count = 0
     for row in selected:
         text = str(row.get("extracted_text") or "").strip()
         if text and remaining > 0:
-            block = f"[Attachment {row['attachment_id']}: {row['original_name']}]\n{text[:remaining]}"
-            text_blocks.append(block)
-            remaining -= len(block)
+            header = f"[Attachment {row['attachment_id']}: {row['original_name']}]\n"
+            content_budget = max(0, min(per_file_budget, remaining - len(header)))
+            if content_budget > 0:
+                block = header + text[:content_budget]
+                text_blocks.append(block)
+                remaining -= len(block) + 2
         mime = str(row.get("mime_type") or "")
         lowered_query = (query or "").lower().replace("ё", "е")
         wants_visual_pdf = mime == "application/pdf" and (
@@ -462,7 +467,7 @@ async def build_attachment_context(selected: Sequence[Dict[str, Any]], query: st
             if parsed.image_data_urls:
                 image_urls.extend(parsed.image_data_urls[:1])
                 image_count += 1
-    return "\n\n".join(text_blocks), image_urls[:MAX_IMAGE_ATTACHMENTS]
+    return "\n\n".join(text_blocks)[:MAX_ATTACHMENT_TEXT_CHARS], image_urls[:MAX_IMAGE_ATTACHMENTS]
 
 
 async def message_attachments_payload(conn, user_id: int, message_ids: Iterable[int]) -> Dict[int, List[Dict[str, Any]]]:

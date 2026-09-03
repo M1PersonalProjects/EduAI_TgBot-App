@@ -54,7 +54,7 @@ def test_light_theme_muted_text_is_contrast_safe():
 def test_telegram_avatar_prefers_webapp_photo_and_retries_bot_api_quickly():
     chat = _text("static/js/chat.js")
     auth = _text("static/js/auth.js")
-    profile = _text("services/telegram_profile.py")
+    profile = _text("services/bot/telegram_profile.py")
     auth_api = _text("api/routers/auth.py")
     assert "initDataUnsafe?.user?.photo_url" in chat
     assert "telegram_photo_url" in auth

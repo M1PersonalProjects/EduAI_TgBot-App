@@ -62,7 +62,7 @@ def test_student_teacher_have_about_section_and_compact_task_cards():
 
 def test_admin_and_existing_telegram_chat_titles_use_public_umnix_brand():
     platform = read("api/routers/platform.py")
-    conversation = read("services/conversation_context.py")
+    conversation = read("services/education/conversation_context.py")
     admin = read("static/js/admin.js")
     assert "mentor_kind" in platform
     assert "Чат Telegram · Umnix" in conversation

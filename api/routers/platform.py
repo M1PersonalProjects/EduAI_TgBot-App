@@ -6,21 +6,21 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from pydantic import BaseModel, Field
 
 from api.schemas.tasks import OpenAITaskVerification
-from api.security import get_current_user, require_roles
+from api.security import require_roles
 from database import db
 from logger_config import logger
 from services.ai import openai_client, parse_chat_completion
 from services.core.response_formatter import canonicalize_message
 from services.education.context_resolver import resolve_book_context
-from services.education.educational_context import build_context_from_metadata, build_educational_context
+from services.education.educational_context import build_educational_context
 from services.education.task_generation import extract_requested_task_count, generate_exact_task_set, task_set_payload
 from services.web.tutor_policy import (
     teacher_task_prompt,
     private_answer_key_prompt,
     task_grading_prompt,
 )
-from services.web.tutor import clean_ai_text, ensure_session, respond as tutor_respond, search_web_for_education
-from services.education.assignment_source import TEACHER, infer_difficulty, normalize_assignment_source
+from services.ai.orchestrator import clean_ai_text, search_web_for_education
+from services.education.assignment_source import infer_difficulty
 from services.digitization.textbook_digitizer import digitize_pdf_bytes
 from services.core.attachment_storage import (
     load_attachment_for_ai,
@@ -56,14 +56,6 @@ class CancelTaskRequest(BaseModel):
     Запрос на отмену задания родителем.
     """
     reason: str = Field(default="", max_length=1000)
-
-
-class ChatRequest(BaseModel):
-    """
-    Запрос на отправку сообщения в чат с ИИ-тьютором.
-    """
-    message_text: str = Field(..., min_length=1, max_length=4000)
-
 
 
 class TaskAttachmentOption(BaseModel):
@@ -637,50 +629,6 @@ async def submit_student_task(
         "attachment_count": len(stored_attachments),
         "message": "Ответ отправлен Учителю и ожидает ручной проверки.",
     }
-
-
-@router.get("/chat/history")
-async def chat_history(user=Depends(get_current_user)):
-    """
-    Получение истории сообщений чата с ИИ-тьютором для текущего пользователя.
-    """
-    async with db.pool.acquire() as conn:
-        session = await ensure_session(conn, user["tg_id"])
-        rows = await conn.fetch(
-            "SELECT message_id, sender, message_text, created_at FROM chat_messages WHERE user_id = $1 AND session_id = $2 ORDER BY created_at ASC LIMIT 200",
-            user["tg_id"],
-            session["session_id"],
-        )
-    return [dict(row) for row in rows]
-
-
-@router.post("/chat/messages")
-async def chat_message(payload: ChatRequest, user=Depends(get_current_user)):
-    """
-    Отправка сообщения в чат с ИИ-тьютором и получение ответа.
-    """
-    try:
-        return await tutor_respond(
-            user_id=user["tg_id"],
-            role=user["role"],
-            message_text=payload.message_text,
-        )
-    except Exception as exc:
-        logger.error("Web chat failed: %s", exc)
-        raise HTTPException(status_code=502, detail="ИИ-ассистент временно недоступен")
-
-
-@router.delete("/chat/history", status_code=status.HTTP_204_NO_CONTENT)
-async def clear_chat(user=Depends(get_current_user)):
-    """
-    Очистка истории сообщений чата с ИИ-тьютором для текущего пользователя.
-    """
-    async with db.pool.acquire() as conn:
-        session = await ensure_session(conn, user["tg_id"])
-        await conn.execute(
-            "DELETE FROM chat_messages WHERE user_id = $1 AND session_id = $2",
-            user["tg_id"], session["session_id"],
-        )
 
 
 @router.get("/parent/dashboard")

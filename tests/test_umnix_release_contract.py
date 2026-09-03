@@ -36,13 +36,13 @@ def test_interactive_prompt_returns_complete_single_html_product():
     assert "meaningful real interactivity" in prompt
     assert "student-facing applications must not expose correct answers" in prompt
     assert "return only the complete html document" in prompt
-    service = read("services/interactive_apps.py")
+    service = read("services/interactive/interactive_apps.py")
     assert "render_interactive_shell" not in service
     assert "InteractiveAppSpec" not in service
 
 
 def test_quest_generator_has_closed_choice_contract():
-    source = read("services/quest_generation.py")
+    source = read("services/education/quest_generation.py")
     assert "between 2 and 6" in source
     assert "correct_option_numbers" in source
     assert "format_quest_question" in source

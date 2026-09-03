@@ -1,10 +1,9 @@
-import json
 from config import settings
 
 from aiogram import Router, F
 from aiogram.filters import CommandStart, CommandObject, Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery
 from database import db
 from bot.keyboards import (
     get_admin_menu,

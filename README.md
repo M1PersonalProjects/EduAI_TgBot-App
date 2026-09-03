@@ -58,13 +58,11 @@ python -m pip install -r requirements.txt
 # Создайте .env вручную или скопируйте .env.example, если используете шаблон
 ```
 
-Минимально задайте `BOT_TOKEN`, `OPENAI_API_KEY` и `DATABASE_URL`. Секреты не должны попадать в Git.
+Минимально задайте `BOT_TOKEN`, `OPENAI_API_KEY` и `DATABASE_URL`. Вход по одному Telegram ID отключён по умолчанию; для локальной разработки его можно явно включить через `ALLOW_BROWSER_LOGIN=true`. Секреты не должны попадать в Git.
 
 ## База данных и актуализация схемы
 
-Приложение ожидает существующую базовую схему Umnix. Минимальные совместимые изменения, необходимые текущему коду (`assignment_source`, draft-first задания, `pending_review` и версионность Interactive Apps), проверяются и идемпотентно применяются при старте через `services/schema_migrations.py`. Runtime не зависит от одноразовых `.sql`-файлов.
-
-Перед любыми ручными изменениями production-БД делайте резервную копию.
+Каноническая схема находится в `database.sql`. Приложение не выполняет `ALTER TABLE` при старте: для новой установки создайте чистую БД из `database.sql`, а изменения существующей production-БД применяйте отдельной контролируемой миграцией после резервной копии.
 
 ## Запуск
 
@@ -118,7 +116,7 @@ Quest-test существует только в Telegram для Ученика. 
 
 ## Вложения
 
-Runtime-файлы хранятся в `storage/attachments/` и не входят в репозиторий. Каталог создаётся автоматически при необходимости. Ограничения типов и ownership проверяются в `services/attachment_storage.py`.
+Runtime-файлы хранятся в `storage/attachments/` и не входят в репозиторий. Каталог создаётся автоматически при необходимости. Ограничения типов и ownership проверяются в `services/core/attachment_storage.py`.
 
 Страница `/files` показывает единое хранилище вложений WebApp и Telegram, сгруппированное по чатам. Пользователь может просмотреть или скачать файл, а действие «Удалить из памяти» удаляет связь с историей чата и AI-контекстом; физический файл удаляется только если он не нужен заданию или другой активной ссылке.
 
@@ -140,10 +138,14 @@ api/
 bot/
   handlers/              Telegram scenarios
 services/
-  ai/                    centralized OpenAI access
+  ai/                    единый AI-оркестратор и OpenAI client
+  core/                  файлы, память чата, форматирование
+  education/             Book Mode, учебный контекст, задания
+  interactive/           интерактивные приложения
+  digitization/          оцифровка учебников
+  bot/                   общие Telegram-сервисы
+  web/                   policy и идентичность WebApp
   prompts/               system prompt blocks
-  interactive_apps.py    AI → complete HTML → validate/save/version
-  *.py                   shared business services
 static/
   css/                    design system and responsive styles
   js/                     shared and role-specific frontend logic

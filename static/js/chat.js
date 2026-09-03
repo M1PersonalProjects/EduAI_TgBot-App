@@ -306,6 +306,11 @@
         : !this.layout.classList.contains('threads-collapsed');
       this.layout.querySelectorAll('[data-chat-sidebar-toggle]').forEach(button => {
         button.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (button.classList.contains('chat-mobile-sidebar-toggle')) {
+          button.textContent = open ? '<' : '>';
+          button.setAttribute('aria-label', open ? 'Закрыть боковую панель' : 'Открыть боковую панель');
+          button.setAttribute('title', open ? 'Закрыть боковую панель' : 'Открыть боковую панель');
+        }
       });
     }
 

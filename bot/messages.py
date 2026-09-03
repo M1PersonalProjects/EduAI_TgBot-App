@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Optional
 
 from aiogram.types import BufferedInputFile
 
@@ -14,28 +14,6 @@ EMPTY_ANSWER_FALLBACK = (
     "Не удалось сформировать текстовый ответ. "
     "Попробуйте повторить или немного переформулировать вопрос."
 )
-
-
-def split_telegram_text(text: str, limit: int = TELEGRAM_TEXT_LIMIT) -> List[str]:
-    """
-    Разбивает текстовый ответ на части, которые помещаются в одно Telegram-сообщение.
-    """
-    remaining = str(text or "")
-    chunks: List[str] = []
-    while len(remaining) > limit:
-        position = remaining.rfind("\n", 0, limit)
-        if position < limit // 2:
-            position = remaining.rfind(" ", 0, limit)
-        if position < limit // 2:
-            position = limit
-        chunk = remaining[:position].strip()
-        if chunk:
-            chunks.append(chunk)
-        remaining = remaining[position:].lstrip()
-    tail = remaining.strip()
-    if tail:
-        chunks.append(tail)
-    return chunks
 
 
 def _safe_telegram_payload(text: str) -> str:
@@ -55,7 +33,7 @@ def _text_document(text: str) -> BufferedInputFile:
 
 async def answer_plain(message, text: str, reply_markup: Optional[object] = None):
     """
-    Отправляет текстовый ответ в чат Telegram, безопасно разбивая его на части, если он слишком длинный.
+    Отправляет один Telegram-объект: короткий текст или текстовый документ для длинного ответа.
     """
     safe_text = _safe_telegram_payload(text)
     if len(safe_text) <= TELEGRAM_TEXT_LIMIT:
@@ -82,7 +60,7 @@ async def send_plain_to_chat(
     reply_markup: Optional[object] = None,
 ):
     """
-    Отправляет текстовый ответ в чат Telegram, безопасно разбивая его на части, если он слишком длинный.
+    Отправляет один Telegram-объект: короткий текст или текстовый документ для длинного ответа.
     """
     safe_text = _safe_telegram_payload(text)
     if len(safe_text) <= TELEGRAM_TEXT_LIMIT:

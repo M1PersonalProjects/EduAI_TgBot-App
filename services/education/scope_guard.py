@@ -4,16 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-from pydantic import BaseModel, Field
-
 from services.education.context_resolver import ResolvedContext
-
-
-class ScopeClassification(BaseModel):
-    """Backward-compatible shape retained for old imports/tests."""
-    is_educational: bool = Field(default=True)
-    matches_selected_context: bool = Field(default=True)
-    reason: str = Field(default="")
 
 
 @dataclass
@@ -22,9 +13,6 @@ class ScopeGuardResult:
     reason: str
     refusal_message: Optional[str] = None
 
-
-EDUCATIONAL_PATTERNS: tuple[re.Pattern[str], ...] = ()
-OUT_OF_SCOPE_PATTERNS: tuple[re.Pattern[str], ...] = ()
 
 _EDUCATIONAL_SENSITIVE = re.compile(
     r"\b(анатоми|биологи|медицин|репродукц|полов\w*\s+созрев|полов\w*\s+систем|"

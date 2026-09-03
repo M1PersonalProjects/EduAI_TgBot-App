@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     admin_ids: set[int] = Field(default_factory=set)
     webapp_base_url: str = "https://localhost:8000"
     attachments_dir: str = "storage/attachments"
+    allow_browser_login: bool = False
     openai_model: str = "gpt-4o"
     openai_transcription_model: str = "gpt-4o-mini-transcribe"
     openai_timeout_seconds: float = Field(default=45.0, gt=0, le=300)

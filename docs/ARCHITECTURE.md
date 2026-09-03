@@ -11,15 +11,15 @@ FastAPI routers          bot/handlers
          \               /
           ▼             ▼
           Shared service layer
-          ├─ tutor + tutor_policy
-          ├─ context_resolver + educational_context
-          ├─ conversation_context + chat_memory
-          ├─ task_generation + assignment_source
-          ├─ attachment_storage + file_parser
-          ├─ interactive_apps
-          ├─ textbook_digitizer + digitization_queue
-          ├─ response_formatter
-          └─ ai + prompts
+          ├─ ai/orchestrator + web/tutor_policy
+          ├─ education/context_resolver + educational_context
+          ├─ education/conversation_context + core/chat_memory
+          ├─ education/task_generation + assignment_source
+          ├─ core/attachment_storage + file_parser
+          ├─ interactive/interactive_apps
+          ├─ digitization/textbook_digitizer + queue
+          ├─ core/response_formatter
+          └─ ai/client + prompts
                     │
                     ▼
        PostgreSQL / filesystem / OpenAI
@@ -31,7 +31,7 @@ FastAPI routers          bot/handlers
 
 `api/routers/` содержит HTTP endpoints. DTO находятся в `api/schemas/`. Авторизация и проверка Telegram WebApp вынесены в `api/security.py`.
 
-Legacy routes сохранены только там, где они нужны существующим клиентам. Новые операции, изменяющие состояние, должны использовать POST/PATCH/PUT/DELETE, а не GET.
+Новые операции, изменяющие состояние, должны использовать POST/PATCH/PUT/DELETE, а не GET.
 
 ## Telegram layer
 
@@ -54,7 +54,7 @@ services/ai/client.py
 OpenAI SDK
 ```
 
-Все system prompt blocks находятся в `services/prompts/`. Сборка prompt выполняется через `services/tutor_policy.py` и feature-specific правила.
+Все system prompt blocks находятся в `services/prompts/`. Сборка prompt выполняется через `services/web/tutor_policy.py` и feature-specific правила.
 
 ## Context flow
 
@@ -138,7 +138,7 @@ Correct answers не должны быть встроены в learner HTML.
 
 ## Textbook digitization
 
-`services/textbook_digitizer.py` отвечает за PDF → page image/text → Structured Output → сохранение в `page`. И admin API, и platform v1 используют один сервис.
+`services/digitization/textbook_digitizer.py` отвечает за PDF → page image/text → Structured Output → сохранение в `page`. И admin API, и platform v1 используют один сервис.
 
 ## Frontend
 

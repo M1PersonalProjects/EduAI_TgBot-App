@@ -33,7 +33,7 @@ def test_student_dashboard_contains_only_teacher_assignments():
 
 
 def test_teacher_attachment_access_checks_assignment_source():
-    source = _text("services/attachment_storage.py")
+    source = _text("services/core/attachment_storage.py")
     assert source.count("th.assignment_source = 'teacher'") >= 2
 
 

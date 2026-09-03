@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services import chat_memory
+from services.core import chat_memory
 
 
 class FetchRecorder:
@@ -94,7 +94,7 @@ def test_tutor_uses_shared_session_memory_and_channel_prompt_contract():
 
 
 def test_telegram_prompt_targets_one_message():
-    from services.tutor_policy import build_tutor_prompt
+    from services.web.tutor_policy import build_tutor_prompt
 
     prompt = build_tutor_prompt("student", None, output_channel="telegram")
     lowered = prompt.lower()
@@ -122,7 +122,7 @@ async def test_long_telegram_tutor_answer_is_one_document_object():
 @pytest.mark.asyncio
 async def test_short_telegram_tutor_answer_is_one_safe_message():
     from bot.messages import answer_plain
-    from services.response_formatter import contains_raw_latex
+    from services.core.response_formatter import contains_raw_latex
 
     message = AsyncMock()
     message.answer = AsyncMock(return_value=SimpleNamespace(message_id=1))
@@ -215,3 +215,36 @@ async def test_pressing_ai_helper_again_returns_to_free_ai(
     await ai_chat.enter_general_ai_helper(message, state)
 
     assert await state.get_state() == ai_chat.AIChatStates.active.state
+
+@pytest.mark.asyncio
+async def test_attachment_context_represents_every_selected_text_file():
+    rows = [
+        {
+            "attachment_id": number,
+            "original_name": f"file-{number}.txt",
+            "mime_type": "text/plain",
+            "extension": "txt",
+            "extracted_text": (f"Материал файла {number}. " * 1000),
+        }
+        for number in range(1, 5)
+    ]
+
+    context, images = await chat_memory.build_attachment_context(rows, "объясни материалы")
+
+    assert images == []
+    for number in range(1, 5):
+        assert f"file-{number}.txt" in context
+    assert len(context) <= chat_memory.MAX_ATTACHMENT_TEXT_CHARS
+
+
+@pytest.mark.asyncio
+async def test_ai_helper_accepts_unhandled_message_without_entering_state(monkeypatch):
+    from bot.handlers import ai_chat
+
+    handler = AsyncMock()
+    monkeypatch.setattr(ai_chat, "_handle_ai_message", handler)
+    message = SimpleNamespace(text="Объясни дроби", photo=None, document=None)
+
+    await ai_chat.always_available_ai_chat(message)
+
+    handler.assert_awaited_once_with(message)

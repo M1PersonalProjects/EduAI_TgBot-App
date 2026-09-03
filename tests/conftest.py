@@ -147,26 +147,3 @@ def mock_fsm_context():
     def _make_context(user_id: int, chat_id: int):
         return FSMContext(storage=storage, key=MagicMock(user_id=user_id, chat_id=chat_id))
     return _make_context
-
-
-@pytest.fixture
-def mock_openai(monkeypatch):
-    """Мокает вызовы OpenAI API клиентов (chat.completions.create и beta.chat.completions.parse)"""
-    mock_client = AsyncMock()
-    
-    mock_choice = MagicMock()
-    mock_choice.message.content = "Аналитический отчет ИИ: Ребенок отлично справляется!"
-    mock_create_response = MagicMock()
-    mock_create_response.choices = [mock_choice]
-    mock_client.chat.completions.create = AsyncMock(return_value=mock_create_response)
-    
-    mock_parsed_choice = MagicMock()
-    mock_parsed_choice.message.parsed = None 
-    mock_parse_response = MagicMock()
-    mock_parse_response.choices = [mock_parsed_choice]
-    mock_client.beta.chat.completions.parse = AsyncMock(return_value=mock_parse_response)
-    
-    from bot.handlers import parent
-    monkeypatch.setattr(parent, "openai_client", mock_client)
-    
-    return mock_client

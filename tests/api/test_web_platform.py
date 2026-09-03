@@ -34,12 +34,15 @@ def test_frontend_pages_and_assets_are_served():
 
 
 @pytest.mark.asyncio
-async def test_v1_browser_login_returns_signed_session(api_client, mock_db):
+async def test_v1_browser_login_returns_signed_session(api_client, mock_db, monkeypatch):
+    from config import settings
+    monkeypatch.setattr(settings, "allow_browser_login", True)
     mock_db.mock_conn.fetchrow = AsyncMock(return_value={
         "tg_id": 777,
         "username": "student",
         "role": "student",
         "parent_id": 1,
+        "mentor_kind": None,
     })
     response = await api_client.post("/api/v1/auth/browser-login", json={"tg_id": 777})
     assert response.status_code == 200
@@ -53,12 +56,9 @@ async def test_v1_dashboard_requires_authorization(api_client):
 
 
 @pytest.mark.asyncio
-async def test_tutor_sessions_and_legacy_chat_require_authorization(api_client):
+async def test_tutor_sessions_require_authorization(api_client):
     sessions = await api_client.get("/api/v1/tutor/sessions")
-    legacy = await api_client.get("/api/chats/history/777")
-
     assert sessions.status_code == 401
-    assert legacy.status_code == 401
 
 
 def test_auth_page_contains_interactive_telegram_entry():
@@ -67,3 +67,17 @@ def test_auth_page_contains_interactive_telegram_entry():
     assert response.status_code == 200
     assert 'id="telegram-login"' in response.text
     assert "telegram-web-app.js" in response.text
+
+
+@pytest.mark.asyncio
+async def test_admin_v1_requires_authorization(api_client):
+    response = await api_client.get("/api/v1/admin/books")
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_v1_browser_login_is_disabled_by_default(api_client, monkeypatch):
+    from config import settings
+    monkeypatch.setattr(settings, "allow_browser_login", False)
+    response = await api_client.post("/api/v1/auth/browser-login", json={"tg_id": 777})
+    assert response.status_code == 403

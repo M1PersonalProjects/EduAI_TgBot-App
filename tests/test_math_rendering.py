@@ -1,4 +1,4 @@
-from services.response_formatter import (
+from services.core.response_formatter import (
     MATH_FORMATTING_RULES,
     normalize_latex_transport,
     telegram_formula_fallback,

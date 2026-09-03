@@ -1,7 +1,6 @@
 import asyncio
 import hashlib
 import mimetypes
-import os
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,11 +19,11 @@ from services.core.file_parser import (
 )
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ATTACHMENTS_ROOT = (
     Path(settings.attachments_dir)
     if Path(settings.attachments_dir).is_absolute()
-    else BASE_DIR / settings.attachments_dir
+    else PROJECT_ROOT / settings.attachments_dir
 )
 
 

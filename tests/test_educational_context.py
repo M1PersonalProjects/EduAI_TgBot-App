@@ -1,7 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 
-from services.educational_context import search_eduai_materials
+from services.education.educational_context import search_eduai_materials
 
 
 class FakeConnection:

@@ -165,7 +165,7 @@ button:disabled { cursor:not-allowed; opacity:.5; transform:none !important; }
 .sidebar-inner { display:flex; height:100%; flex-direction:column; border-radius:24px; padding:1rem; box-shadow:var(--ios-shadow-md) !important; }
 .backdrop { position:fixed; inset:0; z-index:85; display:none; border:0; background:rgba(0,0,0,.28); backdrop-filter:blur(2px); }
 .backdrop.open { display:block; }
-.topbar { position:sticky; top:max(.55rem,env(safe-area-inset-top)); z-index:50; display:flex; min-height:64px; align-items:center; justify-content:space-between; gap:1rem; border-radius:24px !important; padding:.55rem .7rem; background:var(--reference-panel) !important; border:1px solid var(--reference-border) !important; backdrop-filter:saturate(145%) blur(20px) !important; -webkit-backdrop-filter:saturate(145%) blur(20px) !important; }
+.topbar { position:sticky; top:max(var(--umnix-desktop-edge,1rem),env(safe-area-inset-top)); z-index:50; display:flex; min-height:64px; align-items:center; justify-content:space-between; gap:1rem; border-radius:24px !important; padding:.55rem .7rem; background:var(--reference-panel) !important; border:1px solid var(--reference-border) !important; backdrop-filter:saturate(145%) blur(20px) !important; -webkit-backdrop-filter:saturate(145%) blur(20px) !important; }
 .nav-link { display:flex; width:100%; min-height:44px; align-items:center; gap:.7rem; border:0; border-radius:14px; padding:.65rem .8rem; color:var(--reference-muted); background:transparent; cursor:pointer; text-align:left; font-weight:750; }
 .nav-link:hover,.nav-link.active { color:var(--reference-text); background:rgba(120,120,128,.12); }
 .nav-link.active { box-shadow:inset 3px 0 var(--reference-accent); }
@@ -394,7 +394,7 @@ body[data-active-section="assistant"] #assistant.page-section.active { flex:1 1 
 @media (max-width:767px) {
   .desktop-quick-nav { display:none; }
   .main-area { padding-bottom:calc(6.2rem + env(safe-area-inset-bottom)); }
-  .mobile-bottom-nav { position:fixed; z-index:80; left:.55rem; right:.55rem; bottom:max(.45rem,env(safe-area-inset-bottom)); display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:.2rem; padding:.35rem; border:1px solid var(--reference-border); border-radius:22px; background:var(--reference-panel-strong); box-shadow:var(--ios-shadow-md); backdrop-filter:blur(20px); }
+  .mobile-bottom-nav { position:fixed; z-index:80; left:var(--umnix-mobile-edge,.65rem); right:var(--umnix-mobile-edge,.65rem); bottom:max(var(--umnix-mobile-edge,.65rem),env(safe-area-inset-bottom)); display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:.2rem; padding:.35rem; border:1px solid var(--reference-border); border-radius:22px; background:var(--reference-panel-strong); box-shadow:var(--ios-shadow-md); backdrop-filter:blur(20px); }
   .mobile-nav-link { display:grid; min-width:0; min-height:52px; place-items:center; align-content:center; gap:.12rem; border:0; border-radius:17px; color:var(--reference-muted); background:transparent; cursor:pointer; }
   .mobile-nav-link small { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.62rem; font-weight:800; }
   .mobile-nav-link.active { color:var(--reference-accent); background:color-mix(in srgb,var(--reference-accent) 10%,transparent); }
@@ -406,7 +406,7 @@ body[data-active-section="assistant"] #assistant.page-section.active { flex:1 1 
   .chat-log { padding-inline:.25rem !important; }
   .chat-center-card { padding:.65rem !important; border-radius:20px !important; }
   #chat-form,#parent-chat-form { margin-bottom:max(.25rem,env(safe-area-inset-bottom)); }
-  .chat-context-panel { top:auto !important; left:.45rem !important; right:.45rem !important; bottom:max(.45rem,env(safe-area-inset-bottom)) !important; width:auto !important; max-width:none !important; max-height:min(78dvh,42rem) !important; border-radius:26px !important; transform:translate3d(0,calc(100% + 1rem),0) !important; }
+  .chat-context-panel { top:auto !important; left:var(--umnix-mobile-edge,.65rem) !important; right:var(--umnix-mobile-edge,.65rem) !important; bottom:max(var(--umnix-mobile-edge,.65rem),env(safe-area-inset-bottom)) !important; width:auto !important; max-width:none !important; max-height:min(78dvh,42rem) !important; border-radius:26px !important; transform:translate3d(0,calc(100% + 1rem),0) !important; }
   .tutor-chat-layout.book-panel-open .chat-context-panel { transform:translate3d(0,0,0) !important; }
   .modal-backdrop { place-items:end center; padding:0; }
   .modal-panel { width:100%; max-height:min(88dvh,calc(var(--eduai-viewport-height,100dvh) - 1rem)); border-radius:26px 26px 0 0; padding:1rem max(1rem,env(safe-area-inset-right)) max(1rem,env(safe-area-inset-bottom)) max(1rem,env(safe-area-inset-left)); }
@@ -824,8 +824,8 @@ img, video, canvas, svg { max-width: 100%; }
   .main-area {
     width: 100%;
     max-width: 100%;
-    padding-left: max(.55rem, env(safe-area-inset-left)) !important;
-    padding-right: max(.55rem, env(safe-area-inset-right)) !important;
+    padding-left: max(.65rem, env(safe-area-inset-left)) !important;
+    padding-right: max(.65rem, env(safe-area-inset-right)) !important;
   }
   .topbar {
     width: 100%;
@@ -847,7 +847,7 @@ img, video, canvas, svg { max-width: 100%; }
      visible: icon-only navigation is ambiguous on touch devices. */
   body.admin-page .admin-main-area {
     width: 100% !important;
-    padding-top: max(.5rem, env(safe-area-inset-top));
+    padding-top: max(.65rem, env(safe-area-inset-top));
   }
   body.admin-page .admin-topbar {
     position: sticky;
@@ -947,8 +947,8 @@ img, video, canvas, svg { max-width: 100%; }
      keyboard can shrink the real visual viewport without creating phantom space. */
   body[data-active-section="tutor"] .main-area,
   body[data-active-section="assistant"] .main-area {
-    padding-left: max(.45rem, env(safe-area-inset-left)) !important;
-    padding-right: max(.45rem, env(safe-area-inset-right)) !important;
+    padding-left: max(.65rem, env(safe-area-inset-left)) !important;
+    padding-right: max(.65rem, env(safe-area-inset-right)) !important;
   }
   .chat-center-card { border-radius: 18px !important; }
   .chat-log { scrollbar-gutter: auto; }
@@ -1214,8 +1214,8 @@ body.admin-page .admin-topbar-actions .ui-settings-wrap { flex: 0 0 auto; }
     max-width: 100% !important;
     margin-left: 0 !important;
     margin-right: 0 !important;
-    padding-left: max(.5rem, env(safe-area-inset-left)) !important;
-    padding-right: max(.5rem, env(safe-area-inset-right)) !important;
+    padding-left: max(.65rem, env(safe-area-inset-left)) !important;
+    padding-right: max(.65rem, env(safe-area-inset-right)) !important;
   }
   .student-heading p,
   .teacher-page .topbar > div:first-child p,
@@ -1261,8 +1261,8 @@ body.admin-page .admin-topbar-actions .ui-settings-wrap { flex: 0 0 auto; }
   body[data-active-section="assistant"] .topbar {
     position: fixed !important;
     z-index: 150 !important;
-    top: max(.45rem, env(safe-area-inset-top)) !important;
-    right: max(.45rem, env(safe-area-inset-right)) !important;
+    top: max(var(--umnix-mobile-edge,.65rem), env(safe-area-inset-top)) !important;
+    right: max(var(--umnix-mobile-edge,.65rem), env(safe-area-inset-right)) !important;
     left: auto !important;
     display: flex !important;
     width: 40px !important;
@@ -1471,9 +1471,9 @@ body.admin-page .admin-topbar-actions .ui-settings-wrap { flex: 0 0 auto; }
   /* Book Mode becomes a bottom sheet on phones and never competes with the composer. */
   .chat-context-panel {
     top: auto !important;
-    right: .45rem !important;
-    bottom: max(.45rem, env(safe-area-inset-bottom)) !important;
-    left: .45rem !important;
+    right: var(--umnix-mobile-edge,.65rem) !important;
+    bottom: max(var(--umnix-mobile-edge,.65rem), env(safe-area-inset-bottom)) !important;
+    left: var(--umnix-mobile-edge,.65rem) !important;
     width: auto !important;
     max-width: none !important;
     max-height: min(76dvh, 42rem) !important;
@@ -1639,8 +1639,8 @@ body.admin-page .admin-main-area {
   .tutor-mobile-nav-sheet {
     position: fixed;
     z-index: 172;
-    top: calc(max(.45rem, env(safe-area-inset-top)) + 3.25rem);
-    right: max(.55rem, env(safe-area-inset-right));
+    top: calc(max(var(--umnix-mobile-edge,.65rem), env(safe-area-inset-top)) + 3.25rem);
+    right: max(var(--umnix-mobile-edge,.65rem), env(safe-area-inset-right));
     display: grid !important;
     width: min(19rem, calc(100vw - 1.1rem));
     gap: .35rem;
@@ -1944,9 +1944,9 @@ body.teacher-page .page-section { min-width: 0; padding-bottom: .75rem; }
   body.student-page .student-main-area,
   body.teacher-page .main-area,
   body.admin-page .admin-main-area {
-    padding-left:max(.55rem, env(safe-area-inset-left)) !important;
-    padding-right:max(.55rem, env(safe-area-inset-right)) !important;
-    padding-top:max(.55rem, env(safe-area-inset-top)) !important;
+    padding-left:max(.65rem, env(safe-area-inset-left)) !important;
+    padding-right:max(.65rem, env(safe-area-inset-right)) !important;
+    padding-top:max(.65rem, env(safe-area-inset-top)) !important;
     padding-bottom:max(.65rem, env(safe-area-inset-bottom)) !important;
   }
   .topbar { min-height:52px; padding:.42rem .5rem !important; border-radius:18px !important; }
@@ -1981,8 +1981,8 @@ body.teacher-page .page-section { min-width: 0; padding-bottom: .75rem; }
   body.student-page .student-main-area,
   body.teacher-page .main-area,
   body.admin-page .admin-main-area {
-    padding-left:max(.4rem, env(safe-area-inset-left)) !important;
-    padding-right:max(.4rem, env(safe-area-inset-right)) !important;
+    padding-left:max(.65rem, env(safe-area-inset-left)) !important;
+    padding-right:max(.65rem, env(safe-area-inset-right)) !important;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -2002,9 +2002,9 @@ body.teacher-page .page-section { min-width: 0; padding-bottom: .75rem; }
 @media (max-width: 767px) {
   .file-library-shell,
   .interactive-shell {
-    padding-left: max(.55rem, env(safe-area-inset-left)) !important;
-    padding-right: max(.55rem, env(safe-area-inset-right)) !important;
-    padding-top: max(.55rem, env(safe-area-inset-top)) !important;
+    padding-left: max(.65rem, env(safe-area-inset-left)) !important;
+    padding-right: max(.65rem, env(safe-area-inset-right)) !important;
+    padding-top: max(.65rem, env(safe-area-inset-top)) !important;
     padding-bottom: max(.65rem, env(safe-area-inset-bottom)) !important;
   }
 }
@@ -2345,3 +2345,273 @@ body.admin-page .page-section {
     display: none !important;
   }
 }
+
+/* === UMNIX MOBILE ACCESS + CONSISTENT EDGE RHYTHM 2026-09-03 === */
+.tutor-mobile-logout,
+.chat-mobile-sidebar-toggle { display:none !important; }
+
+@media (max-width: 767px) {
+  :root {
+    --umnix-mobile-edge: .65rem;
+    --umnix-page-gutter: .65rem;
+  }
+  .topbar { top:max(var(--umnix-mobile-edge), env(safe-area-inset-top)) !important; }
+
+  /* Login: theme selector is intentionally unavailable on phones. */
+  body.auth-page .ui-settings-wrap { display:none !important; }
+  body.auth-page > main > section:last-child {
+    padding-top:max(var(--umnix-mobile-edge), env(safe-area-inset-top)) !important;
+    padding-right:max(var(--umnix-mobile-edge), env(safe-area-inset-right)) !important;
+    padding-bottom:max(var(--umnix-mobile-edge), env(safe-area-inset-bottom)) !important;
+    padding-left:max(var(--umnix-mobile-edge), env(safe-area-inset-left)) !important;
+  }
+
+  /* One outer gutter for every regular mobile page. */
+  body.student-page:not([data-active-section="tutor"]) .main-area,
+  body.teacher-page:not([data-active-section="assistant"]) .main-area,
+  body.admin-page .main-area,
+  body.files-page .main-area,
+  .file-library-shell,
+  .interactive-shell {
+    padding-top:max(var(--umnix-mobile-edge), env(safe-area-inset-top)) !important;
+    padding-right:max(var(--umnix-mobile-edge), env(safe-area-inset-right)) !important;
+    padding-bottom:max(var(--umnix-mobile-edge), env(safe-area-inset-bottom)) !important;
+    padding-left:max(var(--umnix-mobile-edge), env(safe-area-inset-left)) !important;
+  }
+
+  /* Tutor remains a full-screen app surface, but its visible chrome uses the same edge rhythm. */
+  body.student-page[data-active-section="tutor"] .chat-screen-header,
+  body.teacher-page[data-active-section="assistant"] .chat-screen-header {
+    position:relative;
+    z-index:184;
+    padding-top:max(var(--umnix-mobile-edge), env(safe-area-inset-top)) !important;
+    padding-right:max(3.35rem, calc(var(--umnix-mobile-edge) + env(safe-area-inset-right))) !important;
+    padding-left:max(var(--umnix-mobile-edge), env(safe-area-inset-left)) !important;
+  }
+  body.student-page[data-active-section="tutor"] .chat-screen-header-row,
+  body.teacher-page[data-active-section="assistant"] .chat-screen-header-row {
+    padding-left:0 !important;
+    padding-right:0 !important;
+  }
+
+  /* Order: page switch → logout → BookMode. */
+  .tutor-mobile-nav-toggle,
+  .tutor-mobile-logout,
+  .book-panel-toggle {
+    width:38px !important;
+    min-width:38px !important;
+    height:38px !important;
+    min-height:38px !important;
+    flex:0 0 38px !important;
+    border-radius:13px !important;
+  }
+  .tutor-mobile-logout {
+    display:inline-flex !important;
+    align-items:center;
+    justify-content:center;
+    color:#ff453a !important;
+    background:color-mix(in srgb, #ff453a 9%, transparent) !important;
+    border-color:color-mix(in srgb, #ff453a 18%, var(--reference-border)) !important;
+  }
+  .tutor-mobile-logout:active { transform:scale(.94); }
+
+  /* Explicit chat/profile drawer control in the top-right corner. */
+  body.student-page[data-active-section="tutor"] [data-chat-sidebar-toggle].chat-mobile-sidebar-toggle,
+  body.teacher-page[data-active-section="assistant"] [data-chat-sidebar-toggle].chat-mobile-sidebar-toggle {
+    display:inline-flex !important;
+    position:fixed !important;
+    top:max(var(--umnix-mobile-edge), env(safe-area-inset-top)) !important;
+    right:max(var(--umnix-mobile-edge), env(safe-area-inset-right)) !important;
+    z-index:190 !important;
+    width:38px !important;
+    min-width:38px !important;
+    height:38px !important;
+    min-height:38px !important;
+    align-items:center !important;
+    justify-content:center !important;
+    padding:0 !important;
+    border-radius:13px !important;
+    font-size:1.18rem !important;
+    font-weight:850 !important;
+    line-height:1 !important;
+    background:color-mix(in srgb,var(--reference-panel-strong) 92%,transparent) !important;
+    border:1px solid var(--reference-border) !important;
+    box-shadow:0 8px 24px rgba(0,0,0,.10) !important;
+    backdrop-filter:blur(18px) !important;
+    -webkit-backdrop-filter:blur(18px) !important;
+  }
+  .chat-mobile-sidebar-toggle:active { transform:scale(.94); }
+
+  /* Drawer no longer covers the entire phone: the top-right toggle stays visible in place. */
+  body.student-page[data-active-section="tutor"] .chat-thread-sidebar,
+  body.teacher-page[data-active-section="assistant"] .chat-thread-sidebar {
+    inset:0 auto 0 0 !important;
+    width:min(22rem, calc(100dvw - 3.25rem)) !important;
+    min-width:0 !important;
+    max-width:calc(100dvw - 3.25rem) !important;
+    padding-top:max(3.65rem, calc(var(--umnix-mobile-edge) + env(safe-area-inset-top))) !important;
+    padding-right:max(var(--umnix-mobile-edge), env(safe-area-inset-right)) !important;
+    padding-bottom:max(var(--umnix-mobile-edge), env(safe-area-inset-bottom)) !important;
+    padding-left:max(var(--umnix-mobile-edge), env(safe-area-inset-left)) !important;
+    border-radius:0 22px 22px 0 !important;
+    box-shadow:18px 0 48px rgba(0,0,0,.16) !important;
+  }
+  body.student-page[data-active-section="tutor"] .chat-thread-backdrop,
+  body.teacher-page[data-active-section="assistant"] .chat-thread-backdrop {
+    position:fixed !important;
+    inset:0 !important;
+    z-index:180 !important;
+    background:rgba(0,0,0,.22) !important;
+    backdrop-filter:blur(2px) !important;
+    -webkit-backdrop-filter:blur(2px) !important;
+  }
+  body.student-page[data-active-section="tutor"] .tutor-chat-layout.threads-drawer-open .chat-thread-backdrop,
+  body.teacher-page[data-active-section="assistant"] .tutor-chat-layout.threads-drawer-open .chat-thread-backdrop {
+    display:block !important;
+  }
+}
+/* === /UMNIX MOBILE ACCESS + CONSISTENT EDGE RHYTHM 2026-09-03 === */
+
+
+/* === UMNIX AUTH + UNIFIED DESKTOP EDGE RHYTHM 2026-09-03 === */
+:root {
+  --umnix-desktop-edge: 1rem;
+}
+
+.telegram-id-login { min-width:0; }
+.auth-help-link { text-decoration:none; }
+.auth-help-link > span:first-child {
+  display:grid;
+  width:1.35rem;
+  height:1.35rem;
+  place-items:center;
+  flex:0 0 1.35rem;
+  border-radius:50%;
+  color:var(--reference-accent);
+  background:color-mix(in srgb,var(--reference-accent) 10%,transparent);
+  font-weight:850;
+}
+
+/* Desktop/tablet pages use one and the same outer edge on all four sides.
+   Component paddings remain independent because they control card/button geometry. */
+@media (min-width: 768px) {
+  body.student-page .main-area,
+  body.teacher-page .main-area,
+  body.admin-page .admin-main-area,
+  .file-library-shell,
+  .interactive-shell {
+    padding-top:max(var(--umnix-desktop-edge),env(safe-area-inset-top)) !important;
+    padding-right:max(var(--umnix-desktop-edge),env(safe-area-inset-right)) !important;
+    padding-bottom:max(var(--umnix-desktop-edge),env(safe-area-inset-bottom)) !important;
+    padding-left:max(var(--umnix-desktop-edge),env(safe-area-inset-left)) !important;
+  }
+  body.student-page .topbar,
+  body.teacher-page .topbar,
+  body.admin-page .admin-topbar,
+  .file-library-shell .topbar {
+    top:max(var(--umnix-desktop-edge),env(safe-area-inset-top)) !important;
+  }
+  body[data-active-section="tutor"] .main-area,
+  body[data-active-section="assistant"] .main-area {
+    padding:max(var(--umnix-desktop-edge),env(safe-area-inset-top)) var(--umnix-desktop-edge) max(var(--umnix-desktop-edge),env(safe-area-inset-bottom)) !important;
+  }
+  body[data-active-section="tutor"] .chat-context-panel,
+  body[data-active-section="assistant"] .chat-context-panel {
+    top:max(var(--umnix-desktop-edge),env(safe-area-inset-top)) !important;
+    right:max(var(--umnix-desktop-edge),env(safe-area-inset-right)) !important;
+    bottom:max(var(--umnix-desktop-edge),env(safe-area-inset-bottom)) !important;
+  }
+}
+
+/* Auth keeps the compact phone edge and hides theme controls only on phones. */
+@media (max-width: 767px) {
+  body.auth-page .telegram-id-login { margin-top:.1rem; }
+  body.auth-page .auth-divider { margin-top:1rem !important; margin-bottom:1rem !important; }
+  body.auth-page .auth-help-link { min-height:44px; }
+}
+
+/* DOCX guide viewer. The document is fetched as data and rendered in-page;
+   downloading happens only after an explicit click on the download button. */
+.doc-guide-page { min-height:100dvh; }
+.doc-guide-shell {
+  position:relative;
+  z-index:2;
+  width:min(100%,1180px);
+  min-height:100dvh;
+  margin:0 auto;
+  padding:max(var(--umnix-desktop-edge),env(safe-area-inset-top)) max(var(--umnix-desktop-edge),env(safe-area-inset-right)) max(var(--umnix-desktop-edge),env(safe-area-inset-bottom)) max(var(--umnix-desktop-edge),env(safe-area-inset-left));
+}
+.doc-guide-toolbar {
+  position:sticky;
+  z-index:20;
+  top:max(var(--umnix-desktop-edge),env(safe-area-inset-top));
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:1rem;
+  padding:.65rem .75rem;
+  border-radius:20px;
+}
+.doc-guide-actions { display:flex; flex-wrap:wrap; gap:.5rem; }
+.doc-guide-status { margin:.8rem 0; }
+.doc-guide-viewer {
+  min-height:calc(100dvh - 8rem);
+  overflow:auto;
+  border-radius:22px;
+  padding:1rem;
+}
+.doc-guide-viewer .docx-wrapper { background:transparent !important; padding:0 !important; }
+.doc-guide-viewer .docx { box-shadow:0 10px 36px rgba(0,0,0,.12) !important; }
+.doc-guide-empty { display:grid; min-height:22rem; place-items:center; text-align:center; padding:2rem; }
+@media (max-width:767px) {
+  .doc-guide-shell {
+    padding:max(.65rem,env(safe-area-inset-top)) max(.65rem,env(safe-area-inset-right)) max(.65rem,env(safe-area-inset-bottom)) max(.65rem,env(safe-area-inset-left));
+  }
+  .doc-guide-toolbar {
+    top:max(.65rem,env(safe-area-inset-top));
+    align-items:flex-start;
+    flex-direction:column;
+    padding:.65rem;
+    border-radius:18px;
+  }
+  .doc-guide-actions { width:100%; }
+  .doc-guide-actions > * { flex:1 1 auto; }
+  .doc-guide-viewer { padding:.35rem; border-radius:18px; }
+  .doc-guide-viewer .docx { width:100% !important; min-height:auto !important; padding:1rem !important; }
+}
+/* === /UMNIX AUTH + UNIFIED DESKTOP EDGE RHYTHM 2026-09-03 === */
+
+/* === UMNIX DESKTOP EDGE RHYTHM HARDENING 2026-09-03 === */
+@media (min-width: 768px) {
+  body.auth-page > main {
+    padding:max(var(--umnix-desktop-edge),env(safe-area-inset-top)) max(var(--umnix-desktop-edge),env(safe-area-inset-right)) max(var(--umnix-desktop-edge),env(safe-area-inset-bottom)) max(var(--umnix-desktop-edge),env(safe-area-inset-left)) !important;
+    gap:var(--umnix-desktop-edge) !important;
+  }
+  body.auth-page > main > section {
+    min-width:0;
+    border-radius:24px;
+  }
+  .ui-settings-floating {
+    top:max(var(--umnix-desktop-edge),env(safe-area-inset-top)) !important;
+    right:max(var(--umnix-desktop-edge),env(safe-area-inset-right)) !important;
+  }
+  .global-scroll-control {
+    right:max(var(--umnix-desktop-edge),env(safe-area-inset-right)) !important;
+    bottom:max(var(--umnix-desktop-edge),env(safe-area-inset-bottom)) !important;
+  }
+  .toast-stack {
+    top:max(var(--umnix-desktop-edge),env(safe-area-inset-top)) !important;
+    right:max(var(--umnix-desktop-edge),env(safe-area-inset-right)) !important;
+  }
+}
+@media (min-width:768px) and (max-width:1279px) {
+  body[data-active-section="tutor"] .chat-thread-sidebar,
+  body[data-active-section="assistant"] .chat-thread-sidebar {
+    top:max(var(--umnix-desktop-edge),env(safe-area-inset-top)) !important;
+    bottom:max(var(--umnix-desktop-edge),env(safe-area-inset-bottom)) !important;
+    left:max(var(--umnix-desktop-edge),env(safe-area-inset-left)) !important;
+    width:min(21rem,calc(100vw - (2 * var(--umnix-desktop-edge)))) !important;
+    max-width:calc(100vw - (2 * var(--umnix-desktop-edge))) !important;
+  }
+}
+/* === /UMNIX DESKTOP EDGE RHYTHM HARDENING 2026-09-03 === */

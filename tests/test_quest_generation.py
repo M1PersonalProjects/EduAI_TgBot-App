@@ -1,4 +1,4 @@
-from services.quest_generation import canonicalize_subject, parse_quest_request
+from services.education.quest_generation import canonicalize_subject, parse_quest_request
 
 
 def test_free_quest_request_extracts_required_fields_and_count():
@@ -38,7 +38,7 @@ def test_inflected_subject_can_match_existing_program():
 
 
 def test_quest_choices_accept_single_and_multiple_numeric_answers():
-    from services.quest_generation import check_quest_choice_answer, format_quest_question
+    from services.education.quest_generation import check_quest_choice_answer, format_quest_question
 
     single = {
         "question_text": "Сколько будет 2 + 2?",
@@ -63,7 +63,7 @@ def test_quest_choices_accept_single_and_multiple_numeric_answers():
 
 
 def test_quest_choice_quality_requires_2_to_6_and_variety():
-    from services.quest_generation import quest_choice_issues
+    from services.education.quest_generation import quest_choice_issues
 
     good = {
         "items": [

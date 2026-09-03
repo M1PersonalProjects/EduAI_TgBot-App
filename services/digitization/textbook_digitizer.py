@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import base64
 from pathlib import Path
 from typing import Awaitable, Callable, Optional
@@ -11,10 +10,19 @@ from api.schemas.admin import OpenAIPageResponse
 from database import db
 from logger_config import logger
 from services.ai import openai_client, parse_chat_completion
-from services.web.tutor import clean_ai_text
+from services.ai.orchestrator import clean_ai_text
 from services.prompts import TEXTBOOK_DIGITIZATION_RULES
 
 ProgressCallback = Callable[[str, int, int], Awaitable[None]]
+
+
+def _clean_page_title(ai_data, page_num: int) -> str:
+    value = clean_ai_text(getattr(ai_data, "page_title", ""))[:256].strip()
+    return value or f"Страница {page_num}"
+
+
+def _clean_page_paragraph(ai_data) -> str:
+    return clean_ai_text(getattr(ai_data, "page_paragraph", ""))[:100].strip()
 
 
 
@@ -98,9 +106,9 @@ async def digitize_pdf_path(
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                     """,
                     book_id,
-                    f"Страница {page_num}",
+                    _clean_page_title(ai_data, page_num),
                     page_num,
-                    ai_data.page_paragraph,
+                    _clean_page_paragraph(ai_data),
                     clean_ai_text(ai_data.html_content),
                     f"data:image/png;base64,{base64_image}",
                     clean_ai_text(ai_data.raw_text),
@@ -114,7 +122,6 @@ async def digitize_pdf_path(
                     total_pages,
                     book_id,
                 )
-                await asyncio.sleep(0.5)
 
         await callback("completed", pages_processed, total_pages)
         return {
@@ -189,9 +196,9 @@ async def digitize_pdf_bytes(
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                         """,
                         book_id,
-                        f"Страница {page_num}",
+                        _clean_page_title(ai_data, page_num),
                         page_num,
-                        ai_data.page_paragraph,
+                        _clean_page_paragraph(ai_data),
                         clean_ai_text(ai_data.html_content),
                         f"data:image/png;base64,{base64_image}",
                         clean_ai_text(ai_data.raw_text),
@@ -203,9 +210,12 @@ async def digitize_pdf_bytes(
                     logger.error("Ошибка обработки страницы %s книги %s: %s", page_num, book_id, exc)
                     continue
 
+        if pages_processed == 0:
+            raise RuntimeError("Не удалось обработать ни одной страницы PDF")
         return {
             "status": "success",
             "processed_pages": pages_processed,
+            "total_pages": len(doc),
             "message": "Учебник успешно обработан",
         }
     finally:

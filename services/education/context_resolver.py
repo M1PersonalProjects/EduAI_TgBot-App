@@ -16,8 +16,8 @@ TRANSLIT = str.maketrans({
     "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
 })
 
-MAX_CONTEXT_CHARS = 16000
-MAX_SELECTED_PAGES = 6
+MAX_CONTEXT_CHARS = 80000
+MAX_SELECTED_PAGES = 24
 CHUNK_CHARS = 3200
 
 
@@ -111,6 +111,23 @@ def _page_meta(row: Any) -> Dict[str, Any]:
         "page_title": row["page_title"],
         "page_paragraph": row["page_paragraph"],
     }
+
+
+def _normalized_text(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "").casefold().replace("ё", "е")).strip()
+
+
+def _matches_paragraph(row: Any, paragraph: str) -> bool:
+    """Проверяет точное указание параграфа по номеру или названию."""
+    requested = _normalized_text(paragraph)
+    if not requested:
+        return False
+    haystack = _normalized_text(f"{row['page_paragraph'] or ''} {row['page_title'] or ''}")
+    numbers = re.findall(r"\d{1,4}", requested)
+    if numbers:
+        number = re.escape(numbers[0])
+        return bool(re.search(rf"(?<!\d){number}(?!\d)", haystack))
+    return requested in haystack or haystack in requested
 
 
 def _chunk_text(text: str, chunk_chars: int = CHUNK_CHARS) -> List[str]:
@@ -208,11 +225,17 @@ async def resolve_book_context(
     book_id: int,
     query: str,
     page_id: Optional[int] = None,
+    paragraph: Optional[str] = None,
     source: str = "manual",
     max_chars: int = MAX_CONTEXT_CHARS,
     max_pages: int = MAX_SELECTED_PAGES,
 ) -> Optional[ResolvedContext]:
-    """Resolve either one selected page or a bounded, relevant whole-book context."""
+    """Возвращает выбранную страницу, параграф или контекст учебника.
+
+    Для явно выбранного/закреплённого учебника страницы идут в естественном
+    порядке и не отбрасываются только из-за отсутствия совпадения с текущим
+    вопросом. Для неявного поиска по каталогу используется релевантный срез.
+    """
     if page_id is not None:
         row = await _fetch_exact(conn, int(book_id), int(page_id), None)
         return _to_context(row, source)
@@ -221,7 +244,7 @@ async def resolve_book_context(
     if not book:
         return None
 
-    rows = await conn.fetch(
+    rows = list(await conn.fetch(
         """
         SELECT b.book_id, b.book_title, b.book_author, b.book_program, b.book_class,
                p.page_id, p.page_number, p.page_paragraph, p.page_title,
@@ -233,7 +256,11 @@ async def resolve_book_context(
         ORDER BY p.page_number NULLS LAST, p.page_id
         """,
         int(book_id),
-    )
+    ))
+
+    mode = "paragraph" if paragraph else "whole_book"
+    if paragraph:
+        rows = [row for row in rows if _matches_paragraph(row, paragraph)]
 
     if not rows:
         return ResolvedContext(
@@ -242,30 +269,25 @@ async def resolve_book_context(
             book_author=book["book_author"],
             book_program=book["book_program"],
             book_class=book["book_class"],
+            page_paragraph=str(paragraph)[:100] if paragraph else None,
             source=source,
-            context_mode="whole_book",
+            context_mode=mode,
         )
 
-    tokens = _tokens(query)
+    explicit_selection = source in {"manual", "locked", "parent_task_generation"} or bool(paragraph)
     ranked: List[tuple[int, int, int, Any, str]] = []
+    tokens = _tokens(query)
     for row in rows:
         for chunk_index, chunk in enumerate(_chunk_text(_row_content(row))):
-            score = _relevance_score(row, chunk, tokens)
             page_number = row["page_number"] if row["page_number"] is not None else 10**9
+            score = _relevance_score(row, chunk, tokens)
             ranked.append((score, -page_number, -chunk_index, row, chunk))
 
-    if tokens:
-        ranked = [item for item in ranked if item[0] > 0]
-        if not ranked:
-            return ResolvedContext(
-                book_id=book["book_id"],
-                book_title=book["book_title"],
-                book_author=book["book_author"],
-                book_program=book["book_program"],
-                book_class=book["book_class"],
-                source=source,
-                context_mode="whole_book",
-            )
+    if explicit_selection:
+        ranked.sort(key=lambda item: (-item[1], -item[2]))
+    elif tokens:
+        relevant = [item for item in ranked if item[0] > 0]
+        ranked = relevant or ranked
         ranked.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
     else:
         ranked.sort(key=lambda item: (item[1], item[2]), reverse=True)
@@ -276,7 +298,7 @@ async def resolve_book_context(
     total = 0
     for _, _, _, row, chunk in ranked:
         page_key = row["page_id"]
-        if page_key not in seen_pages and len(seen_pages) >= max_pages:
+        if not explicit_selection and page_key not in seen_pages and len(seen_pages) >= max_pages:
             continue
         header = (
             f"Страница {row['page_number'] or '—'}"
@@ -298,15 +320,18 @@ async def resolve_book_context(
         if total >= max_chars:
             break
 
+    first = rows[0]
     return ResolvedContext(
         book_id=book["book_id"],
         book_title=book["book_title"],
         book_author=book["book_author"],
         book_program=book["book_program"],
         book_class=book["book_class"],
+        page_paragraph=(first["page_paragraph"] or str(paragraph))[:100] if paragraph else None,
+        page_title=first["page_title"] if paragraph else None,
         content="\n\n".join(blocks)[:max_chars],
         source=source,
-        context_mode="whole_book",
+        context_mode=mode,
         used_pages=used_pages,
     )
 
@@ -372,12 +397,14 @@ async def resolve_context(
             query_text += f" параграф {hints['paragraph']}"
         if hints.get("exercise"):
             query_text += f" упражнение {hints['exercise']}"
-        if manual.get("page_paragraph"):
-            query_text += f" {manual['page_paragraph']}"
+        paragraph = manual.get("page_paragraph")
+        if not paragraph and hints.get("paragraph"):
+            paragraph = str(hints["paragraph"])
         return await resolve_book_context(
             conn,
             int(selected_book["book_id"]),
             query_text,
+            paragraph=paragraph,
             source=source,
         )
 
@@ -414,5 +441,10 @@ async def load_locked_context(conn, session: Any) -> Optional[ResolvedContext]:
     if session["page_id"]:
         row = await _fetch_exact(conn, session["book_id"], session["page_id"], None)
         return _to_context(row, "locked")
-    row = await _fetch_exact(conn, session["book_id"], None, None)
-    return _to_context(row, "locked")
+    return await resolve_book_context(
+        conn,
+        int(session["book_id"]),
+        "",
+        paragraph=session["active_paragraph"] if "active_paragraph" in session else None,
+        source="locked",
+    )

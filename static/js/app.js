@@ -1010,6 +1010,23 @@
       toggle.setAttribute('aria-expanded', 'false');
       toggle.innerHTML = '<span aria-hidden="true" class="tutor-mobile-nav-arrow">↗</span>';
 
+      const logoutButton = document.createElement('button');
+      logoutButton.type = 'button';
+      logoutButton.className = 'icon-btn tutor-mobile-logout';
+      logoutButton.setAttribute('aria-label', 'Выйти из профиля');
+      logoutButton.setAttribute('title', 'Сменить аккаунт');
+      logoutButton.innerHTML = '<span aria-hidden="true">↪</span>';
+      logoutButton.addEventListener('click', () => EduAI.logout());
+
+      const sidebarButton = document.createElement('button');
+      sidebarButton.type = 'button';
+      sidebarButton.className = 'icon-btn chat-mobile-sidebar-toggle';
+      sidebarButton.dataset.chatSidebarToggle = '1';
+      sidebarButton.setAttribute('aria-label', 'Открыть боковую панель');
+      sidebarButton.setAttribute('title', 'Открыть боковую панель');
+      sidebarButton.setAttribute('aria-expanded', 'false');
+      sidebarButton.textContent = '>';
+
       const sheet = document.createElement('div');
       sheet.className = 'tutor-mobile-nav-sheet glass-strong';
       sheet.setAttribute('role', 'dialog');
@@ -1065,8 +1082,13 @@
       });
       document.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });
 
-      if (bookButton) headerRow.insertBefore(toggle, bookButton);
-      else headerRow.append(toggle);
+      if (bookButton) {
+        headerRow.insertBefore(toggle, bookButton);
+        headerRow.insertBefore(logoutButton, bookButton);
+      } else {
+        headerRow.append(toggle, logoutButton);
+      }
+      headerRow.append(sidebarButton);
       layout.append(sheet);
     });
   }

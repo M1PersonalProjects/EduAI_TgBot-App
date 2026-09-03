@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock
 
-from services.file_parser import ParsedAttachment
+from services.core.file_parser import ParsedAttachment
 from bot.handlers.quests import (
     start_book_filter,
     handle_grade_choice,

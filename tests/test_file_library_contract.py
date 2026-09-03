@@ -31,7 +31,7 @@ def test_file_library_has_page_api_and_tutor_navigation():
 
 
 def test_forget_attachment_removes_chat_memory_link_and_keeps_task_safety():
-    storage = read("services/attachment_storage.py")
+    storage = read("services/core/attachment_storage.py")
     router = read("api/routers/attachments.py")
     chat = read("static/js/chat.js")
     client = read("static/js/files.js")
@@ -47,7 +47,7 @@ def test_forget_attachment_removes_chat_memory_link_and_keeps_task_safety():
 
 
 def test_file_library_groups_web_and_telegram_by_chat_session():
-    storage = read("services/attachment_storage.py")
+    storage = read("services/core/attachment_storage.py")
     assert 'JOIN chat_sessions s' in storage
     assert 's.title AS chat_title' in storage
     assert 'telegram_default' in storage

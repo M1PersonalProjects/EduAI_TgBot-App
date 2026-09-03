@@ -10,7 +10,7 @@ def test_digitization_title_normalization_is_conservative():
 
 
 def test_worker_does_not_overwrite_on_first_processing():
-    source = Path("services/digitization_queue.py").read_text(encoding="utf-8")
+    source = Path("services/digitization/digitization_queue.py").read_text(encoding="utf-8")
     assert 'reset_pages = int(job.get("retry_count") or 0) > 0' in source
     assert "book_not_empty" in source
 

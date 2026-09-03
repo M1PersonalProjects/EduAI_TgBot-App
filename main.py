@@ -15,17 +15,12 @@ from database import db
 from bot.handlers import start, webapp, tasks as bot_tasks, ai_chat, quests
 
 from api.routers.attachments import router as attachments_v1_router
-from api.routers.admin import router as admin_router
-from api.routers.accounts import router as accounts_router
-from api.routers.books import router as books_router
-from api.routers.chats import router as chats_router, tutor_router as tutor_chats_router
 from api.routers.auth import router as auth_v1_router
 from api.routers.platform import router as platform_v1_router
 from api.routers.tutor import router as tutor_v1_router
 from api.routers.interactive import router as interactive_v1_router
 from api.routers.digitization import router as digitization_router
 from services.digitization.digitization_queue import start_digitization_worker, stop_digitization_worker
-from services.utils.schema_migrations import ensure_runtime_schema
 
 from logger_config import logger
 
@@ -34,7 +29,6 @@ BASE_DIR = Path(__file__).resolve().parent
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await db.connect()
-    await ensure_runtime_schema(db.pool)
     await start_digitization_worker()
     logger.info(" 🗄  Пул базы данных PostgreSQL успешно инициализирован.")
     yield
@@ -63,11 +57,6 @@ static_dir = BASE_DIR / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-app.include_router(accounts_router)
-app.include_router(books_router)
-app.include_router(admin_router)
-app.include_router(chats_router)
-app.include_router(tutor_chats_router)
 app.include_router(auth_v1_router)
 app.include_router(platform_v1_router)
 app.include_router(tutor_v1_router)
@@ -109,10 +98,6 @@ async def parent_dashboard(request: Request):
 @app.get("/files", response_class=HTMLResponse)
 async def serve_files_page(request: Request):
     return templates.TemplateResponse(request, "files.html")
-
-@app.get("/parent/create-test", response_class=HTMLResponse)
-async def parent_create_test(request: Request):
-    return templates.TemplateResponse(request, "parent.html")
 
 @app.get("/parent/auth", response_class=HTMLResponse)
 async def parent_auth_page(request: Request):

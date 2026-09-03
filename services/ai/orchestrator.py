@@ -514,9 +514,9 @@ async def _generate_conversation_response(
         mixed_request = explicit_mixed_source_request(clean_text)
         attachment_reference = explicit_attachment_reference(clean_text)
 
-        # Load the COMPLETE attachment inventory for this session on every request.
-        # Only a small relevant subset is sent to the model; the complete metadata
-        # inventory stays available for natural references to old files.
+        # Загружаем полный набор вложений текущего чата на каждом запросе.
+        # В Book Mode старые файлы не подмешиваются без явной ссылки, но новое
+        # вложение текущего сообщения можно анализировать, не сбрасывая учебник.
         all_session_attachments = await session_attachments(
             conn, user_id, session["session_id"]
         )
@@ -527,7 +527,7 @@ async def _generate_conversation_response(
                 row for row in all_session_attachments
                 if int(row["attachment_id"]) == int(attachment_id)
             ]
-            if not mixed_request:
+            if active_mode != BOOK_MODE and not mixed_request:
                 activated_at = await activate_attachment_context(
                     conn,
                     user_id=user_id,
@@ -608,15 +608,9 @@ async def _generate_conversation_response(
                 active_mode = ATTACHMENT_MODE
 
         else:
-            # General AI mode may use a relevant old attachment for this turn
-            # without silently locking future turns to attachment mode.
-            selected_attachments = await select_relevant_attachments(
-                conn,
-                user_id,
-                session["session_id"],
-                clean_text,
-                available_rows=all_session_attachments,
-            )
+            # В общем режиме учитываем все ранее прикреплённые файлы. Ограничение
+            # размера применяется позже при сборке контекста, а не потерей файлов.
+            selected_attachments = list(all_session_attachments)
 
         selected_ids = [int(row["attachment_id"]) for row in selected_attachments]
         memory_state, existing_summary = await load_session_state(

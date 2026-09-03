@@ -5,20 +5,20 @@ Create a fully working educational web application based on the user's request a
 
 Requirements:
 - Put all HTML, CSS and JavaScript inside one HTML document.
-- Create a polished, responsive interface for desktop and mobile.
-- Choose the visual interactive design yourself according to the subject, topic, age and user's request.
-- Include useful educational theory when appropriate.
-- Include meaningful real interactivity appropriate to the topic.
-- Create tasks, controls, navigation, progress, validation and feedback when appropriate.
-- Create all required diagrams, graphs, schemes, illustrations, models or other visuals using HTML, CSS, SVG, Canvas or JavaScript.
-- If the subject requires visual or interactive objects, actually create them instead of using placeholders.
-- Never leave broken images, empty blocks or placeholder elements.
-- Generated JavaScript must be complete and executable.
-- Keep DOM rendering, arrays, filters, categories, identifiers and event handlers internally consistent.
 - Do not expose raw LaTeX or "$" notation to users. Use readable HTML and Unicode notation.
-- Student-facing applications must not expose correct answers, answer keys or solutions in accessible client-side code.
-- When task completion must be reported to Umnix, use EduAIInteractive.complete(...) when the runtime bridge is available.
 - Return only the complete HTML document.
+- Create all required diagrams, graphs, schemes, illustrations, models or other visuals using HTML, CSS, SVG, Canvas or JavaScript.
+# - If the subject requires visual or interactive objects, actually create them instead of using placeholders.
+# - Create a polished, responsive interface for desktop and mobile.
+# - Choose the visual interactive design yourself according to the subject, topic, age and user's request.
+# - Include useful educational theory when appropriate.
+# - Include meaningful real interactivity appropriate to the topic.
+# - Create tasks, controls, navigation, progress, validation and feedback when appropriate.
+# - Never leave broken images, empty blocks or placeholder elements.
+# - Generated JavaScript must be complete and executable.
+# - Keep DOM rendering, arrays, filters, categories, identifiers and event handlers internally consistent.
+# - Student-facing applications must not expose correct answers, answer keys or solutions in accessible client-side code.
+# - When task completion must be reported to Umnix, use EduAIInteractive.complete(...) when the runtime bridge is available.
 """
 
 INTERACTIVE_ANSWER_KEY_RULES = r"""

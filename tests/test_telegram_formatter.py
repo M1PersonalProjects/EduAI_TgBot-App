@@ -1,6 +1,6 @@
 import pytest
 
-from services.response_formatter import contains_raw_latex, format_for_telegram, telegram_safe_text
+from services.core.response_formatter import contains_raw_latex, format_for_telegram, telegram_safe_text
 
 
 @pytest.mark.parametrize(

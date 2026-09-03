@@ -1,4 +1,4 @@
-from services.tutor_policy import build_tutor_prompt
+from services.web.tutor_policy import build_tutor_prompt
 
 
 def test_student_rag_prompt_contains_learning_role_and_context():

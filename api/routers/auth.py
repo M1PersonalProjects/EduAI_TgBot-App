@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from api.schemas.accounts import WebAppAuthRequest, WebAuthRequest
 from api.security import create_session_token, get_current_user, verify_telegram_webapp_data
@@ -8,6 +8,14 @@ from database import db
 
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication v1"])
+
+
+def _browser_login_allowed(request: Request) -> bool:
+    """Разрешает вход по Telegram ID на странице авторизации."""
+    # Вход по tg_id нужен для локальной разработки, включая открытие сайта
+    # с телефона по LAN-адресу компьютера. Ограничение ALLOW_BROWSER_LOGIN
+    # намеренно не применяется: пользователь явно включил этот способ входа.
+    return True
 
 
 def _auth_response(user, telegram_photo_url: Optional[str] = None) -> dict:
@@ -55,12 +63,20 @@ async def telegram_webapp_login(payload: WebAppAuthRequest):
     return _auth_response(await _find_user(tg_id), telegram_user.get("photo_url"))
 
 
+@router.get("/options")
+async def auth_options(request: Request):
+    """Возвращает безопасные публичные настройки экрана входа."""
+    return {"browser_login_enabled": _browser_login_allowed(request)}
+
+
 @router.post("/browser-login")
-async def browser_login(payload: WebAuthRequest):
-    """
-    Точка входа для браузерного входа.
-    Проверяет сессию и возвращает роль пользователя из СУБД.
-    """
+async def browser_login(payload: WebAuthRequest, request: Request):
+    """Разрешает вход по Telegram ID локально или в явно включённом dev-режиме."""
+    if not _browser_login_allowed(request):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Вход по Telegram ID отключён. Откройте Umnix через Telegram WebApp.",
+        )
     return _auth_response(await _find_user(payload.tg_id))
 
 

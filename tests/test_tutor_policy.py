@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from services.tutor_policy import (
+from services.web.tutor_policy import (
     BASE_TUTOR_RULES,
     TEACHER_ROLE_RULES,
     build_tutor_prompt,

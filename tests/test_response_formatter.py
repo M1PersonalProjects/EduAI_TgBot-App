@@ -1,4 +1,4 @@
-from services.response_formatter import canonicalize_message, telegram_parts, telegram_formula_fallback
+from services.core.response_formatter import canonicalize_message, telegram_parts, telegram_formula_fallback
 
 
 def test_canonical_latex_is_preserved():

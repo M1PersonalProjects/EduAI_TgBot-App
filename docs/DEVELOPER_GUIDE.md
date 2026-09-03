@@ -13,19 +13,19 @@
 
 ## 2. Основные модули
 
-- `services/tutor.py` — оркестрация tutor sessions/messages;
-- `services/tutor_policy.py` — сборка prompt policy;
-- `services/context_resolver.py` — Book Mode и поиск выбранного контекста;
-- `services/educational_context.py` — ранжирование учебных источников;
-- `services/chat_memory.py` / `conversation_context.py` — память и активный контекст;
-- `services/task_generation.py` — общий structured task generation;
-- `services/assignment_source.py` — совместимость исторических источников и нормализация сложности; новые обычные задания сохраняются только как `teacher`;
-- `services/attachment_storage.py` — ownership/storage/linking файлов;
+- `services/ai/orchestrator.py` — единая оркестрация tutor sessions/messages и AI-вызовов;
+- `services/web/tutor_policy.py` — сборка prompt policy;
+- `services/education/context_resolver.py` — Book Mode и поиск выбранного контекста;
+- `services/education/educational_context.py` — ранжирование учебных источников;
+- `services/core/chat_memory.py` / `services/education/conversation_context.py` — память и активный контекст;
+- `services/education/task_generation.py` — общий structured task generation;
+- `services/education/assignment_source.py` — источник задания и нормализация сложности; новые обычные задания сохраняются как `teacher`;
+- `services/core/attachment_storage.py` — ownership/storage/linking файлов;
 - `GET /api/v1/attachments/library` — библиотека вложений текущего пользователя по чатам WebApp/Telegram;
 - `DELETE /api/v1/attachments/{attachment_id}/memory` — удаление связи вложения с памятью/историей чата с сохранением файла, если он ещё нужен заданию;
-- `services/interactive_apps.py` — безопасные интерактивные приложения;
-- `services/textbook_digitizer.py` / `digitization_queue.py` — оцифровка;
-- `services/response_formatter.py` — canonical Markdown/Math и Telegram fallback;
+- `services/interactive/interactive_apps.py` — безопасные интерактивные приложения;
+- `services/digitization/textbook_digitizer.py` / `digitization_queue.py` — оцифровка;
+- `services/core/response_formatter.py` — canonical Markdown/Math и Telegram fallback;
 - `services/ai/client.py` — единственный OpenAI client layer.
 
 ## 3. OpenAI
@@ -53,7 +53,7 @@ BASE RULES
 + OUTPUT FORMAT RULES
 ```
 
-Новые feature rules добавляйте в `services/prompts/`, экспортируйте через `services/prompts/__init__.py` и собирайте в `tutor_policy.py` или конкретном service.
+Новые feature rules добавляйте в `services/prompts/`, экспортируйте через `services/prompts/__init__.py` и собирайте в `services/web/tutor_policy.py` или конкретном service.
 
 ## 5. API и DTO
 
@@ -77,9 +77,9 @@ Legacy `/api/tasks/*` удалён. Новые обычные задания с�
 
 ## 7. База данных
 
-Все multi-step изменения, способные оставить частичное состояние, выполняйте внутри `async with conn.transaction()`. Совместимая схема, необходимая текущей версии приложения, централизована в `services/schema_migrations.py` и должна оставаться идемпотентной.
+Все multi-step изменения, способные оставить частичное состояние, выполняйте внутри `async with conn.transaction()`. Каноническая схема новой установки находится в `database.sql`; runtime-код не изменяет структуру БД при старте.
 
-Перед удалением колонок или таблиц проверьте модели, SQL в services/routers и тестовые fixtures. Одноразовые SQL-файлы не являются runtime-зависимостью проекта.
+Перед изменением существующей production-схемы проверьте модели, SQL в services/routers и тестовые fixtures, сделайте backup и используйте отдельную контролируемую миграцию.
 
 ## 8. Async
 
@@ -100,7 +100,7 @@ python -m compileall -q api bot services tests main.py config.py database.py
 
 ## 11. Изменения схемы
 
-Если текущей версии приложения требуется новое поле, индекс или служебная таблица, добавляйте минимальный идемпотентный DDL в `services/schema_migrations.py` и покрывайте именно требуемый runtime-контракт тестом. Не добавляйте тесты, которые проверяют наличие исторического отчёта или уже выполненного одноразового SQL-файла.
+Если приложению требуется новое поле, индекс или таблица, обновите `database.sql`, подготовьте отдельный migration script для существующих установок и покройте прикладной контракт тестом. Не выполняйте DDL автоматически при импорте или старте приложения.
 
 ## 12. Добавление функции
 

@@ -10,8 +10,7 @@ from database import db
 from logger_config import logger
 from services.core.file_parser import AttachmentError
 from services.bot.thinking import TelegramThinkingIndicator
-from services.web.tutor import ensure_telegram_session, exit_book_mode
-from services.ai.orchestrator import generate_response
+from services.ai.orchestrator import ensure_telegram_session, exit_book_mode, generate_response
 
 
 router = Router()
@@ -45,8 +44,7 @@ async def exit_book_command(message: Message, state: FSMContext):
         pass
     await state.clear()
     await message.answer(
-        "✅ Учебник откреплён. Чтобы снова начать чат с ИИ, "
-        "нажмите «🤖 ИИ-помощник»."
+        "✅ Учебник откреплён. Можете сразу писать следующий вопрос ИИ-помощнику."
     )
 
 
@@ -63,7 +61,7 @@ async def exit_book_callback(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer("Учебник откреплён")
     await callback.message.answer(
-        "✅ Контекст учебника очищен. Для начала чата нажмите «🤖 ИИ-помощник»."
+        "✅ Контекст учебника очищен. Можете сразу продолжить общение с ИИ-помощником."
     )
 
 
@@ -170,4 +168,10 @@ async def quick_ai_chat_fallback(message: Message):
     """
     Обрабатывает сообщения от пользователя в постоянном режиме чата с ИИ.
     """
+    await _handle_ai_message(message)
+
+
+@router.message(F.text | F.photo | F.document)
+async def always_available_ai_chat(message: Message):
+    """Обрабатывает свободный учебный вопрос, если другой workflow его не перехватил."""
     await _handle_ai_message(message)

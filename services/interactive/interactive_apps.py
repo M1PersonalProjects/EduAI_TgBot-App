@@ -9,17 +9,15 @@ from pydantic import BaseModel, Field
 
 from config import settings
 from database import db
-from logger_config import logger
 from services.ai import AIUpstreamError, create_chat_completion, openai_client, parse_chat_completion
 from services.education.context_resolver import ResolvedContext
 from services.education.task_generation import find_requested_task_count
 from services.web.tutor_policy import (
-    INTERACTIVE_TASK_RULES,
     private_answer_key_prompt,
     role_rules,
     task_grading_prompt,
 )
-from services.prompts import INTERACTIVE_ANSWER_KEY_RULES, INTERACTIVE_GRADING_RULES
+from services.prompts import INTERACTIVE_ANSWER_KEY_RULES, INTERACTIVE_GRADING_RULES, INTERACTIVE_TASK_RULES
 
 
 class InteractiveGeneration(BaseModel):
@@ -106,7 +104,7 @@ def sanitize_interactive_html(value: str) -> str:
     html = str(value or "").strip()
     if not html:
         raise ValueError("ИИ вернул пустое интерактивное приложение")
-    if len(html) > 1_500_000:
+    if len(html) > 2_500_000:
         raise ValueError("Интерактивное приложение получилось слишком большим")
 
     html = re.sub(

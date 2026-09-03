@@ -59,7 +59,7 @@ def test_student_transport_does_not_expose_teacher_answer_keys():
 
 def test_interactive_apps_use_existing_task_system_and_server_grading():
     interactive = read("api/routers/interactive.py")
-    service = read("services/interactive_apps.py")
+    service = read("services/interactive/interactive_apps.py")
     chat = read("static/js/chat.js")
     assert "interactive_assignments" in interactive
     assert "tasks_history" in interactive
@@ -88,11 +88,8 @@ def test_ios_chat_adaptation_profile_search_swipes_keyboard_and_book_sheet():
     assert "prefers-reduced-motion: reduce" in css
 
 
-def test_database_sql_is_canonical_schema_and_runtime_migrations_are_disabled():
-    schema = read("services/schema_migrations.py")
+def test_database_sql_is_the_canonical_schema():
     database = read("database.sql")
-    assert "RUNTIME_SCHEMA_STATEMENTS" not in schema
-    assert "database.sql" in schema
     assert "ALTER TABLE" not in database.upper()
     assert "CREATE TABLE" in database.upper()
     assert "task_drafts" in database

@@ -34,3 +34,13 @@ def test_light_design_system_and_reduced_motion_are_present():
     assert "color-scheme: light" in css
     assert "prefers-reduced-motion: reduce" in css
 
+
+
+def test_runtime_storage_paths_are_project_rooted():
+    """Runtime-файлы не должны появляться внутри пакета services."""
+    from services.core.attachment_storage import ATTACHMENTS_ROOT
+    from services.digitization.digitization_queue import QUEUE_STORAGE
+
+    project_root = Path(__file__).resolve().parents[1]
+    assert ATTACHMENTS_ROOT == project_root / "storage" / "attachments"
+    assert QUEUE_STORAGE == project_root / "storage" / "digitization_queue"

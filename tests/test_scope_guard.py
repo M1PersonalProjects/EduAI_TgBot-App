@@ -1,6 +1,6 @@
 import pytest
 
-from services.scope_guard import validate_request_scope
+from services.education.scope_guard import validate_request_scope
 
 
 @pytest.mark.asyncio

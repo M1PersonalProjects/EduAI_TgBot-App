@@ -1,4 +1,4 @@
-from services.chat_memory import (
+from services.core.chat_memory import (
     attachment_score,
     build_memory_summary,
     detect_task_number,
